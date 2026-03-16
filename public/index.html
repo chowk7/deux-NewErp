@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>다이아 주얼리 ERP - 가격/원가/매출 관리</title>
+    <link rel="stylesheet" href="../css/main.css">
+</head>
+<body>
+    <div id="app">
+        <!-- 로딩 표시 -->
+        <div id="loading" class="loading-container hidden">
+            <div class="spinner"></div>
+            <p>로딩 중...</p>
+        </div>
+
+        <!-- 로그인 페이지 -->
+        <div id="loginPage" class="page">
+            <div class="login-container">
+                <div class="login-card">
+                    <h1>다이아 주얼리 ERP</h1>
+                    <p class="subtitle">가격 • 원가 • 매출 관리 시스템</p>
+
+                    <form id="loginForm" class="login-form">
+                        <div class="form-group">
+                            <label for="email">이메일</label>
+                            <input
+                                type="email"
+                                id="email"
+                                name="email"
+                                required
+                                placeholder="you@example.com"
+                            >
+                        </div>
+
+                        <div class="form-group">
+                            <label for="password">비밀번호</label>
+                            <input
+                                type="password"
+                                id="password"
+                                name="password"
+                                required
+                                placeholder="••••••••"
+                            >
+                        </div>
+
+                        <button type="submit" class="btn btn-primary btn-block">
+                            로그인
+                        </button>
+
+                        <div class="divider">또는</div>
+
+                        <button type="button" id="signupToggle" class="btn btn-secondary btn-block">
+                            회원가입
+                        </button>
+
+                        <div id="errorMessage" class="error-message hidden"></div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- 회원가입 페이지 -->
+        <div id="signupPage" class="page hidden">
+            <div class="login-container">
+                <div class="login-card">
+                    <h1>회원가입</h1>
+                    <p class="subtitle">새로운 계정 만들기</p>
+
+                    <form id="signupForm" class="login-form">
+                        <div class="form-group">
+                            <label for="signupEmail">이메일</label>
+                            <input
+                                type="email"
+                                id="signupEmail"
+                                name="email"
+                                required
+                                placeholder="you@example.com"
+                            >
+                        </div>
+
+                        <div class="form-group">
+                            <label for="signupPassword">비밀번호</label>
+                            <input
+                                type="password"
+                                id="signupPassword"
+                                name="password"
+                                required
+                                placeholder="••••••••"
+                                minlength="6"
+                            >
+                        </div>
+
+                        <div class="form-group">
+                            <label for="signupPasswordConfirm">비밀번호 확인</label>
+                            <input
+                                type="password"
+                                id="signupPasswordConfirm"
+                                name="passwordConfirm"
+                                required
+                                placeholder="••••••••"
+                            >
+                        </div>
+
+                        <button type="submit" class="btn btn-primary btn-block">
+                            회원가입
+                        </button>
+
+                        <button type="button" id="loginToggle" class="btn btn-secondary btn-block">
+                            로그인 화면으로
+                        </button>
+
+                        <div id="signupErrorMessage" class="error-message hidden"></div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- 메인 대시보드 -->
+        <div id="dashboardPage" class="page hidden">
+            <nav class="navbar">
+                <div class="navbar-brand">
+                    <h1>다이아 주얼리 ERP</h1>
+                </div>
+                <div class="navbar-menu">
+                    <div class="navbar-user">
+                        <span id="userEmail"></span>
+                        <button id="logoutBtn" class="btn btn-sm btn-outline">로그아웃</button>
+                    </div>
+                </div>
+            </nav>
+
+            <div class="container">
+                <div class="sidebar">
+                    <nav class="nav-menu">
+                        <h3>메뉴</h3>
+                        <ul>
+                            <li><a href="#" data-menu="dashboard" class="nav-link active">📊 대시보드</a></li>
+                            <li class="nav-section">가격관리</li>
+                            <li><a href="#" data-menu="diamond-rates" class="nav-link">💎 다이아단가표</a></li>
+                            <li><a href="#" data-menu="product-rates" class="nav-link">📿 제품단가표</a></li>
+                            <li><a href="#" data-menu="option-charges" class="nav-link">➕ 각줄추가금액</a></li>
+                            <li><a href="#" data-menu="price-settings" class="nav-link">⚙️ 가격옵션</a></li>
+                            <li class="nav-section">매출관리</li>
+                            <li><a href="#" data-menu="orders" class="nav-link">📋 매출표</a></li>
+                            <li><a href="#" data-menu="manufacturing-costs" class="nav-link">🏭 제조원가표</a></li>
+                            <li><a href="#" data-menu="order-management" class="nav-link">📦 주문관리</a></li>
+                            <li><a href="#" data-menu="admin-expenses" class="nav-link">💼 판관비</a></li>
+                            <li><a href="#" data-menu="profit-loss" class="nav-link">📈 P&L표</a></li>
+                            <li class="nav-section">기타</li>
+                            <li><a href="#" data-menu="images" class="nav-link">🖼️ 이미지 관리</a></li>
+                        </ul>
+                    </nav>
+                </div>
+
+                <main class="main-content">
+                    <!-- 대시보드 섹션 -->
+                    <section id="dashboardContent" class="content-section">
+                        <h2>대시보드</h2>
+                        <p>준비 중입니다...</p>
+                    </section>
+
+                    <!-- 다이아단가표 섹션 -->
+                    <section id="diamondRatesContent" class="content-section hidden">
+                        <h2>다이아단가표</h2>
+                        <div class="button-group">
+                            <button id="addDiamondRateBtn" class="btn btn-primary">+ 새 항목 추가</button>
+                        </div>
+                        <table id="diamondRatesTable" class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>다이아 종류</th>
+                                    <th>원가 (VAT 미포함)</th>
+                                    <th>VAT 포함가</th>
+                                    <th>VS 보증서 추가금</th>
+                                    <th>VVS 보증서 추가금</th>
+                                    <th>기타</th>
+                                    <th>관리</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            </tbody>
+                        </table>
+                    </section>
+
+                    <!-- 제품단가표 섹션 -->
+                    <section id="productRatesContent" class="content-section hidden">
+                        <h2>제품단가표</h2>
+                        <p>준비 중입니다...</p>
+                    </section>
+
+                    <!-- 각줄추가금액 섹션 -->
+                    <section id="optionChargesContent" class="content-section hidden">
+                        <h2>각줄추가금액</h2>
+                        <div class="button-group">
+                            <button id="addOptionChargeBtn" class="btn btn-primary">+ 새 옵션 추가</button>
+                        </div>
+                        <table id="optionChargesTable" class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>추가옵션</th>
+                                    <th>추가금액</th>
+                                    <th>관리</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            </tbody>
+                        </table>
+                    </section>
+
+                    <!-- 가격옵션 섹션 -->
+                    <section id="priceSettingsContent" class="content-section hidden">
+                        <h2>가격옵션 설정</h2>
+                        <form id="priceSettingsForm" class="form-grid">
+                            <div class="form-group">
+                                <label for="goldPrice">순금값 (1g당 원)</label>
+                                <input type="number" id="goldPrice" name="goldPrice" step="100" placeholder="0">
+                            </div>
+                            <div class="form-group">
+                                <label for="ownMallCommission">자사몰 수수료율 (%)</label>
+                                <input type="number" id="ownMallCommission" name="ownMallCommission" step="0.1" placeholder="0">
+                            </div>
+                            <div class="form-group">
+                                <label for="departmentCommission">백화점 수수료율 (%)</label>
+                                <input type="number" id="departmentCommission" name="departmentCommission" step="0.1" placeholder="0">
+                            </div>
+                            <div class="form-group">
+                                <label for="weightAdjustment18K">18K 중량변화율 (%)</label>
+                                <input type="number" id="weightAdjustment18K" name="weightAdjustment18K" step="0.1" placeholder="0">
+                            </div>
+                            <div class="form-group">
+                                <label for="ownMargin">자체마진율 (%)</label>
+                                <input type="number" id="ownMargin" name="ownMargin" step="0.1" placeholder="0">
+                            </div>
+                            <button type="submit" class="btn btn-primary">저장</button>
+                        </form>
+                    </section>
+
+                    <!-- 매출표 섹션 -->
+                    <section id="ordersContent" class="content-section hidden">
+                        <h2>매출표</h2>
+                        <div class="button-group">
+                            <button id="addOrderBtn" class="btn btn-primary">+ 새 주문 추가</button>
+                        </div>
+                        <table id="ordersTable" class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>주문일</th>
+                                    <th>주문번호</th>
+                                    <th>고객명</th>
+                                    <th>상품명</th>
+                                    <th>최종주문금액</th>
+                                    <th>매출금액</th>
+                                    <th>관리</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            </tbody>
+                        </table>
+                    </section>
+
+                    <!-- 다른 섹션들은 준비 중 -->
+                    <section id="manufacturingCostsContent" class="content-section hidden">
+                        <h2>제조원가표</h2>
+                        <p>준비 중입니다...</p>
+                    </section>
+
+                    <section id="orderManagementContent" class="content-section hidden">
+                        <h2>주문관리</h2>
+                        <p>준비 중입니다...</p>
+                    </section>
+
+                    <section id="adminExpensesContent" class="content-section hidden">
+                        <h2>판관비</h2>
+                        <p>준비 중입니다...</p>
+                    </section>
+
+                    <section id="profitLossContent" class="content-section hidden">
+                        <h2>P&L표</h2>
+                        <p>준비 중입니다...</p>
+                    </section>
+
+                    <section id="imagesContent" class="content-section hidden">
+                        <h2>이미지 관리</h2>
+                        <p>준비 중입니다...</p>
+                    </section>
+                </main>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage.js"></script>
+
+    <!-- App Scripts -->
+    <script src="../config/firebaseConfig.js"></script>
+    <script src="../js/app.js"></script>
+    <script src="../js/auth.js"></script>
+    <script src="../js/firebaseManager.js"></script>
+    <script src="../js/modules/priceManagement.js"></script>
+    <script src="../js/modules/salesManagement.js"></script>
+</body>
+</html>
