@@ -227,5 +227,7 @@ class DiamonJewelryApp {
 document.addEventListener('DOMContentLoaded', async () => {
     // FirebaseManager의 init()이 완료될 때까지 대기
     await window.firebaseManager.ready;
+    // Firebase 준비 완료 후 Auth 모듈 초기화
+    window.authModule = new AuthModule();
     window.app = new DiamonJewelryApp();
 });

@@ -41,7 +41,7 @@ class AuthModule {
 
         try {
             // Firebase 로그인
-            await firebase.auth().signInWithEmailAndPassword(email, password);
+            await window.firebaseAuth.signInWithEmailAndPassword(email, password);
 
             // 로그인 성공 - 앱이 auth state 변경 감지하여 대시보드로 이동
             this.loginForm.reset();
@@ -81,7 +81,7 @@ class AuthModule {
 
         try {
             // Firebase 회원가입
-            const userCredential = await firebase.auth().createUserWithEmailAndPassword(email, password);
+            const userCredential = await window.firebaseAuth.createUserWithEmailAndPassword(email, password);
 
             // 사용자 정보 설정
             await userCredential.user.updateProfile({
@@ -89,7 +89,7 @@ class AuthModule {
             });
 
             // Firestore에 사용자 정보 저장
-            await firebase.firestore().collection('users').doc(userCredential.user.uid).set({
+            await window.firebaseDb.collection('users').doc(userCredential.user.uid).set({
                 email: email,
                 displayName: userCredential.user.displayName,
                 createdAt: new Date(),
@@ -114,14 +114,16 @@ class AuthModule {
             'auth/user-disabled': '이 계정은 비활성화되었습니다.',
             'auth/user-not-found': '해당 이메일의 계정이 없습니다.',
             'auth/wrong-password': '비밀번호가 올바르지 않습니다.',
+            'auth/invalid-credential': '이메일 또는 비밀번호가 올바르지 않습니다.',
             'auth/email-already-in-use': '이미 가입된 이메일입니다.',
-            'auth/operation-not-allowed': '이 작업은 허용되지 않습니다.',
+            'auth/operation-not-allowed': '이메일/비밀번호 로그인이 비활성화되어 있습니다. Firebase Console에서 활성화해주세요.',
             'auth/weak-password': '비밀번호가 너무 약합니다.',
             'auth/network-request-failed': '네트워크 연결에 실패했습니다.',
-            'auth/too-many-requests': '너무 많은 로그인 시도가 있었습니다. 나중에 다시 시도해주세요.'
+            'auth/too-many-requests': '너무 많은 로그인 시도가 있었습니다. 나중에 다시 시도해주세요.',
+            'auth/configuration-not-found': 'Firebase Authentication이 설정되지 않았습니다.'
         };
 
-        return errorMap[errorCode] || '오류가 발생했습니다. 다시 시도해주세요.';
+        return errorMap[errorCode] || `오류가 발생했습니다. (${errorCode})`;
     }
 
     /**
@@ -145,7 +147,4 @@ class AuthModule {
     }
 }
 
-// Auth 모듈 초기화 (문서 로드 후)
-document.addEventListener('DOMContentLoaded', () => {
-    window.authModule = new AuthModule();
-});
+// AuthModule은 app.js에서 Firebase 초기화 후에 생성됩니다
