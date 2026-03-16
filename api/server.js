@@ -11,14 +11,25 @@ const admin = require('firebase-admin');
 require('dotenv').config();
 
 // Firebase Admin 초기화
-const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT
-    ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
-    : require('./firebase-credentials.json');
+// Cloud Run에서는 서비스 계정 키 없이 ADC(Application Default Credentials) 사용
+let firebaseInitOptions = {
+    storageBucket: process.env.GCP_STORAGE_BUCKET || `${process.env.FIREBASE_PROJECT_ID}.appspot.com`
+};
 
-admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    storageBucket: process.env.GCP_STORAGE_BUCKET || 'diamond-jewelry-images.appspot.com'
-});
+if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    // 환경변수에 서비스 계정 JSON이 있는 경우
+    firebaseInitOptions.credential = admin.credential.cert(
+        JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
+    );
+} else {
+    // Cloud Run의 서비스 계정으로 자동 인증 (ADC)
+    firebaseInitOptions.credential = admin.credential.applicationDefault();
+    if (process.env.FIREBASE_PROJECT_ID) {
+        firebaseInitOptions.projectId = process.env.FIREBASE_PROJECT_ID;
+    }
+}
+
+admin.initializeApp(firebaseInitOptions);
 
 // Express 앱 생성
 const app = express();
