@@ -40,9 +40,17 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "https://www.gstatic.com", "https://*.firebaseio.com"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "https://www.gstatic.com"],
             styleSrc: ["'self'", "'unsafe-inline'"],
-            connectSrc: ["'self'", "https://*.googleapis.com", "https://*.firebaseio.com", "wss://*.firebaseio.com"],
+            connectSrc: [
+                "'self'",
+                "https://*.googleapis.com",
+                "https://*.firebaseio.com",
+                "wss://*.firebaseio.com",
+                "https://www.gstatic.com",
+                "https://identitytoolkit.googleapis.com",
+                "https://securetoken.googleapis.com",
+            ],
             imgSrc: ["'self'", "data:", "https://storage.googleapis.com"],
             frameSrc: ["'none'"],
         },
