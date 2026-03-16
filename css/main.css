@@ -539,3 +539,52 @@ html, body {
         width: 100%;
     }
 }
+
+/* ===== 판관비 요약 스타일 ===== */
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md);
+    background: var(--light-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+}
+
+.summary-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.summary-label {
+    font-size: 0.75rem;
+    color: var(--text-light);
+}
+
+.summary-value {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-dark);
+}
+
+/* ===== 배지 스타일 ===== */
+.badge {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 9999px;
+    background: #e0e7ff;
+    color: #3730a3;
+}
+
+/* ===== 이미지 링크 ===== */
+.image-link {
+    color: var(--primary-color);
+    text-decoration: none;
+    margin-right: 4px;
+}
+.image-link:hover {
+    text-decoration: underline;
+}

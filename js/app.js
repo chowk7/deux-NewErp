@@ -120,10 +120,20 @@ class DiamonJewelryApp {
                 section.classList.remove('hidden');
 
                 // 해당 모듈 로드
-                if (window.PriceManagementModule && (menuId.includes('diamond-rates') || menuId.includes('option-charges'))) {
+                if (window.PriceManagementModule && (menuId === 'diamond-rates' || menuId === 'option-charges' || menuId === 'price-settings')) {
                     window.PriceManagementModule.loadData(menuId);
                 } else if (window.SalesManagementModule && menuId === 'orders') {
                     window.SalesManagementModule.loadOrders();
+                } else if (window.ProductRatesModule && menuId === 'product-rates') {
+                    window.ProductRatesModule.load();
+                } else if (window.ManufacturingCostsModule && menuId === 'manufacturing-costs') {
+                    window.ManufacturingCostsModule.load();
+                } else if (window.OrderManagementModule && menuId === 'order-management') {
+                    window.OrderManagementModule.load();
+                } else if (window.AdminExpensesModule && menuId === 'admin-expenses') {
+                    window.AdminExpensesModule.load();
+                } else if (window.ProfitLossModule && menuId === 'profit-loss') {
+                    window.ProfitLossModule.load();
                 }
             }
         }
@@ -152,6 +162,7 @@ class DiamonJewelryApp {
         this.switchPage('dashboard');
         this.setupPriceManagementModule();
         this.setupSalesManagementModule();
+        this.setupNewModules();
     }
 
     /**
@@ -200,6 +211,17 @@ class DiamonJewelryApp {
         if (window.SalesManagementModule) {
             window.SalesManagementModule.init();
         }
+    }
+
+    /**
+     * 신규 모듈 설정
+     */
+    setupNewModules() {
+        if (window.ProductRatesModule) window.ProductRatesModule.init();
+        if (window.ManufacturingCostsModule) window.ManufacturingCostsModule.init();
+        if (window.OrderManagementModule) window.OrderManagementModule.init();
+        if (window.AdminExpensesModule) window.AdminExpensesModule.init();
+        if (window.ProfitLossModule) window.ProfitLossModule.init();
     }
 
     /**

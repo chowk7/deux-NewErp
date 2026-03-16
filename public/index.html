@@ -190,7 +190,22 @@
                     <!-- 제품단가표 섹션 -->
                     <section id="productRatesContent" class="content-section hidden">
                         <h2>제품단가표</h2>
-                        <p>준비 중입니다...</p>
+                        <div class="button-group">
+                            <button id="addProductRateBtn" class="btn btn-primary">+ 새 항목 추가</button>
+                            <button class="btn btn-secondary" onclick="window.ProductRatesModule.openCsvUpload()">📤 CSV 업로드</button>
+                            <button class="btn btn-secondary" onclick="window.ProductRatesModule.downloadTemplate()">📥 양식 다운로드</button>
+                            <button class="btn btn-secondary" onclick="window.ProductRatesModule.downloadData()">📊 데이터 다운로드</button>
+                            <button class="btn btn-outline" onclick="window.ProductRatesModule.openRequiredSettings()">⚙️ 필수항목 설정</button>
+                        </div>
+                        <div style="overflow-x:auto;">
+                        <table id="productRatesTable" class="data-table">
+                            <thead><tr>
+                                <th>자체상품코드</th><th>상품코드</th><th>제품명</th><th>종류</th>
+                                <th>제품원가</th><th>최종소비자가</th><th>자사몰이익률</th><th>관리</th>
+                            </tr></thead>
+                            <tbody></tbody>
+                        </table>
+                        </div>
                     </section>
 
                     <!-- 각줄추가금액 섹션 -->
@@ -270,25 +285,110 @@
                         </table>
                     </section>
 
-                    <!-- 다른 섹션들은 준비 중 -->
+                    <!-- 제조원가표 섹션 -->
                     <section id="manufacturingCostsContent" class="content-section hidden">
                         <h2>제조원가표</h2>
-                        <p>준비 중입니다...</p>
+                        <div class="button-group">
+                            <button id="addManufacturingCostBtn" class="btn btn-primary">+ 새 항목 추가</button>
+                            <button class="btn btn-secondary" onclick="window.ManufacturingCostsModule.downloadTemplate()">📥 양식 다운로드</button>
+                            <button class="btn btn-secondary" onclick="window.ManufacturingCostsModule.downloadData()">📊 데이터 다운로드</button>
+                        </div>
+                        <div style="overflow-x:auto;">
+                        <table id="manufacturingCostsTable" class="data-table">
+                            <thead><tr>
+                                <th>주문번호</th><th>제작월</th><th>금값</th>
+                                <th>나석가격</th><th>제조가격</th><th>매출이익률</th><th>관리</th>
+                            </tr></thead>
+                            <tbody></tbody>
+                        </table>
+                        </div>
                     </section>
 
+                    <!-- 주문관리 섹션 -->
                     <section id="orderManagementContent" class="content-section hidden">
                         <h2>주문관리</h2>
-                        <p>준비 중입니다...</p>
+                        <div class="button-group">
+                            <button id="addOrderMgmtBtn" class="btn btn-primary">+ 새 주문 추가</button>
+                        </div>
+                        <div style="overflow-x:auto;">
+                        <table id="orderManagementTable" class="data-table">
+                            <thead><tr>
+                                <th>주문번호</th><th>나석신청</th><th>공방신청</th>
+                                <th>제작완료</th><th>배송준비</th><th>배송완료</th>
+                                <th>첨부이미지</th><th>관리</th>
+                            </tr></thead>
+                            <tbody></tbody>
+                        </table>
+                        </div>
                     </section>
 
+                    <!-- 판관비 섹션 -->
                     <section id="adminExpensesContent" class="content-section hidden">
                         <h2>판관비</h2>
-                        <p>준비 중입니다...</p>
+                        <div class="button-group">
+                            <button id="addAdminExpenseBtn" class="btn btn-primary">+ 새 항목 추가</button>
+                            <button class="btn btn-secondary" onclick="window.AdminExpensesModule.openCsvUpload()">📤 CSV 업로드</button>
+                            <button class="btn btn-secondary" onclick="window.AdminExpensesModule.downloadTemplate()">📥 양식 다운로드</button>
+                            <button class="btn btn-secondary" onclick="window.AdminExpensesModule.downloadData()">📊 데이터 다운로드</button>
+                        </div>
+                        <div class="filter-group" style="display:flex;gap:12px;margin-bottom:12px;align-items:center;">
+                            <label>연도:
+                                <select id="expenseYearFilter" class="form-control" style="width:auto;display:inline-block;margin-left:4px;">
+                                    <option value="">전체</option>
+                                    <option value="2024" selected>2024</option>
+                                    <option value="2025">2025</option>
+                                    <option value="2026">2026</option>
+                                </select>
+                            </label>
+                            <label>월:
+                                <select id="expenseMonthFilter" class="form-control" style="width:auto;display:inline-block;margin-left:4px;">
+                                    <option value="">전체</option>
+                                    <option value="01">1월</option><option value="02">2월</option>
+                                    <option value="03">3월</option><option value="04">4월</option>
+                                    <option value="05">5월</option><option value="06">6월</option>
+                                    <option value="07">7월</option><option value="08">8월</option>
+                                    <option value="09">9월</option><option value="10">10월</option>
+                                    <option value="11">11월</option><option value="12">12월</option>
+                                </select>
+                            </label>
+                        </div>
+                        <div id="expenseSummary" style="margin-bottom:16px;"></div>
+                        <div style="overflow-x:auto;">
+                        <table id="adminExpensesTable" class="data-table">
+                            <thead><tr>
+                                <th>날짜</th><th>계정과목</th><th>거래내용</th><th>거래처</th>
+                                <th>금액</th><th>결제방식</th><th>비용처리</th><th>관리</th>
+                            </tr></thead>
+                            <tbody></tbody>
+                        </table>
+                        </div>
                     </section>
 
+                    <!-- P&L표 섹션 -->
                     <section id="profitLossContent" class="content-section hidden">
                         <h2>P&L표</h2>
-                        <p>준비 중입니다...</p>
+                        <div class="button-group" style="align-items:center;">
+                            <label>연도:
+                                <select id="plYearSelect" class="form-control" style="width:auto;display:inline-block;margin-left:4px;">
+                                    <option value="2024">2024</option>
+                                    <option value="2025">2025</option>
+                                    <option value="2026" selected>2026</option>
+                                </select>
+                            </label>
+                            <button id="calcPlBtn" class="btn btn-primary">📊 계산</button>
+                            <button class="btn btn-secondary" onclick="window.ProfitLossModule.downloadData()">📊 데이터 다운로드</button>
+                        </div>
+                        <div style="overflow-x:auto; margin-top:16px;">
+                        <table id="profitLossTable" class="data-table">
+                            <thead><tr>
+                                <th>월</th><th>매출</th><th>매출원가</th><th>매출이익</th><th>매출이익률</th>
+                                <th>R&D비용</th><th>광고선전비</th><th>재료매입</th><th>판관비</th>
+                                <th>운송비</th><th>지급수수료</th><th>포장비</th><th>임대료</th><th>기타</th>
+                                <th>판관비합계</th><th>영업이익</th><th>영업이익률</th>
+                            </tr></thead>
+                            <tbody></tbody>
+                        </table>
+                        </div>
                     </section>
 
                     <section id="imagesContent" class="content-section hidden">
@@ -312,6 +412,11 @@
     <script src="/js/auth.js"></script>
     <script src="/js/modules/priceManagement.js"></script>
     <script src="/js/modules/salesManagement.js"></script>
+    <script src="/js/modules/productRates.js"></script>
+    <script src="/js/modules/manufacturingCosts.js"></script>
+    <script src="/js/modules/orderManagement.js"></script>
+    <script src="/js/modules/adminExpenses.js"></script>
+    <script src="/js/modules/profitLoss.js"></script>
     <script src="/js/app.js"></script>
 </body>
 </html>
