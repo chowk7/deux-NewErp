@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>다이아 주얼리 ERP - 가격/원가/매출 관리</title>
-    <link rel="stylesheet" href="../css/main.css">
+    <link rel="stylesheet" href="/css/main.css">
 </head>
 <body>
     <div id="app">
@@ -289,18 +289,17 @@
         </div>
     </div>
 
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage.js"></script>
+    <!-- Firebase SDK (compat 버전 - 네임스페이스 방식 지원) -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage-compat.js"></script>
 
     <!-- App Scripts -->
-    <script src="../config/firebaseConfig.js"></script>
-    <script src="../js/app.js"></script>
-    <script src="../js/auth.js"></script>
-    <script src="../js/firebaseManager.js"></script>
-    <script src="../js/modules/priceManagement.js"></script>
-    <script src="../js/modules/salesManagement.js"></script>
+    <script src="/js/firebaseManager.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/modules/priceManagement.js"></script>
+    <script src="/js/modules/salesManagement.js"></script>
+    <script src="/js/app.js"></script>
 </body>
 </html>

@@ -8,24 +8,27 @@ class FirebaseManager {
         this.db = null;
         this.auth = null;
         this.storage = null;
-        this.init();
+        this.ready = this.init();
     }
 
-    init() {
+    async init() {
         try {
+            // 서버에서 Firebase 설정 가져오기
+            const res = await fetch('/api/firebase-config');
+            const firebaseConfig = await res.json();
+
+            if (!firebaseConfig.apiKey) {
+                throw new Error('Firebase 설정이 없습니다. Cloud Run 환경변수를 확인해주세요.');
+            }
+
             // Firebase 초기화
             firebase.initializeApp(firebaseConfig);
 
-            // Firestore 참조
             this.db = firebase.firestore();
-
-            // Auth 참조
             this.auth = firebase.auth();
-
-            // Storage 참조
             this.storage = firebase.storage();
 
-            // 글로벌 변수로 설정
+            // 글로벌 참조 설정
             window.firebaseAuth = this.auth;
             window.firebaseDb = this.db;
             window.firebaseStorage = this.storage;
@@ -33,7 +36,7 @@ class FirebaseManager {
             console.log('Firebase initialized successfully');
         } catch (error) {
             console.error('Firebase initialization error:', error);
-            alert('Firebase 초기화에 실패했습니다. 설정을 확인해주세요.');
+            alert('Firebase 초기화에 실패했습니다: ' + error.message);
         }
     }
 

@@ -3,24 +3,22 @@
 
 FROM node:18-alpine
 
-# 작업 디렉토리 설정
 WORKDIR /app
 
-# package.json 복사
+# 백엔드 의존성 설치
 COPY api/package*.json ./
+RUN npm ci --omit=dev
 
-# 프로덕션 의존성만 설치
-RUN npm ci --only=production
-
-# 소스 코드 복사
+# 백엔드 소스 복사
 COPY api/ ./
 
-# 포트 8080 노출 (Cloud Run 기본값)
-EXPOSE 8080
+# 프론트엔드 파일 복사 (Express static 서빙용)
+COPY public/ ./public/
+COPY css/ ./css/
+COPY js/ ./js/
 
-# 환경 변수 설정
+EXPOSE 8080
 ENV NODE_ENV=production
 ENV PORT=8080
 
-# 서버 시작
 CMD ["node", "server.js"]

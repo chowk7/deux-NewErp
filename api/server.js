@@ -8,6 +8,7 @@ const cors = require('cors');
 const compression = require('compression');
 const helmet = require('helmet');
 const admin = require('firebase-admin');
+const path = require('path');
 require('dotenv').config();
 
 // Firebase Admin 초기화
@@ -35,15 +36,49 @@ admin.initializeApp(firebaseInitOptions);
 const app = express();
 
 // 미들웨어
-app.use(helmet());
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "https://www.gstatic.com", "https://*.firebaseio.com"],
+            styleSrc: ["'self'", "'unsafe-inline'"],
+            connectSrc: ["'self'", "https://*.googleapis.com", "https://*.firebaseio.com", "wss://*.firebaseio.com"],
+            imgSrc: ["'self'", "data:", "https://storage.googleapis.com"],
+            frameSrc: ["'none'"],
+        },
+    },
+}));
 app.use(compression());
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
+// 정적 파일 서빙 (프론트엔드)
+app.use('/css', express.static(path.join(__dirname, 'css')));
+app.use('/js', express.static(path.join(__dirname, 'js')));
+
 // Firestore 인스턴스
 const db = admin.firestore();
 const storage = admin.storage();
+
+// ===== 프론트엔드 라우트 =====
+
+// Firebase 설정을 환경변수에서 클라이언트로 안전하게 전달
+app.get('/api/firebase-config', (req, res) => {
+    res.json({
+        apiKey: process.env.FIREBASE_API_KEY || '',
+        authDomain: process.env.FIREBASE_AUTH_DOMAIN || '',
+        projectId: process.env.FIREBASE_PROJECT_ID || '',
+        storageBucket: process.env.FIREBASE_STORAGE_BUCKET || '',
+        messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || '',
+        appId: process.env.FIREBASE_APP_ID || ''
+    });
+});
+
+// SPA 루트 - index.html 서빙
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
 // ===== API 라우트 =====
 

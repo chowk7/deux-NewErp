@@ -223,7 +223,9 @@ class DiamonJewelryApp {
     }
 }
 
-// 앱 초기화 (문서 로드 후)
-document.addEventListener('DOMContentLoaded', () => {
+// 앱 초기화 - Firebase 준비 후 시작
+document.addEventListener('DOMContentLoaded', async () => {
+    // FirebaseManager의 init()이 완료될 때까지 대기
+    await window.firebaseManager.ready;
     window.app = new DiamonJewelryApp();
 });
