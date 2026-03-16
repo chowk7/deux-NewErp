@@ -165,6 +165,10 @@
                         <h2>다이아단가표</h2>
                         <div class="button-group">
                             <button id="addDiamondRateBtn" class="btn btn-primary">+ 새 항목 추가</button>
+                            <button class="btn btn-secondary" onclick="window.PriceManagementModule.openDiamondCsvUpload()">📤 CSV 업로드</button>
+                            <button class="btn btn-secondary" onclick="window.PriceManagementModule.downloadDiamondCsvTemplate()">📥 양식 다운로드</button>
+                            <button class="btn btn-secondary" onclick="window.PriceManagementModule.downloadDiamondCsvData()">📊 데이터 다운로드</button>
+                            <button class="btn btn-outline" onclick="window.PriceManagementModule.openDiamondRequiredSettings()">⚙️ 필수항목 설정</button>
                         </div>
                         <table id="diamondRatesTable" class="data-table">
                             <thead>
@@ -194,6 +198,9 @@
                         <h2>각줄추가금액</h2>
                         <div class="button-group">
                             <button id="addOptionChargeBtn" class="btn btn-primary">+ 새 옵션 추가</button>
+                            <button class="btn btn-secondary" onclick="window.PriceManagementModule.openOptionCsvUpload()">📤 CSV 업로드</button>
+                            <button class="btn btn-secondary" onclick="window.PriceManagementModule.downloadOptionCsvTemplate()">📥 양식 다운로드</button>
+                            <button class="btn btn-outline" onclick="window.PriceManagementModule.openOptionRequiredSettings()">⚙️ 필수항목 설정</button>
                         </div>
                         <table id="optionChargesTable" class="data-table">
                             <thead>
@@ -241,6 +248,10 @@
                         <h2>매출표</h2>
                         <div class="button-group">
                             <button id="addOrderBtn" class="btn btn-primary">+ 새 주문 추가</button>
+                            <button class="btn btn-secondary" onclick="window.SalesManagementModule.openOrderCsvUpload()">📤 CSV 업로드</button>
+                            <button class="btn btn-secondary" onclick="window.SalesManagementModule.downloadOrderCsvTemplate()">📥 양식 다운로드</button>
+                            <button class="btn btn-secondary" onclick="window.SalesManagementModule.downloadOrderCsvData()">📊 데이터 다운로드</button>
+                            <button class="btn btn-outline" onclick="window.SalesManagementModule.openOrderRequiredSettings()">⚙️ 필수항목 설정</button>
                         </div>
                         <table id="ordersTable" class="data-table">
                             <thead>
@@ -296,6 +307,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage-compat.js"></script>
 
     <!-- App Scripts -->
+    <script src="/js/utils.js"></script>
     <script src="/js/firebaseManager.js"></script>
     <script src="/js/auth.js"></script>
     <script src="/js/modules/priceManagement.js"></script>

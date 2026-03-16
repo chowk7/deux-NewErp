@@ -1,424 +1,301 @@
 /**
  * Price Management Module
- * Handles diamond rates, product rates, and option charges
  */
 
 window.PriceManagementModule = {
+
+    // ===== 필드 스키마 =====
+
+    DIAMOND_FIELDS: [
+        { key: 'diamondType',    label: '다이아 종류',        type: 'text',   defaultRequired: true  },
+        { key: 'costWithoutVat', label: '원가(VAT미포함)',     type: 'number', defaultRequired: true  },
+        { key: 'costWithVat',    label: 'VAT포함가',          type: 'number', defaultRequired: true  },
+        { key: 'vsWarrantyFee',  label: 'VS보증서추가금',      type: 'number', defaultRequired: false },
+        { key: 'vvsWarrantyFee', label: 'VVS보증서추가금',     type: 'number', defaultRequired: false },
+        { key: 'remark',         label: '기타',               type: 'text',   defaultRequired: false },
+    ],
+
+    OPTION_FIELDS: [
+        { key: 'optionName',   label: '추가옵션', type: 'text',   defaultRequired: true  },
+        { key: 'chargeAmount', label: '추가금액', type: 'number', defaultRequired: true  },
+    ],
+
     diamondRates: [],
     optionCharges: [],
+    diamondRequired: [],
+    optionRequired: [],
 
-    init() {
+    // ===== 초기화 =====
+
+    async init() {
         this.setupEventListeners();
     },
 
     setupEventListeners() {
-        // 다이아단가 추가 버튼
-        const addDiamondRateBtn = document.getElementById('addDiamondRateBtn');
-        if (addDiamondRateBtn) {
-            addDiamondRateBtn.addEventListener('click', () => this.showDiamondRateForm());
-        }
-
-        // 각줄추가금액 추가 버튼
-        const addOptionChargeBtn = document.getElementById('addOptionChargeBtn');
-        if (addOptionChargeBtn) {
-            addOptionChargeBtn.addEventListener('click', () => this.showOptionChargeForm());
-        }
-
-        // 가격 설정 폼
-        const priceSettingsForm = document.getElementById('priceSettingsForm');
-        if (priceSettingsForm) {
-            priceSettingsForm.addEventListener('submit', (e) => this.savePriceSettings(e));
-        }
+        document.getElementById('addDiamondRateBtn')
+            ?.addEventListener('click', () => this.showDiamondRateForm());
+        document.getElementById('addOptionChargeBtn')
+            ?.addEventListener('click', () => this.showOptionChargeForm());
+        document.getElementById('priceSettingsForm')
+            ?.addEventListener('submit', (e) => this.savePriceSettings(e));
     },
 
-    /**
-     * 다이아단가표 데이터 로드
-     */
     async loadData(menuId) {
-        try {
-            if (menuId.includes('diamond-rates')) {
-                await this.loadDiamondRates();
-            } else if (menuId.includes('option-charges')) {
-                await this.loadOptionCharges();
-            } else if (menuId === 'price-settings') {
-                await this.loadPriceSettings();
-            }
-        } catch (error) {
-            console.error('데이터 로드 오류:', error);
-            alert('데이터 로드에 실패했습니다.');
-        }
+        if (menuId === 'diamond-rates')   await this.loadDiamondRates();
+        else if (menuId === 'option-charges') await this.loadOptionCharges();
+        else if (menuId === 'price-settings') await this.loadPriceSettings();
     },
 
-    /**
-     * 다이아단가표 로드
-     */
+    // ===== 다이아단가표 =====
+
     async loadDiamondRates() {
-        try {
-            const snapshot = await window.firebaseDb
-                .collection('prices')
-                .doc('diamondRates')
-                .collection('items')
-                .get();
+        this.diamondRequired = await window.Utils.getRequiredFields('diamondRates');
 
-            this.diamondRates = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
-
-            this.renderDiamondRatesTable();
-        } catch (error) {
-            console.error('다이아단가 로드 오류:', error);
-            alert('다이아단가 데이터를 불러올 수 없습니다.');
-        }
+        const snap = await window.firebaseDb
+            .collection('prices').doc('diamondRates').collection('items').get();
+        this.diamondRates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        this.renderDiamondRatesTable();
     },
 
-    /**
-     * 다이아단가표 렌더링
-     */
     renderDiamondRatesTable() {
         const tbody = document.querySelector('#diamondRatesTable tbody');
         if (!tbody) return;
 
-        tbody.innerHTML = '';
-
         if (this.diamondRates.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">데이터가 없습니다.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center">데이터가 없습니다.</td></tr>';
             return;
         }
-
-        this.diamondRates.forEach(rate => {
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${rate.diamondType || '-'}</td>
-                <td>${this.formatNumber(rate.costWithoutVat || 0)}</td>
-                <td>${this.formatNumber(rate.costWithVat || 0)}</td>
-                <td>${this.formatNumber(rate.vsWarrantyFee || 0)}</td>
-                <td>${this.formatNumber(rate.vvsWarrantyFee || 0)}</td>
-                <td>${rate.remark || '-'}</td>
+        tbody.innerHTML = this.diamondRates.map(r => `
+            <tr>
+                <td>${r.diamondType || '-'}</td>
+                <td>${window.Utils.formatNumber(r.costWithoutVat)}</td>
+                <td>${window.Utils.formatNumber(r.costWithVat)}</td>
+                <td>${window.Utils.formatNumber(r.vsWarrantyFee)}</td>
+                <td>${window.Utils.formatNumber(r.vvsWarrantyFee)}</td>
+                <td>${r.remark || '-'}</td>
                 <td>
-                    <button class="btn btn-sm btn-primary" onclick="window.PriceManagementModule.editDiamondRate('${rate.id}')">수정</button>
-                    <button class="btn btn-sm btn-danger" onclick="window.PriceManagementModule.deleteDiamondRate('${rate.id}')">삭제</button>
+                    <button class="btn btn-sm btn-primary"
+                        onclick="window.PriceManagementModule.showDiamondRateForm('${r.id}')">수정</button>
+                    <button class="btn btn-sm btn-danger"
+                        onclick="window.PriceManagementModule.deleteDiamondRate('${r.id}')">삭제</button>
                 </td>
-            `;
-            tbody.appendChild(row);
-        });
+            </tr>`).join('');
     },
 
-    /**
-     * 다이아단가 폼 표시
-     */
     showDiamondRateForm(rateId = null) {
         const rate = rateId ? this.diamondRates.find(r => r.id === rateId) : null;
+        const req = this.diamondRequired;
 
-        const formHtml = `
-            <div class="modal-overlay" onclick="this.parentElement.remove()">
-                <div class="modal-content" onclick="event.stopPropagation()">
-                    <h3>${rateId ? '다이아단가 수정' : '다이아단가 추가'}</h3>
-                    <form id="diamondRateForm">
-                        <div class="form-group">
-                            <label>다이아 종류</label>
-                            <input type="text" name="diamondType" value="${rate?.diamondType || ''}" required>
-                        </div>
-                        <div class="form-group">
-                            <label>원가 (VAT 미포함)</label>
-                            <input type="number" name="costWithoutVat" value="${rate?.costWithoutVat || ''}" step="0.01" required>
-                        </div>
-                        <div class="form-group">
-                            <label>VAT 포함가</label>
-                            <input type="number" name="costWithVat" value="${rate?.costWithVat || ''}" step="0.01" required>
-                        </div>
-                        <div class="form-group">
-                            <label>VS 보증서 추가금</label>
-                            <input type="number" name="vsWarrantyFee" value="${rate?.vsWarrantyFee || ''}" step="0.01">
-                        </div>
-                        <div class="form-group">
-                            <label>VVS 보증서 추가금</label>
-                            <input type="number" name="vvsWarrantyFee" value="${rate?.vvsWarrantyFee || ''}" step="0.01">
-                        </div>
-                        <div class="form-group">
-                            <label>기타</label>
-                            <input type="text" name="remark" value="${rate?.remark || ''}">
-                        </div>
-                        <div style="display: flex; gap: 10px;">
-                            <button type="submit" class="btn btn-primary">저장</button>
-                            <button type="button" class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">취소</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        `;
+        const body = this.DIAMOND_FIELDS.map(f => {
+            const isRequired = req.includes(f.key);
+            const val = rate?.[f.key] ?? '';
+            return `
+                <div class="form-group">
+                    <label>${f.label}${isRequired ? ' <span style="color:red">*</span>' : ''}</label>
+                    <input type="${f.type}" name="${f.key}" value="${val}"
+                        step="${f.type === 'number' ? '0.01' : ''}"
+                        ${isRequired ? 'required' : ''}>
+                </div>`;
+        }).join('');
 
-        const modal = document.createElement('div');
-        modal.innerHTML = formHtml;
-        document.body.appendChild(modal);
-
-        const form = modal.querySelector('#diamondRateForm');
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const formData = new FormData(form);
-            const data = Object.fromEntries(formData);
-
-            if (rateId) {
-                await this.updateDiamondRate(rateId, data);
-            } else {
-                await this.addDiamondRate(data);
+        window.Utils.openModal(
+            rateId ? '다이아단가 수정' : '다이아단가 추가',
+            `<div class="form-grid">${body}</div>`,
+            async (data, wrapper) => {
+                if (rateId) await this._updateDiamondRate(rateId, data);
+                else        await this._addDiamondRate(data);
+                wrapper.remove();
+                this.loadDiamondRates();
             }
+        );
+    },
 
-            modal.remove();
+    async _addDiamondRate(data) {
+        await window.firebaseDb
+            .collection('prices').doc('diamondRates').collection('items')
+            .add({ ...this._parseNumbers(data, ['costWithoutVat','costWithVat','vsWarrantyFee','vvsWarrantyFee']),
+                   createdAt: new Date(), updatedAt: new Date() });
+    },
+
+    async _updateDiamondRate(id, data) {
+        await window.firebaseDb
+            .collection('prices').doc('diamondRates').collection('items').doc(id)
+            .update({ ...this._parseNumbers(data, ['costWithoutVat','costWithVat','vsWarrantyFee','vvsWarrantyFee']),
+                      updatedAt: new Date() });
+    },
+
+    async deleteDiamondRate(id) {
+        if (!(await window.Utils.confirm('이 항목을 삭제하시겠습니까?'))) return;
+        await window.firebaseDb
+            .collection('prices').doc('diamondRates').collection('items').doc(id).delete();
+        this.loadDiamondRates();
+    },
+
+    // CSV - 다이아단가
+    downloadDiamondCsvTemplate() {
+        window.Utils.downloadCsvTemplate(this.DIAMOND_FIELDS, '다이아단가표_양식.csv');
+    },
+
+    downloadDiamondCsvData() {
+        window.Utils.downloadCsvData(this.DIAMOND_FIELDS, this.diamondRates, '다이아단가표.csv');
+    },
+
+    openDiamondCsvUpload() {
+        window.Utils.openCsvUploadModal(this.DIAMOND_FIELDS, async (rows) => {
+            const batch = window.firebaseDb.batch();
+            rows.forEach(row => {
+                const ref = window.firebaseDb
+                    .collection('prices').doc('diamondRates').collection('items').doc();
+                batch.set(ref, {
+                    ...this._parseNumbers(row, ['costWithoutVat','costWithVat','vsWarrantyFee','vvsWarrantyFee']),
+                    createdAt: new Date(), updatedAt: new Date()
+                });
+            });
+            await batch.commit();
+            alert(`${rows.length}개 항목이 저장되었습니다.`);
+            this.loadDiamondRates();
         });
     },
 
-    /**
-     * 다이아단가 추가
-     */
-    async addDiamondRate(data) {
-        try {
-            await window.firebaseManager.addDiamondRate(data);
-            alert('다이아단가가 추가되었습니다.');
-            this.loadDiamondRates();
-        } catch (error) {
-            console.error('다이아단가 추가 오류:', error);
-            alert('추가에 실패했습니다.');
-        }
+    openDiamondRequiredSettings() {
+        window.Utils.openRequiredFieldsModal('diamondRates', this.DIAMOND_FIELDS);
     },
 
-    /**
-     * 다이아단가 수정
-     */
-    editDiamondRate(rateId) {
-        this.showDiamondRateForm(rateId);
-    },
+    // ===== 각줄추가금액 =====
 
-    /**
-     * 다이아단가 업데이트
-     */
-    async updateDiamondRate(rateId, data) {
-        try {
-            await window.firebaseManager.updateDiamondRate(rateId, data);
-            alert('다이아단가가 업데이트되었습니다.');
-            this.loadDiamondRates();
-        } catch (error) {
-            console.error('다이아단가 업데이트 오류:', error);
-            alert('업데이트에 실패했습니다.');
-        }
-    },
-
-    /**
-     * 다이아단가 삭제
-     */
-    async deleteDiamondRate(rateId) {
-        if (!confirm('정말 삭제하시겠습니까?')) {
-            return;
-        }
-
-        try {
-            await window.firebaseManager.deleteDiamondRate(rateId);
-            alert('다이아단가가 삭제되었습니다.');
-            this.loadDiamondRates();
-        } catch (error) {
-            console.error('다이아단가 삭제 오류:', error);
-            alert('삭제에 실패했습니다.');
-        }
-    },
-
-    /**
-     * 각줄추가금액 로드
-     */
     async loadOptionCharges() {
-        try {
-            const snapshot = await window.firebaseDb
-                .collection('prices')
-                .doc('optionCharges')
-                .collection('items')
-                .get();
+        this.optionRequired = await window.Utils.getRequiredFields('optionCharges');
 
-            this.optionCharges = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
-
-            this.renderOptionChargesTable();
-        } catch (error) {
-            console.error('추가금액 로드 오류:', error);
-            alert('추가금액 데이터를 불러올 수 없습니다.');
-        }
+        const snap = await window.firebaseDb
+            .collection('prices').doc('optionCharges').collection('items').get();
+        this.optionCharges = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        this.renderOptionChargesTable();
     },
 
-    /**
-     * 각줄추가금액 테이블 렌더링
-     */
     renderOptionChargesTable() {
         const tbody = document.querySelector('#optionChargesTable tbody');
         if (!tbody) return;
 
-        tbody.innerHTML = '';
-
         if (this.optionCharges.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="3" style="text-align: center;">데이터가 없습니다.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center">데이터가 없습니다.</td></tr>';
             return;
         }
-
-        this.optionCharges.forEach(charge => {
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${charge.optionName || '-'}</td>
-                <td>${this.formatNumber(charge.chargeAmount || 0)}</td>
+        tbody.innerHTML = this.optionCharges.map(c => `
+            <tr>
+                <td>${c.optionName || '-'}</td>
+                <td>${window.Utils.formatNumber(c.chargeAmount)}</td>
                 <td>
-                    <button class="btn btn-sm btn-primary" onclick="window.PriceManagementModule.editOptionCharge('${charge.id}')">수정</button>
-                    <button class="btn btn-sm btn-danger" onclick="window.PriceManagementModule.deleteOptionCharge('${charge.id}')">삭제</button>
+                    <button class="btn btn-sm btn-primary"
+                        onclick="window.PriceManagementModule.showOptionChargeForm('${c.id}')">수정</button>
+                    <button class="btn btn-sm btn-danger"
+                        onclick="window.PriceManagementModule.deleteOptionCharge('${c.id}')">삭제</button>
                 </td>
-            `;
-            tbody.appendChild(row);
-        });
+            </tr>`).join('');
     },
 
-    /**
-     * 각줄추가금액 폼 표시
-     */
     showOptionChargeForm(chargeId = null) {
         const charge = chargeId ? this.optionCharges.find(c => c.id === chargeId) : null;
+        const req = this.optionRequired;
 
-        const formHtml = `
-            <div class="modal-overlay" onclick="this.parentElement.remove()">
-                <div class="modal-content" onclick="event.stopPropagation()">
-                    <h3>${chargeId ? '추가금액 수정' : '추가금액 추가'}</h3>
-                    <form id="optionChargeForm">
-                        <div class="form-group">
-                            <label>추가옵션 명</label>
-                            <input type="text" name="optionName" value="${charge?.optionName || ''}" required>
-                        </div>
-                        <div class="form-group">
-                            <label>추가금액</label>
-                            <input type="number" name="chargeAmount" value="${charge?.chargeAmount || ''}" step="0.01" required>
-                        </div>
-                        <div style="display: flex; gap: 10px;">
-                            <button type="submit" class="btn btn-primary">저장</button>
-                            <button type="button" class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">취소</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        `;
+        const body = this.OPTION_FIELDS.map(f => {
+            const isRequired = req.includes(f.key);
+            const val = charge?.[f.key] ?? '';
+            return `
+                <div class="form-group">
+                    <label>${f.label}${isRequired ? ' <span style="color:red">*</span>' : ''}</label>
+                    <input type="${f.type}" name="${f.key}" value="${val}"
+                        step="${f.type === 'number' ? '0.01' : ''}"
+                        ${isRequired ? 'required' : ''}>
+                </div>`;
+        }).join('');
 
-        const modal = document.createElement('div');
-        modal.innerHTML = formHtml;
-        document.body.appendChild(modal);
-
-        const form = modal.querySelector('#optionChargeForm');
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const formData = new FormData(form);
-            const data = Object.fromEntries(formData);
-
-            if (chargeId) {
-                await this.updateOptionCharge(chargeId, data);
-            } else {
-                await this.addOptionCharge(data);
+        window.Utils.openModal(
+            chargeId ? '추가금액 수정' : '추가금액 추가',
+            body,
+            async (data, wrapper) => {
+                if (chargeId) await this._updateOptionCharge(chargeId, data);
+                else          await this._addOptionCharge(data);
+                wrapper.remove();
+                this.loadOptionCharges();
             }
+        );
+    },
 
-            modal.remove();
+    async _addOptionCharge(data) {
+        await window.firebaseDb
+            .collection('prices').doc('optionCharges').collection('items')
+            .add({ ...this._parseNumbers(data, ['chargeAmount']),
+                   createdAt: new Date(), updatedAt: new Date() });
+    },
+
+    async _updateOptionCharge(id, data) {
+        await window.firebaseDb
+            .collection('prices').doc('optionCharges').collection('items').doc(id)
+            .update({ ...this._parseNumbers(data, ['chargeAmount']),
+                      updatedAt: new Date() });
+    },
+
+    async deleteOptionCharge(id) {
+        if (!(await window.Utils.confirm('이 항목을 삭제하시겠습니까?'))) return;
+        await window.firebaseDb
+            .collection('prices').doc('optionCharges').collection('items').doc(id).delete();
+        this.loadOptionCharges();
+    },
+
+    // CSV - 각줄추가금액
+    downloadOptionCsvTemplate() {
+        window.Utils.downloadCsvTemplate(this.OPTION_FIELDS, '각줄추가금액_양식.csv');
+    },
+
+    downloadOptionCsvData() {
+        window.Utils.downloadCsvData(this.OPTION_FIELDS, this.optionCharges, '각줄추가금액.csv');
+    },
+
+    openOptionCsvUpload() {
+        window.Utils.openCsvUploadModal(this.OPTION_FIELDS, async (rows) => {
+            const batch = window.firebaseDb.batch();
+            rows.forEach(row => {
+                const ref = window.firebaseDb
+                    .collection('prices').doc('optionCharges').collection('items').doc();
+                batch.set(ref, {
+                    ...this._parseNumbers(row, ['chargeAmount']),
+                    createdAt: new Date(), updatedAt: new Date()
+                });
+            });
+            await batch.commit();
+            alert(`${rows.length}개 항목이 저장되었습니다.`);
+            this.loadOptionCharges();
         });
     },
 
-    /**
-     * 각줄추가금액 추가
-     */
-    async addOptionCharge(data) {
-        try {
-            await window.firebaseManager.addOptionCharge(data);
-            alert('추가금액이 추가되었습니다.');
-            this.loadOptionCharges();
-        } catch (error) {
-            console.error('추가금액 추가 오류:', error);
-            alert('추가에 실패했습니다.');
-        }
+    openOptionRequiredSettings() {
+        window.Utils.openRequiredFieldsModal('optionCharges', this.OPTION_FIELDS);
     },
 
-    /**
-     * 각줄추가금액 수정
-     */
-    editOptionCharge(chargeId) {
-        this.showOptionChargeForm(chargeId);
-    },
+    // ===== 가격 설정 =====
 
-    /**
-     * 각줄추가금액 업데이트
-     */
-    async updateOptionCharge(chargeId, data) {
-        try {
-            await window.firebaseManager.updateOptionCharge(chargeId, data);
-            alert('추가금액이 업데이트되었습니다.');
-            this.loadOptionCharges();
-        } catch (error) {
-            console.error('추가금액 업데이트 오류:', error);
-            alert('업데이트에 실패했습니다.');
-        }
-    },
-
-    /**
-     * 각줄추가금액 삭제
-     */
-    async deleteOptionCharge(chargeId) {
-        if (!confirm('정말 삭제하시겠습니까?')) {
-            return;
-        }
-
-        try {
-            await window.firebaseManager.deleteOptionCharge(chargeId);
-            alert('추가금액이 삭제되었습니다.');
-            this.loadOptionCharges();
-        } catch (error) {
-            console.error('추가금액 삭제 오류:', error);
-            alert('삭제에 실패했습니다.');
-        }
-    },
-
-    /**
-     * 가격 설정 로드
-     */
     async loadPriceSettings() {
-        try {
-            const settings = await window.firebaseManager.getPriceSettings();
-
-            document.getElementById('goldPrice').value = settings.goldPrice || '';
-            document.getElementById('ownMallCommission').value = settings.ownMallCommission || '';
-            document.getElementById('departmentCommission').value = settings.departmentCommission || '';
-            document.getElementById('weightAdjustment18K').value = settings.weightAdjustment18K || '';
-            document.getElementById('ownMargin').value = settings.ownMargin || '';
-        } catch (error) {
-            console.error('가격 설정 로드 오류:', error);
-        }
+        const doc = await window.firebaseDb.collection('prices').doc('settings').get();
+        const s = doc.exists ? doc.data() : {};
+        ['goldPrice','ownMallCommission','departmentCommission','weightAdjustment18K','ownMargin']
+            .forEach(id => { const el = document.getElementById(id); if (el) el.value = s[id] || ''; });
     },
 
-    /**
-     * 가격 설정 저장
-     */
     async savePriceSettings(e) {
         e.preventDefault();
-
-        const form = e.target;
-        const formData = new FormData(form);
-        const data = {
-            goldPrice: parseFloat(formData.get('goldPrice')) || 0,
-            ownMallCommission: parseFloat(formData.get('ownMallCommission')) || 0,
-            departmentCommission: parseFloat(formData.get('departmentCommission')) || 0,
-            weightAdjustment18K: parseFloat(formData.get('weightAdjustment18K')) || 0,
-            ownMargin: parseFloat(formData.get('ownMargin')) || 0
-        };
-
-        try {
-            await window.firebaseManager.savePriceSettings(data);
-            alert('가격 설정이 저장되었습니다.');
-        } catch (error) {
-            console.error('가격 설정 저장 오류:', error);
-            alert('저장에 실패했습니다.');
-        }
+        const fd = new FormData(e.target);
+        const data = Object.fromEntries(fd);
+        Object.keys(data).forEach(k => { data[k] = parseFloat(data[k]) || 0; });
+        await window.firebaseDb.collection('prices').doc('settings')
+            .set({ ...data, updatedAt: new Date() }, { merge: true });
+        alert('가격 설정이 저장되었습니다.');
     },
 
-    /**
-     * 숫자 포맷
-     */
-    formatNumber(num) {
-        return new Intl.NumberFormat('ko-KR').format(num);
+    // ===== 내부 유틸 =====
+
+    _parseNumbers(obj, keys) {
+        const result = { ...obj };
+        keys.forEach(k => { if (k in result) result[k] = parseFloat(result[k]) || 0; });
+        return result;
     }
 };
