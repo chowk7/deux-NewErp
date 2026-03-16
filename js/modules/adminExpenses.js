@@ -24,6 +24,9 @@ window.AdminExpensesModule = {
     filterMonth: '',
 
     async init() {
+        // FIELDS의 accountType options 동적으로 설정
+        this.FIELDS.find(f => f.key === 'accountType').options = this.ACCOUNT_TYPES;
+
         document.getElementById('addAdminExpenseBtn')
             ?.addEventListener('click', () => this.showForm());
 
