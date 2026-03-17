@@ -31,6 +31,8 @@ window.SalesManagementModule = {
         { key: 'phone',           label: '연락처',        type: 'text',   defaultRequired: false },
         { key: 'address',         label: '주소',          type: 'text',   defaultRequired: false },
         { key: 'addressDetail',   label: '주소상세',      type: 'text',   defaultRequired: false },
+        { key: 'salesYear',       label: '판매년',        type: 'number', defaultRequired: false },
+        { key: 'salesMonth',      label: '판매월',        type: 'number', defaultRequired: false },
     ],
 
     orders: [],
@@ -54,6 +56,15 @@ window.SalesManagementModule = {
             ?.addEventListener('click', () => this.downloadOrderCsvData());
         document.getElementById('ordersRequiredSettingsBtn')
             ?.addEventListener('click', () => this.openOrderRequiredSettings());
+
+        // 표시항목 설정
+        document.getElementById('ordersDisplaySettingsBtn')
+            ?.addEventListener('click', () => this.openOrderDisplaySettings());
+    },
+
+    openOrderDisplaySettings() {
+        window.Utils.openDisplayFieldsModal('orders', this.ORDER_FIELDS,
+            () => this.loadOrders());
     },
 
     // ===== 매출표 =====

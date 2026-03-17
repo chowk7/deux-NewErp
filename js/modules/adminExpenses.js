@@ -48,6 +48,15 @@ window.AdminExpensesModule = {
             ?.addEventListener('click', () => this.downloadTemplate());
         document.getElementById('downloadAdminDataBtn')
             ?.addEventListener('click', () => this.downloadData());
+
+        // 표시항목 설정
+        document.getElementById('adminDisplaySettingsBtn')
+            ?.addEventListener('click', () => this.openDisplaySettings());
+    },
+
+    openDisplaySettings() {
+        window.Utils.openDisplayFieldsModal('adminExpenses', this.FIELDS,
+            () => this.load());
     },
 
     async load() {

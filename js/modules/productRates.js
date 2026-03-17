@@ -58,6 +58,15 @@ window.ProductRatesModule = {
             ?.addEventListener('click', () => this.downloadData());
         document.getElementById('productRequiredSettingsBtn')
             ?.addEventListener('click', () => this.openRequiredSettings());
+
+        // 표시항목 설정
+        document.getElementById('productDisplaySettingsBtn')
+            ?.addEventListener('click', () => this.openDisplaySettings());
+    },
+
+    openDisplaySettings() {
+        window.Utils.openDisplayFieldsModal('productRates', this.FIELDS,
+            () => this.load());
     },
 
     async load() {

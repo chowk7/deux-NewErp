@@ -55,6 +55,22 @@ window.PriceManagementModule = {
             ?.addEventListener('click', () => this.downloadOptionCsvTemplate());
         document.getElementById('optionRequiredSettingsBtn')
             ?.addEventListener('click', () => this.openOptionRequiredSettings());
+
+        // 표시항목 설정
+        document.getElementById('diamondDisplaySettingsBtn')
+            ?.addEventListener('click', () => this.openDiamondDisplaySettings());
+        document.getElementById('optionDisplaySettingsBtn')
+            ?.addEventListener('click', () => this.openOptionDisplaySettings());
+    },
+
+    openDiamondDisplaySettings() {
+        window.Utils.openDisplayFieldsModal('diamondRates', this.DIAMOND_FIELDS,
+            () => this.loadDiamondRates());
+    },
+
+    openOptionDisplaySettings() {
+        window.Utils.openDisplayFieldsModal('optionCharges', this.OPTION_FIELDS,
+            () => this.loadOptionCharges());
     },
 
     async loadData(menuId) {

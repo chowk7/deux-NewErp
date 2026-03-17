@@ -42,6 +42,16 @@ window.ManufacturingCostsModule = {
             ?.addEventListener('click', () => this.downloadTemplate());
         document.getElementById('downloadMfgDataBtn')
             ?.addEventListener('click', () => this.downloadData());
+
+        // 표시항목 설정
+        document.getElementById('mfgDisplaySettingsBtn')
+            ?.addEventListener('click', () => this.openDisplaySettings());
+    },
+
+    openDisplaySettings() {
+        window.Utils.openDisplayFieldsModal('manufacturingCosts',
+            [...this.BASE_FIELDS, ...this.STONE_FIELDS],
+            () => this.load());
     },
 
     async load() {
