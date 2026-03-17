@@ -167,8 +167,10 @@
                         <div class="button-group">
                             <button id="addDiamondRateBtn" class="btn btn-primary">+ 새 항목 추가</button>
                             <button id="csvUploadDiamondBtn" class="btn btn-secondary">📤 CSV 업로드</button>
-                            <button id="downloadDiamondTemplateBtn" class="btn btn-secondary">📥 양식 다운로드</button>
-                            <button id="downloadDiamondDataBtn" class="btn btn-secondary">📊 데이터 다운로드</button>
+                            <div id="diamondDownloadBtns" style="display:none;margin-left:8px;">
+                                <button id="downloadDiamondTemplateBtn" class="btn btn-secondary">📥 양식 다운로드</button>
+                                <button id="downloadDiamondDataBtn" class="btn btn-secondary">📊 데이터 다운로드</button>
+                            </div>
                             <button id="diamondRequiredSettingsBtn" class="btn btn-outline">⚙️ 필수항목 설정</button>
                             <button id="diamondDisplaySettingsBtn" class="btn btn-outline">📋 표시항목 설정</button>
                         </div>
@@ -195,8 +197,10 @@
                         <div class="button-group">
                             <button id="addProductRateBtn" class="btn btn-primary">+ 새 항목 추가</button>
                             <button id="csvUploadProductBtn" class="btn btn-secondary">📤 CSV 업로드</button>
-                            <button id="downloadProductTemplateBtn" class="btn btn-secondary">📥 양식 다운로드</button>
-                            <button id="downloadProductDataBtn" class="btn btn-secondary">📊 데이터 다운로드</button>
+                            <div id="productDownloadBtns" style="display:none;margin-left:8px;">
+                                <button id="downloadProductTemplateBtn" class="btn btn-secondary">📥 양식 다운로드</button>
+                                <button id="downloadProductDataBtn" class="btn btn-secondary">📊 데이터 다운로드</button>
+                            </div>
                             <button id="productRequiredSettingsBtn" class="btn btn-outline">⚙️ 필수항목 설정</button>
                             <button id="productDisplaySettingsBtn" class="btn btn-outline">📋 표시항목 설정</button>
                         </div>
@@ -217,8 +221,10 @@
                         <div class="button-group">
                             <button id="addCustomerBtn" class="btn btn-primary">+ 새 고객 추가</button>
                             <button id="csvUploadCustomerBtn" class="btn btn-secondary">📤 CSV 업로드</button>
-                            <button id="downloadCustomerTemplateBtn" class="btn btn-secondary">📥 양식 다운로드</button>
-                            <button id="downloadCustomerDataBtn" class="btn btn-secondary">📊 데이터 다운로드</button>
+                            <div id="customerDownloadBtns" style="display:none;margin-left:8px;">
+                                <button id="downloadCustomerTemplateBtn" class="btn btn-secondary">📥 양식 다운로드</button>
+                                <button id="downloadCustomerDataBtn" class="btn btn-secondary">📊 데이터 다운로드</button>
+                            </div>
                             <button id="customerDisplaySettingsBtn" class="btn btn-outline">📋 표시항목 설정</button>
                         </div>
                         <div style="overflow-x:auto;">
@@ -238,7 +244,9 @@
                         <div class="button-group">
                             <button id="addOptionChargeBtn" class="btn btn-primary">+ 새 옵션 추가</button>
                             <button id="csvUploadOptionBtn" class="btn btn-secondary">📤 CSV 업로드</button>
-                            <button id="downloadOptionTemplateBtn" class="btn btn-secondary">📥 양식 다운로드</button>
+                            <div id="optionDownloadBtns" style="display:none;margin-left:8px;">
+                                <button id="downloadOptionTemplateBtn" class="btn btn-secondary">📥 양식 다운로드</button>
+                            </div>
                             <button id="optionRequiredSettingsBtn" class="btn btn-outline">⚙️ 필수항목 설정</button>
                             <button id="optionDisplaySettingsBtn" class="btn btn-outline">📋 표시항목 설정</button>
                         </div>
@@ -289,8 +297,10 @@
                         <div class="button-group">
                             <button id="addOrderBtn" class="btn btn-primary">+ 새 주문 추가</button>
                             <button id="csvUploadOrdersBtn" class="btn btn-secondary">📤 CSV 업로드</button>
-                            <button id="downloadOrdersTemplateBtn" class="btn btn-secondary">📥 양식 다운로드</button>
-                            <button id="downloadOrdersDataBtn" class="btn btn-secondary">📊 데이터 다운로드</button>
+                            <div id="ordersDownloadBtns" style="display:none;margin-left:8px;">
+                                <button id="downloadOrdersTemplateBtn" class="btn btn-secondary">📥 양식 다운로드</button>
+                                <button id="downloadOrdersDataBtn" class="btn btn-secondary">📊 데이터 다운로드</button>
+                            </div>
                             <button id="ordersRequiredSettingsBtn" class="btn btn-outline">⚙️ 필수항목 설정</button>
                             <button id="ordersDisplaySettingsBtn" class="btn btn-outline">📋 표시항목 설정</button>
                         </div>
@@ -317,8 +327,10 @@
                         <div class="button-group">
                             <button id="addManufacturingCostBtn" class="btn btn-primary">+ 새 항목 추가</button>
                             <button id="csvUploadMfgBtn" class="btn btn-secondary">📤 CSV 업로드</button>
-                            <button id="downloadMfgTemplateBtn" class="btn btn-secondary">📥 양식 다운로드</button>
-                            <button id="downloadMfgDataBtn" class="btn btn-secondary">📊 데이터 다운로드</button>
+                            <div id="mfgDownloadBtns" style="display:none;margin-left:8px;">
+                                <button id="downloadMfgTemplateBtn" class="btn btn-secondary">📥 양식 다운로드</button>
+                                <button id="downloadMfgDataBtn" class="btn btn-secondary">📊 데이터 다운로드</button>
+                            </div>
                             <button id="mfgDisplaySettingsBtn" class="btn btn-outline">📋 표시항목 설정</button>
                         </div>
                         <div style="overflow-x:auto;">
@@ -357,8 +369,10 @@
                         <div class="button-group">
                             <button id="addAdminExpenseBtn" class="btn btn-primary">+ 새 항목 추가</button>
                             <button id="csvUploadAdminBtn" class="btn btn-secondary">📤 CSV 업로드</button>
-                            <button id="downloadAdminTemplateBtn" class="btn btn-secondary">📥 양식 다운로드</button>
-                            <button id="downloadAdminDataBtn" class="btn btn-secondary">📊 데이터 다운로드</button>
+                            <div id="adminDownloadBtns" style="display:none;margin-left:8px;">
+                                <button id="downloadAdminTemplateBtn" class="btn btn-secondary">📥 양식 다운로드</button>
+                                <button id="downloadAdminDataBtn" class="btn btn-secondary">📊 데이터 다운로드</button>
+                            </div>
                             <button id="adminDisplaySettingsBtn" class="btn btn-outline">📋 표시항목 설정</button>
                         </div>
                         <div class="filter-group" style="display:flex;gap:12px;margin-bottom:12px;align-items:center;">

@@ -32,14 +32,21 @@ window.ManufacturingCostsModule = {
     ]).flat(),
 
     costs: [],
+    diamondRates: [],
 
     async init() {
+        // 나석단가표 로드
+        await this.loadDiamondRates();
         document.getElementById('addManufacturingCostBtn')
             ?.addEventListener('click', () => this.showForm());
 
         // CSV 업로드
         document.getElementById('csvUploadMfgBtn')
-            ?.addEventListener('click', () => this.openCsvUpload());
+            ?.addEventListener('click', () => {
+                const downloadDiv = document.getElementById('mfgDownloadBtns');
+                if (downloadDiv) downloadDiv.style.display = downloadDiv.style.display === 'none' ? 'inline-block' : 'none';
+                this.openCsvUpload();
+            });
 
         // CSV 다운로드 버튼
         document.getElementById('downloadMfgTemplateBtn')
@@ -50,6 +57,17 @@ window.ManufacturingCostsModule = {
         // 표시항목 설정
         document.getElementById('mfgDisplaySettingsBtn')
             ?.addEventListener('click', () => this.openDisplaySettings());
+    },
+
+    async loadDiamondRates() {
+        try {
+            const snap = await window.firebaseDb
+                .collection('prices').doc('diamondRates').collection('items').get();
+            this.diamondRates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        } catch (e) {
+            console.error('Failed to load diamond rates:', e);
+            this.diamondRates = [];
+        }
     },
 
     openDisplaySettings() {
@@ -83,7 +101,7 @@ window.ManufacturingCostsModule = {
         allFields.forEach(f => fieldMap[f.key] = f);
 
         if (this.costs.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="${displayFieldKeys.length + 1}" style="text-align:center">데이터가 없습니다.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="${displayFieldKeys.length + 2}" style="text-align:center">데이터가 없습니다.</td></tr>`;
             return;
         }
 
@@ -110,7 +128,8 @@ window.ManufacturingCostsModule = {
             }).join('');
 
             return `
-                <tr>
+                <tr data-id="${c.id}">
+                    <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${c.id}"></td>
                     ${cells}
                     <td>
                         <button class="btn btn-sm btn-primary"
@@ -124,10 +143,16 @@ window.ManufacturingCostsModule = {
         // 테이블 헤더 업데이트
         const thead = table?.querySelector('thead tr');
         if (thead) {
+            const checkboxTh = document.createElement('th');
+            checkboxTh.style.textAlign = 'center';
+            checkboxTh.className = 'header-checkbox-th';
+            checkboxTh.innerHTML = '<input type="checkbox" class="header-checkbox">';
+
             thead.innerHTML = displayFieldKeys.map(key => {
                 const field = fieldMap[key];
                 return `<th>${field ? field.label : key}</th>`;
             }).join('') + '<th>관리</th>';
+            thead.insertBefore(checkboxTh, thead.firstChild);
         }
 
         // Event delegation for action buttons
@@ -143,7 +168,64 @@ window.ManufacturingCostsModule = {
                 }
             };
             table.addEventListener('click', this._tableHandler);
+
+            // 헤더 체크박스 이벤트
+            const headerCheckbox = table.querySelector('thead .header-checkbox');
+            if (headerCheckbox) {
+                headerCheckbox.addEventListener('change', (e) => {
+                    const allCheckboxes = table.querySelectorAll('tbody .row-checkbox');
+                    allCheckboxes.forEach(cb => cb.checked = e.target.checked);
+                    this.updateBulkDeleteBtn();
+                });
+            }
+
+            // 각 행의 체크박스 이벤트
+            const checkboxes = table.querySelectorAll('tbody .row-checkbox');
+            checkboxes.forEach(cb => {
+                cb.addEventListener('change', () => this.updateBulkDeleteBtn());
+            });
         }
+    },
+
+    updateBulkDeleteBtn() {
+        const table = document.querySelector('#manufacturingCostsTable');
+        const checkedCount = table?.querySelectorAll('tbody .row-checkbox:checked').length || 0;
+        let bulkDeleteBtn = document.getElementById('bulkDeleteMfgBtn');
+
+        if (checkedCount > 0) {
+            if (!bulkDeleteBtn) {
+                bulkDeleteBtn = document.createElement('button');
+                bulkDeleteBtn.id = 'bulkDeleteMfgBtn';
+                bulkDeleteBtn.className = 'btn btn-danger';
+                bulkDeleteBtn.style.marginLeft = '8px';
+                const buttonGroup = document.querySelector('#manufacturingCostsContent .button-group');
+                if (buttonGroup) buttonGroup.appendChild(bulkDeleteBtn);
+            }
+            bulkDeleteBtn.textContent = `🗑️ ${checkedCount}개 삭제`;
+            bulkDeleteBtn.onclick = () => this.bulkDelete();
+        } else if (bulkDeleteBtn) {
+            bulkDeleteBtn.remove();
+        }
+    },
+
+    async bulkDelete() {
+        const table = document.querySelector('#manufacturingCostsTable');
+        const checkedIds = Array.from(table.querySelectorAll('tbody .row-checkbox:checked'))
+            .map(cb => cb.dataset.id);
+
+        if (checkedIds.length === 0) return;
+        if (!(await window.Utils.confirm(`${checkedIds.length}개 항목을 삭제하시겠습니까?`))) return;
+
+        const batch = window.firebaseDb.batch();
+        const collection = window.firebaseDb.collection('sales').doc('orders').collection('items');
+
+        for (const id of checkedIds) {
+            batch.delete(collection.doc(id));
+        }
+
+        await batch.commit();
+        this.load();
+        window.Utils.showNotification(`${checkedIds.length}개 항목이 삭제되었습니다.`, 'success');
     },
 
     calculate(data) {
@@ -151,12 +233,33 @@ window.ManufacturingCostsModule = {
 
         const goldValue = n('goldWeightPure') * n('goldMarketPrice');
 
-        // 나석 가격 합산 (참고용)
+        // 나석 가격 합산 + 보증서 추가금 계산
         let stoneCostRef = 0;
-        for (let i = 1; i <= 10; i++) stoneCostRef += n(`stonePrice${i}`);
+        let stoneWarrantyFeeTotal = 0;
+        const stoneWarrantyCostRate = 0.8;  // 보증서 추가금 원가율 80%
+
+        for (let i = 1; i <= 10; i++) {
+            stoneCostRef += n(`stonePrice${i}`);
+
+            // 보증서 추가금 계산 (증명서 필드에서 VS/VVS 여부 확인)
+            const cert = data[`stoneCert${i}`] || '';
+            const stoneType = data[`stoneType${i}`];
+            const selectedStone = this.diamondRates?.find(d => d.diamondType === stoneType);
+
+            if (selectedStone && cert) {
+                if (cert.includes('VS')) {
+                    stoneWarrantyFeeTotal += parseFloat(selectedStone.vsWarrantyFee) || 0;
+                } else if (cert.includes('VVS')) {
+                    stoneWarrantyFeeTotal += parseFloat(selectedStone.vvsWarrantyFee) || 0;
+                }
+            }
+        }
+
+        // 제조원가에 포함될 보증서 추가금 (80% 적용)
+        const stoneWarrantyCost = stoneWarrantyFeeTotal * stoneWarrantyCostRate;
 
         // 수동입력이 있으면 수동, 없으면 참고값 사용
-        const stoneUsed = n('stoneCostManual') > 0 ? n('stoneCostManual') : stoneCostRef;
+        const stoneUsed = n('stoneCostManual') > 0 ? n('stoneCostManual') : (stoneCostRef + stoneWarrantyCost);
         const manufacturingCost = goldValue + n('settingCost') + n('laborCost') +
             n('platingCost') + stoneUsed + n('otherCost');
 
@@ -165,7 +268,7 @@ window.ManufacturingCostsModule = {
         const salesProfitRate = n('salesAmount') > 0
             ? (salesProfit / n('salesAmount')) * 100 : 0;
 
-        return { ...data, goldValue, stoneCostRef, manufacturingCost, salesProfit, salesProfitRate };
+        return { ...data, goldValue, stoneCostRef, stoneWarrantyFeeTotal, manufacturingCost, salesProfit, salesProfitRate };
     },
 
     showForm(costId = null) {
@@ -222,7 +325,7 @@ window.ManufacturingCostsModule = {
         );
 
         // 실시간 계산
-        wrapper.querySelector('#modalForm').addEventListener('input', () => {
+        const updateCalculatedFields = () => {
             const fd = new FormData(wrapper.querySelector('#modalForm'));
             const data = Object.fromEntries(fd);
             const calc = this.calculate(data);
@@ -230,7 +333,36 @@ window.ManufacturingCostsModule = {
                 const el = wrapper.querySelector(`[name="${k}"]`);
                 if (el) el.value = parseFloat(calc[k] || 0).toFixed(2);
             });
-        });
+        };
+        wrapper.querySelector('#modalForm').addEventListener('input', updateCalculatedFields);
+
+        // 나석 종류 선택 시 자동 가격 제안
+        for (let i = 1; i <= 10; i++) {
+            const stoneTypeSelect = wrapper.querySelector(`[name="stoneType${i}"]`);
+            if (stoneTypeSelect) {
+                stoneTypeSelect.addEventListener('change', () => {
+                    const stoneTypeValue = stoneTypeSelect.value;
+                    const selectedStone = this.diamondRates.find(d => d.diamondType === stoneTypeValue);
+
+                    if (selectedStone) {
+                        // 나석 가격 자동 입력
+                        const priceInput = wrapper.querySelector(`[name="stonePrice${i}"]`);
+                        if (priceInput) {
+                            priceInput.value = selectedStone.costWithVat || '';
+                        }
+
+                        // 보증서 기본값 제안 (증명서 필드에 미리 값 설정)
+                        const certInput = wrapper.querySelector(`[name="stoneCert${i}"]`);
+                        if (certInput && !certInput.value) {
+                            certInput.placeholder = 'VS 또는 VVS 입력';
+                        }
+
+                        // 계산 업데이트
+                        updateCalculatedFields();
+                    }
+                });
+            }
+        }
     },
 
     async delete(id) {

@@ -41,7 +41,11 @@ window.PriceManagementModule = {
 
         // CSV 업로드/다운로드 버튼
         document.getElementById('csvUploadDiamondBtn')
-            ?.addEventListener('click', () => this.openDiamondCsvUpload());
+            ?.addEventListener('click', () => {
+                const downloadDiv = document.getElementById('diamondDownloadBtns');
+                if (downloadDiv) downloadDiv.style.display = downloadDiv.style.display === 'none' ? 'inline-block' : 'none';
+                this.openDiamondCsvUpload();
+            });
         document.getElementById('downloadDiamondTemplateBtn')
             ?.addEventListener('click', () => this.downloadDiamondCsvTemplate());
         document.getElementById('downloadDiamondDataBtn')
@@ -50,7 +54,11 @@ window.PriceManagementModule = {
             ?.addEventListener('click', () => this.openDiamondRequiredSettings());
 
         document.getElementById('csvUploadOptionBtn')
-            ?.addEventListener('click', () => this.openOptionCsvUpload());
+            ?.addEventListener('click', () => {
+                const downloadDiv = document.getElementById('optionDownloadBtns');
+                if (downloadDiv) downloadDiv.style.display = downloadDiv.style.display === 'none' ? 'inline-block' : 'none';
+                this.openOptionCsvUpload();
+            });
         document.getElementById('downloadOptionTemplateBtn')
             ?.addEventListener('click', () => this.downloadOptionCsvTemplate());
         document.getElementById('optionRequiredSettingsBtn')

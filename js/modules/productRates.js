@@ -63,7 +63,11 @@ window.ProductRatesModule = {
 
         // CSV 버튼 리스너
         document.getElementById('csvUploadProductBtn')
-            ?.addEventListener('click', () => this.openCsvUpload());
+            ?.addEventListener('click', () => {
+                const downloadDiv = document.getElementById('productDownloadBtns');
+                if (downloadDiv) downloadDiv.style.display = downloadDiv.style.display === 'none' ? 'inline-block' : 'none';
+                this.openCsvUpload();
+            });
         document.getElementById('downloadProductTemplateBtn')
             ?.addEventListener('click', () => this.downloadTemplate());
         document.getElementById('downloadProductDataBtn')
@@ -108,11 +112,12 @@ window.ProductRatesModule = {
         const tbody = document.querySelector('#productRatesTable tbody');
         if (!tbody) return;
         if (this.products.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="8" style="text-align:center">데이터가 없습니다.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="9" style="text-align:center">데이터가 없습니다.</td></tr>`;
             return;
         }
-        tbody.innerHTML = this.products.map(p => `
-            <tr>
+        tbody.innerHTML = this.products.map((p, idx) => `
+            <tr data-id="${p.id}">
+                <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${p.id}"></td>
                 <td>${p.ownCode || '-'}</td>
                 <td>${p.productCode || '-'}</td>
                 <td>${p.productName || '-'}</td>
@@ -142,7 +147,70 @@ window.ProductRatesModule = {
                 }
             };
             table.addEventListener('click', this._tableHandler);
+
+            // 테이블 헤더에 체크박스 추가
+            const thead = table?.querySelector('thead tr');
+            if (thead && !thead.querySelector('.header-checkbox')) {
+                const checkboxTh = document.createElement('th');
+                checkboxTh.style.textAlign = 'center';
+                checkboxTh.innerHTML = '<input type="checkbox" class="header-checkbox">';
+                thead.insertBefore(checkboxTh, thead.firstChild);
+
+                // 헤더 체크박스 이벤트
+                const headerCheckbox = checkboxTh.querySelector('.header-checkbox');
+                headerCheckbox.addEventListener('change', (e) => {
+                    const allCheckboxes = table.querySelectorAll('tbody .row-checkbox');
+                    allCheckboxes.forEach(cb => cb.checked = e.target.checked);
+                    this.updateBulkDeleteBtn();
+                });
+            }
+
+            // 각 행의 체크박스 이벤트
+            const checkboxes = table.querySelectorAll('tbody .row-checkbox');
+            checkboxes.forEach(cb => {
+                cb.addEventListener('change', () => this.updateBulkDeleteBtn());
+            });
         }
+    },
+
+    updateBulkDeleteBtn() {
+        const table = document.querySelector('#productRatesTable');
+        const checkedCount = table?.querySelectorAll('tbody .row-checkbox:checked').length || 0;
+        let bulkDeleteBtn = document.getElementById('bulkDeleteProductBtn');
+
+        if (checkedCount > 0) {
+            if (!bulkDeleteBtn) {
+                bulkDeleteBtn = document.createElement('button');
+                bulkDeleteBtn.id = 'bulkDeleteProductBtn';
+                bulkDeleteBtn.className = 'btn btn-danger';
+                bulkDeleteBtn.style.marginLeft = '8px';
+                document.querySelector('.button-group').appendChild(bulkDeleteBtn);
+            }
+            bulkDeleteBtn.textContent = `🗑️ ${checkedCount}개 삭제`;
+            bulkDeleteBtn.onclick = () => this.bulkDelete();
+        } else if (bulkDeleteBtn) {
+            bulkDeleteBtn.remove();
+        }
+    },
+
+    async bulkDelete() {
+        const table = document.querySelector('#productRatesTable');
+        const checkedIds = Array.from(table.querySelectorAll('tbody .row-checkbox:checked'))
+            .map(cb => cb.dataset.id);
+
+        if (checkedIds.length === 0) return;
+        if (!(await window.Utils.confirm(`${checkedIds.length}개 항목을 삭제하시겠습니까?`))) return;
+
+        const batch = window.firebaseDb.batch();
+        const collection = window.firebaseDb.collection('prices').doc('productRates').collection('items');
+
+        for (const id of checkedIds) {
+            batch.delete(collection.doc(id));
+        }
+
+        await batch.commit();
+        this.load();
+        window.Utils.showNotification(`${checkedIds.length}개 항목이 삭제되었습니다.`, 'success');
     },
 
     // 자동계산
