@@ -984,10 +984,16 @@ window.SalesManagementModule = {
     },
 
     async printOrders() {
-        // html2canvas 라이브러리 로드 확인
+        // html2canvas 라이브러리 로드 확인 및 대기
+        let retries = 0;
+        while (typeof html2canvas === 'undefined' && retries < 30) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            retries++;
+        }
+
         if (typeof html2canvas === 'undefined') {
-            window.Utils.showNotification('라이브러리를 로드하는 중입니다. 잠시 후 다시 시도해주세요.', 'warning');
-            console.error('html2canvas is not loaded');
+            window.Utils.showNotification('html2canvas 라이브러리 로드 실패. 페이지를 새로고침해주세요.', 'error');
+            console.error('html2canvas failed to load after 3 seconds');
             return;
         }
 
