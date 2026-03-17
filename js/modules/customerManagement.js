@@ -26,6 +26,10 @@ window.CustomerManagementModule = {
         document.getElementById('addCustomerBtn')
             ?.addEventListener('click', () => this.showForm());
 
+        // CSV 업로드
+        document.getElementById('csvUploadCustomerBtn')
+            ?.addEventListener('click', () => this.openCsvUpload());
+
         // 다운로드 버튼
         document.getElementById('downloadCustomerTemplateBtn')
             ?.addEventListener('click', () => this.downloadTemplate());
@@ -187,5 +191,27 @@ window.CustomerManagementModule = {
 
     downloadData() {
         window.Utils.downloadCsvData(this.FIELDS, this.customers, '고객목록표.csv');
+    },
+
+    openCsvUpload() {
+        window.Utils.openCsvUploadModal(this.FIELDS, async (rows) => {
+            const batch = window.firebaseDb.batch();
+            const collection = window.firebaseDb
+                .collection('sales').doc('customers').collection('items');
+
+            for (const row of rows) {
+                const docId = row.id || window.firebaseDb.collection('_').doc().id;
+                const docRef = collection.doc(docId);
+                batch.set(docRef, {
+                    ...row,
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                });
+            }
+
+            await batch.commit();
+            this.loadCustomers();
+            window.Utils.showNotification('고객 정보가 업로드되었습니다.', 'success');
+        });
     },
 };

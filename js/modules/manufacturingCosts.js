@@ -37,6 +37,10 @@ window.ManufacturingCostsModule = {
         document.getElementById('addManufacturingCostBtn')
             ?.addEventListener('click', () => this.showForm());
 
+        // CSV 업로드
+        document.getElementById('csvUploadMfgBtn')
+            ?.addEventListener('click', () => this.openCsvUpload());
+
         // CSV 다운로드 버튼
         document.getElementById('downloadMfgTemplateBtn')
             ?.addEventListener('click', () => this.downloadTemplate());
@@ -244,5 +248,31 @@ window.ManufacturingCostsModule = {
     downloadData() {
         window.Utils.downloadCsvData(
             [...this.BASE_FIELDS, ...this.STONE_FIELDS], this.costs, '제조원가표.csv');
+    },
+
+    openCsvUpload() {
+        window.Utils.openCsvUploadModal(
+            [...this.BASE_FIELDS.filter(f => !f.calc), ...this.STONE_FIELDS],
+            async (rows) => {
+                const batch = window.firebaseDb.batch();
+                const collection = window.firebaseDb
+                    .collection('sales').doc('orders').collection('items');
+
+                for (const row of rows) {
+                    // orderId를 문서 ID로 사용하거나, 새 ID 생성
+                    const docId = row.orderId || window.firebaseDb.collection('_').doc().id;
+                    const docRef = collection.doc(docId);
+                    batch.set(docRef, {
+                        ...row,
+                        createdAt: new Date(),
+                        updatedAt: new Date()
+                    });
+                }
+
+                await batch.commit();
+                this.load();
+                window.Utils.showNotification('제조원가 정보가 업로드되었습니다.', 'success');
+            }
+        );
     },
 };
