@@ -48,20 +48,39 @@ window.CustomerManagementModule = {
     },
 
     async loadCustomers() {
-        this.customerRequired = await window.Utils.getRequiredFields('customers');
+        try {
+            this.customerRequired = await window.Utils.getRequiredFields('customers');
+            console.log('✓ Customer required fields loaded:', this.customerRequired);
 
-        const snap = await window.firebaseDb
-            .collection('sales').doc('customers').collection('items')
-            .orderBy('createdAt', 'desc').limit(this.pageSize).get();
+            const snap = await window.firebaseDb
+                .collection('sales').doc('customers').collection('items')
+                .orderBy('createdAt', 'desc').limit(this.pageSize).get();
 
-        this.customers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        this.renderTable();
+            console.log('✓ Firebase query succeeded, documents:', snap.docs.length);
+            this.customers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            console.log('✓ Customers loaded successfully:', this.customers.length);
+            this.renderTable();
+        } catch (error) {
+            console.error('❌ Load customers failed:', error.message, error.code);
+            console.error('Error details:', error);
+            window.Utils.showNotification('고객 목록을 불러올 수 없습니다: ' + error.message, 'error');
+            this.customers = [];
+            this.renderTable();
+        }
     },
 
     renderTable() {
+        console.log('renderTable called, customers count:', this.customers?.length || 0);
         const table = document.querySelector('#customersTable');
-        const tbody = table?.querySelector('tbody');
-        if (!tbody) return;
+        if (!table) {
+            console.warn('❌ Table #customersTable not found in DOM');
+            return;
+        }
+        const tbody = table.querySelector('tbody');
+        if (!tbody) {
+            console.warn('❌ Table tbody not found');
+            return;
+        }
 
         // 기본 표시 필드
         const defaultDisplayFields = ['id', 'customerName', 'email', 'phone', 'address', 'addressDetail', 'ownMallSignup'];
@@ -145,32 +164,57 @@ window.CustomerManagementModule = {
 
         // Event delegation for action buttons
         if (table) {
-            table.removeEventListener('click', this._tableHandler);
+            // Remove previous handler if exists
+            if (this._tableHandler) {
+                table.removeEventListener('click', this._tableHandler);
+            }
+
+            // Create new handler with proper context binding
             this._tableHandler = (e) => {
                 const btn = e.target.closest('[data-action]');
                 if (!btn) return;
                 const action = btn.dataset.action;
                 const id = btn.dataset.id;
+                console.log('Action clicked:', action, 'ID:', id);
                 if (typeof this[action] === 'function') {
                     this[action](id);
+                } else {
+                    console.warn('Action not found:', action);
                 }
             };
             table.addEventListener('click', this._tableHandler);
 
+            // Remove previous checkbox listeners
+            if (this._headerCheckboxHandler) {
+                const prevHeaderCheckbox = table.querySelector('thead .header-checkbox');
+                if (prevHeaderCheckbox) {
+                    prevHeaderCheckbox.removeEventListener('change', this._headerCheckboxHandler);
+                }
+            }
+
             // 헤더 체크박스 이벤트
             const headerCheckbox = table.querySelector('thead .header-checkbox');
             if (headerCheckbox) {
-                headerCheckbox.addEventListener('change', (e) => {
+                this._headerCheckboxHandler = (e) => {
                     const allCheckboxes = table.querySelectorAll('tbody .row-checkbox');
                     allCheckboxes.forEach(cb => cb.checked = e.target.checked);
                     this.updateBulkDeleteBtn();
+                };
+                headerCheckbox.addEventListener('change', this._headerCheckboxHandler);
+            }
+
+            // 각 행의 체크박스 이벤트 - 이전 리스너 제거
+            if (this._rowCheckboxHandler) {
+                const prevCheckboxes = table.querySelectorAll('tbody .row-checkbox');
+                prevCheckboxes.forEach(cb => {
+                    cb.removeEventListener('change', this._rowCheckboxHandler);
                 });
             }
 
-            // 각 행의 체크박스 이벤트
             const checkboxes = table.querySelectorAll('tbody .row-checkbox');
+            this._rowCheckboxHandler = () => this.updateBulkDeleteBtn();
             checkboxes.forEach(cb => {
-                cb.addEventListener('change', () => this.updateBulkDeleteBtn());
+                cb.addEventListener('change', this._rowCheckboxHandler);
             });
         }
 
