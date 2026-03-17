@@ -208,6 +208,52 @@ window.ManufacturingCostsModule = {
         }
     },
 
+    // 나석 배열로부터 폼 필드 업데이트
+    populateFormFromStones(stoneArray, wrapper) {
+        // 나석갯수 텍스트 포맷팅
+        const stoneQtyText = stoneArray
+            .map(s => `${s.stoneQty} × ${s.stoneType}`)
+            .join(', ');
+
+        // 나석 가격 합계 계산
+        const totalStonePrice = stoneArray.reduce((sum, s) => sum + (s.totalPrice || 0), 0);
+
+        // 폼 필드 업데이트
+        const stoneQtyDisplay = wrapper.querySelector('#stoneQtyDisplay');
+        const stoneQtyInput = wrapper.querySelector('#stoneQtyInput');
+        const stoneArrayInput = wrapper.querySelector('#stoneArrayInput');
+
+        if (stoneQtyDisplay) {
+            stoneQtyDisplay.textContent = stoneQtyText || '나석정보가 입력되지 않았습니다';
+        }
+        if (stoneQtyInput) {
+            stoneQtyInput.value = stoneQtyText;
+        }
+        if (stoneArrayInput) {
+            stoneArrayInput.value = JSON.stringify(stoneArray);
+        }
+
+        // 실시간 계산 업데이트
+        const fd = new FormData(wrapper.querySelector('#modalForm'));
+        const data = Object.fromEntries(fd);
+
+        // 나석 정보를 수동 입력 필드로 설정 (계산에서 사용하도록)
+        data.stoneCostManual = totalStonePrice;
+        data.stoneArray = JSON.stringify(stoneArray);
+
+        const calc = this.calculate(data);
+
+        const calcFields = ['goldValue', 'stoneCostRef', 'manufacturingCost', 'salesProfit', 'salesProfitRate'];
+        calcFields.forEach(k => {
+            const el = wrapper.querySelector(`[name="${k}"]`);
+            if (el) {
+                el.value = parseFloat(calc[k] || 0).toFixed(2);
+            }
+        });
+
+        window.Utils.showNotification(`${stoneArray.length}개의 나석이 추가되었습니다`, 'success');
+    },
+
     async bulkDelete() {
         const table = document.querySelector('#manufacturingCostsTable');
         const checkedIds = Array.from(table.querySelectorAll('tbody .row-checkbox:checked'))
@@ -238,19 +284,34 @@ window.ManufacturingCostsModule = {
         let stoneWarrantyFeeTotal = 0;
         const stoneWarrantyCostRate = 0.8;  // 보증서 추가금 원가율 80%
 
-        for (let i = 1; i <= 10; i++) {
-            stoneCostRef += n(`stonePrice${i}`);
+        // 새로운 stoneArray 형식 확인 (최우선)
+        let stoneArray = null;
+        try {
+            stoneArray = JSON.parse(data.stoneArray || '[]');
+        } catch (e) {
+            stoneArray = [];
+        }
 
-            // 보증서 추가금 계산 (증명서 필드에서 VS/VVS 여부 확인)
-            const cert = data[`stoneCert${i}`] || '';
-            const stoneType = data[`stoneType${i}`];
-            const selectedStone = this.diamondRates?.find(d => d.diamondType === stoneType);
+        if (stoneArray && stoneArray.length > 0) {
+            // 새 형식: stoneArray 사용
+            stoneCostRef = stoneArray.reduce((sum, s) => sum + (s.totalPrice || 0), 0);
+            stoneWarrantyFeeTotal = stoneArray.reduce((sum, s) => sum + (s.warrantyFee || 0), 0);
+        } else {
+            // 구형식: stoneType1-10 사용 (백워드 호환성)
+            for (let i = 1; i <= 10; i++) {
+                stoneCostRef += n(`stonePrice${i}`);
 
-            if (selectedStone && cert) {
-                if (cert.includes('VS')) {
-                    stoneWarrantyFeeTotal += parseFloat(selectedStone.vsWarrantyFee) || 0;
-                } else if (cert.includes('VVS')) {
-                    stoneWarrantyFeeTotal += parseFloat(selectedStone.vvsWarrantyFee) || 0;
+                // 보증서 추가금 계산 (증명서 필드에서 VS/VVS 여부 확인)
+                const cert = data[`stoneCert${i}`] || '';
+                const stoneType = data[`stoneType${i}`];
+                const selectedStone = this.diamondRates?.find(d => d.diamondType === stoneType);
+
+                if (selectedStone && cert) {
+                    if (cert.includes('VS')) {
+                        stoneWarrantyFeeTotal += parseFloat(selectedStone.vsWarrantyFee) || 0;
+                    } else if (cert.includes('VVS')) {
+                        stoneWarrantyFeeTotal += parseFloat(selectedStone.vvsWarrantyFee) || 0;
+                    }
                 }
             }
         }
@@ -288,12 +349,23 @@ window.ManufacturingCostsModule = {
                 </div>`;
         };
 
-        // 나석 섹션을 접을 수 있게
+        // 나석 섹션을 새로운 모달형 UI로 변경
         const stoneSection = `
-            <div style="grid-column:1/-1; margin:12px 0 4px;">
-                <strong>나석 정보 (최대 10개)</strong>
+            <div style="grid-column:1/-1; border-top:1px solid #e5e7eb; padding-top:16px; margin-top:16px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                    <strong style="font-size:0.95rem; color:#1f2937;">나석 정보</strong>
+                    <button type="button" class="btn btn-sm btn-outline" id="stoneInfoBtn" data-cost-id="${costId || ''}">
+                        나석정보 입력
+                    </button>
+                </div>
+                <div id="stoneQtyDisplay"
+                    style="padding:12px; background:#f9fafb; border-radius:6px; border:1px solid #e5e7eb; min-height:40px; color:#374151; font-size:0.95rem;">
+                    ${cost?.stoneQty_text || '나석정보가 입력되지 않았습니다'}
+                </div>
+                <input type="hidden" name="stoneQty_text" id="stoneQtyInput" value="${cost?.stoneQty_text || ''}">
+                <input type="hidden" name="stoneArray" id="stoneArrayInput" value='${JSON.stringify(cost?.stones || [])}'>
             </div>
-            ${this.STONE_FIELDS.map(f => makeInput(f)).join('')}`;
+        `;
 
         const body = `
             <div class="form-grid">
@@ -323,6 +395,17 @@ window.ManufacturingCostsModule = {
                 this.load();
             }
         );
+
+        // 나석정보 입력 버튼 클릭 이벤트
+        const stoneInfoBtn = wrapper.querySelector('#stoneInfoBtn');
+        if (stoneInfoBtn) {
+            stoneInfoBtn.addEventListener('click', () => {
+                const existingStones = cost?.stones || [];
+                window.StoneInputModalModule.open(this.diamondRates, existingStones, (stoneArray) => {
+                    this.populateFormFromStones(stoneArray, wrapper);
+                });
+            });
+        }
 
         // 실시간 계산
         const updateCalculatedFields = () => {
