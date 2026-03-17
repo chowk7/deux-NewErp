@@ -399,7 +399,91 @@ window.ProductRatesModule = {
                     '나석 종류 검색...',
                     `stoneType`
                 );
-                el.replaceWith(searchableSelect);
+
+                // 나석 종류 컨테이너를 wrapper로 감싸고 "+" 버튼 추가
+                const wrapper = document.createElement('div');
+                wrapper.style.cssText = 'display: flex; gap: 4px; align-items: flex-start;';
+                wrapper.appendChild(searchableSelect);
+
+                // "새로등록" 버튼
+                const addBtn = document.createElement('button');
+                addBtn.type = 'button';
+                addBtn.className = 'add-stone-type-btn';
+                addBtn.textContent = '+';
+                addBtn.style.cssText = `
+                    padding: 8px 8px;
+                    background: #3b82f6;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-weight: bold;
+                    font-size: 16px;
+                    width: 32px;
+                    height: 32px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                `;
+
+                addBtn.addEventListener('click', async (e) => {
+                    e.preventDefault();
+
+                    const stoneBody = `
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>나석 종류 <span style="color:red">*</span></label>
+                                <input type="text" name="newStoneName" required>
+                            </div>
+                            <div class="form-group">
+                                <label>원가(VAT미포함) <span style="color:red">*</span></label>
+                                <input type="number" name="newStoneCost" step="0.01" required>
+                            </div>
+                            <div class="form-group">
+                                <label>VAT포함가</label>
+                                <input type="number" name="newStoneCostWithVat" step="0.01">
+                            </div>
+                        </div>
+                    `;
+
+                    const stoneModal = window.Utils.openModal(
+                        '신규 나석 종류 추가',
+                        stoneBody,
+                        async (data, modal) => {
+                            try {
+                                const stoneId = `STONE_${Date.now()}`;
+                                const newStone = {
+                                    diamondType: data.newStoneName,
+                                    costWithoutVat: parseFloat(data.newStoneCost) || 0,
+                                    costWithVat: parseFloat(data.newStoneCostWithVat) || 0,
+                                    vsWarrantyFee: 0,
+                                    vvsWarrantyFee: 0,
+                                    createdAt: new Date(),
+                                    updatedAt: new Date()
+                                };
+
+                                // 나석단가표에 저장
+                                await window.firebaseDb
+                                    .collection('prices').doc('diamondRates').collection('items').doc(stoneId)
+                                    .set(newStone);
+
+                                modal.remove();
+
+                                // 새로 추가된 나석을 searchable select에 설정
+                                const stoneInput = wrapper.querySelector('.searchable-select-input[name="stoneType"]');
+                                if (stoneInput) stoneInput.value = data.newStoneName;
+
+                                window.Utils.showNotification('신규 나석 종류가 추가되었습니다.', 'success');
+                            } catch (error) {
+                                window.Utils.showNotification('나석 추가 실패: ' + error.message, 'error');
+                            }
+                        },
+                        '저장'
+                    );
+                });
+
+                wrapper.appendChild(addBtn);
+                el.replaceWith(wrapper);
             });
         };
 
@@ -455,7 +539,91 @@ window.ProductRatesModule = {
                     '나석 종류 검색...',
                     'stoneType'
                 );
-                stoneTypeContainer.replaceWith(searchableSelect);
+
+                // 나석 종류 컨테이너를 wrapper로 감싸고 "+" 버튼 추가
+                const wrapper = document.createElement('div');
+                wrapper.style.cssText = 'display: flex; gap: 4px; align-items: flex-start;';
+                wrapper.appendChild(searchableSelect);
+
+                // "새로등록" 버튼
+                const addBtn = document.createElement('button');
+                addBtn.type = 'button';
+                addBtn.className = 'add-stone-type-btn';
+                addBtn.textContent = '+';
+                addBtn.style.cssText = `
+                    padding: 8px 8px;
+                    background: #3b82f6;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-weight: bold;
+                    font-size: 16px;
+                    width: 32px;
+                    height: 32px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                `;
+
+                addBtn.addEventListener('click', async (e) => {
+                    e.preventDefault();
+
+                    const stoneBody = `
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>나석 종류 <span style="color:red">*</span></label>
+                                <input type="text" name="newStoneName" required>
+                            </div>
+                            <div class="form-group">
+                                <label>원가(VAT미포함) <span style="color:red">*</span></label>
+                                <input type="number" name="newStoneCost" step="0.01" required>
+                            </div>
+                            <div class="form-group">
+                                <label>VAT포함가</label>
+                                <input type="number" name="newStoneCostWithVat" step="0.01">
+                            </div>
+                        </div>
+                    `;
+
+                    const stoneModal = window.Utils.openModal(
+                        '신규 나석 종류 추가',
+                        stoneBody,
+                        async (data, modal) => {
+                            try {
+                                const stoneId = `STONE_${Date.now()}`;
+                                const newStone = {
+                                    diamondType: data.newStoneName,
+                                    costWithoutVat: parseFloat(data.newStoneCost) || 0,
+                                    costWithVat: parseFloat(data.newStoneCostWithVat) || 0,
+                                    vsWarrantyFee: 0,
+                                    vvsWarrantyFee: 0,
+                                    createdAt: new Date(),
+                                    updatedAt: new Date()
+                                };
+
+                                // 나석단가표에 저장
+                                await window.firebaseDb
+                                    .collection('prices').doc('diamondRates').collection('items').doc(stoneId)
+                                    .set(newStone);
+
+                                modal.remove();
+
+                                // 새로 추가된 나석을 searchable select에 설정
+                                const stoneInput = wrapper.querySelector('.searchable-select-input[name="stoneType"]');
+                                if (stoneInput) stoneInput.value = data.newStoneName;
+
+                                window.Utils.showNotification('신규 나석 종류가 추가되었습니다.', 'success');
+                            } catch (error) {
+                                window.Utils.showNotification('나석 추가 실패: ' + error.message, 'error');
+                            }
+                        },
+                        '저장'
+                    );
+                });
+
+                wrapper.appendChild(addBtn);
+                stoneTypeContainer.replaceWith(wrapper);
 
                 // 삭제 버튼 이벤트
                 removeBtn.addEventListener('click', (e) => {

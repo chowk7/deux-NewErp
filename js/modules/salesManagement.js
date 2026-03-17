@@ -260,8 +260,11 @@ window.SalesManagementModule = {
                     input = `<div id="customer-select-container" style="width:100%;"></div>
                              <button type="button" class="btn btn-sm btn-secondary" id="newCustomerBtn" style="margin-top:6px; width:100%;">+ 신규 고객 추가</button>`;
                 } else if (f.key === 'productName') {
-                    // 상품명: 검색 드롭다운
-                    input = `<div id="product-select-container" style="width:100%;"></div>`;
+                    // 상품명: 검색 드롭다운 + 신규 등록
+                    input = `<div style="display:flex; gap:6px; align-items:flex-start;">
+                                <div id="product-select-container" style="flex:1;"></div>
+                                <button type="button" class="btn btn-sm btn-secondary" id="newProductBtn" style="padding:8px 12px; white-space:nowrap; margin-top:0;">+ 신규상품</button>
+                             </div>`;
                 } else if (f.key === 'salesman') {
                     // 판매직원: 드롭다운 + 신규 입력
                     const opts = salesmen.map(s =>
@@ -506,6 +509,69 @@ window.SalesManagementModule = {
                             }
                         }
                     }
+                });
+            }
+
+            // 신규 상품 추가 버튼
+            const newProductBtn = wrapper.querySelector('#newProductBtn');
+            if (newProductBtn) {
+                newProductBtn.addEventListener('click', async (e) => {
+                    e.preventDefault();
+
+                    const productBody = `
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>상품명 <span style="color:red">*</span></label>
+                                <input type="text" name="newProductName" required>
+                            </div>
+                            <div class="form-group">
+                                <label>상품코드 <span style="color:red">*</span></label>
+                                <input type="text" name="newProductCode" placeholder="예) RN001" required>
+                            </div>
+                            <div class="form-group">
+                                <label>가격</label>
+                                <input type="number" name="newProductPrice" step="0.01">
+                            </div>
+                        </div>
+                    `;
+
+                    const productModal = window.Utils.openModal(
+                        '신규 상품 추가',
+                        productBody,
+                        async (data, modal) => {
+                            try {
+                                const productId = `PROD_${Date.now()}`;
+                                const newProduct = {
+                                    id: productId,
+                                    productName: data.newProductName,
+                                    productCode: data.newProductCode,
+                                    expectedPrice: parseFloat(data.newProductPrice) || 0,
+                                    createdAt: new Date(),
+                                    updatedAt: new Date()
+                                };
+
+                                // 제품단가표에 저장
+                                await window.firebaseDb
+                                    .collection('prices').doc('productRates').collection('items').doc(productId)
+                                    .set(newProduct);
+
+                                modal.remove();
+
+                                // 원래 폼의 상품명 필드에 자동 설정
+                                const productInput = wrapper.querySelector('[name="productName"]');
+                                if (productInput) productInput.value = data.newProductName;
+
+                                // 상품코드도 자동 설정
+                                const codeInput = wrapper.querySelector('[name="productCode"]');
+                                if (codeInput) codeInput.value = data.newProductCode;
+
+                                window.Utils.showNotification('신규 상품이 추가되었습니다.', 'success');
+                            } catch (error) {
+                                window.Utils.showNotification('상품 추가 실패: ' + error.message, 'error');
+                            }
+                        },
+                        '저장'
+                    );
                 });
             }
         }
