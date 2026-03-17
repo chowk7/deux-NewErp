@@ -79,11 +79,27 @@ window.ManufacturingCostsModule = {
                 <td>${c.salesProfitRate ? c.salesProfitRate.toFixed(1) + '%' : '-'}</td>
                 <td>
                     <button class="btn btn-sm btn-primary"
-                        onclick="window.ManufacturingCostsModule.showForm('${c.id}')">수정</button>
+                        data-action="showForm" data-id="${c.id}">수정</button>
                     <button class="btn btn-sm btn-danger"
-                        onclick="window.ManufacturingCostsModule.delete('${c.id}')">삭제</button>
+                        data-action="delete" data-id="${c.id}">삭제</button>
                 </td>
             </tr>`).join('');
+
+        // Event delegation for action buttons
+        const table = document.querySelector('#manufacturingCostsTable');
+        if (table) {
+            table.removeEventListener('click', this._tableHandler);
+            this._tableHandler = (e) => {
+                const btn = e.target.closest('[data-action]');
+                if (!btn) return;
+                const action = btn.dataset.action;
+                const id = btn.dataset.id;
+                if (typeof this[action] === 'function') {
+                    this[action](id);
+                }
+            };
+            table.addEventListener('click', this._tableHandler);
+        }
     },
 
     calculate(data) {

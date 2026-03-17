@@ -65,18 +65,46 @@ window.OrderManagementModule = {
                     ${this.IMAGE_TYPES.map(t =>
                         item.images?.[t.key]
                             ? `<a href="#" class="image-link" style="font-size:0.75rem;"
-                                onclick="window.OrderManagementModule.viewImage('${item.id}','${t.key}');return false;">
+                                data-action="viewImage" data-id="${item.id}" data-type="${t.key}">
                                 📎${t.label}</a> `
                             : `<span style="color:#d1d5db;font-size:0.75rem">${t.label}</span> `
                     ).join('')}
                 </td>
                 <td>
                     <button class="btn btn-sm btn-primary"
-                        onclick="window.OrderManagementModule.showForm('${item.id}')">수정</button>
+                        data-action="showForm" data-id="${item.id}">수정</button>
                     <button class="btn btn-sm btn-danger"
-                        onclick="window.OrderManagementModule.delete('${item.id}')">삭제</button>
+                        data-action="delete" data-id="${item.id}">삭제</button>
                 </td>
             </tr>`).join('');
+
+        // Event delegation for action buttons
+        const table = document.querySelector('#orderManagementTable');
+        if (table) {
+            table.removeEventListener('click', this._tableHandler);
+            this._tableHandler = (e) => {
+                // Handle image links
+                if (e.target.classList.contains('image-link')) {
+                    e.preventDefault();
+                    const action = e.target.dataset.action;
+                    const id = e.target.dataset.id;
+                    const type = e.target.dataset.type;
+                    if (typeof this[action] === 'function') {
+                        this[action](id, type);
+                    }
+                    return;
+                }
+                // Handle buttons
+                const btn = e.target.closest('button[data-action]');
+                if (!btn) return;
+                const action = btn.dataset.action;
+                const id = btn.dataset.id;
+                if (typeof this[action] === 'function') {
+                    this[action](id);
+                }
+            };
+            table.addEventListener('click', this._tableHandler);
+        }
     },
 
     showForm(itemId = null) {
@@ -111,9 +139,9 @@ window.OrderManagementModule = {
                                 ? `<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
                                     <span style="font-size:0.8rem;color:#6b7280;">📎 저장됨</span>
                                     <button type="button" class="btn btn-sm btn-outline"
-                                        onclick="window.OrderManagementModule.viewImage('${itemId}','${t.key}')">보기</button>
+                                        data-action="viewImage" data-id="${itemId}" data-type="${t.key}">보기</button>
                                     <button type="button" class="btn btn-sm btn-danger"
-                                        onclick="window.OrderManagementModule.removeImage('${itemId}','${t.key}')">삭제</button>
+                                        data-action="removeImage" data-id="${itemId}" data-type="${t.key}">삭제</button>
                                   </div>` : ''}
                             <input type="file" name="img_${t.key}" accept="image/*,.pdf"
                                 style="font-size:0.875rem;">
@@ -179,6 +207,22 @@ window.OrderManagementModule = {
                 this.load();
             }
         );
+
+        // Event delegation for image buttons in form
+        wrapper.addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-action]');
+            if (!btn) return;
+            const action = btn.dataset.action;
+            const id = btn.dataset.id;
+            const type = btn.dataset.type;
+            if (typeof this[action] === 'function') {
+                if (type) {
+                    this[action](id, type);
+                } else {
+                    this[action](id);
+                }
+            }
+        });
     },
 
     // 이미지 보기 (서명된 URL 생성)

@@ -98,11 +98,27 @@ window.AdminExpensesModule = {
                 <td>${e.isBizExpense || '-'}</td>
                 <td>
                     <button class="btn btn-sm btn-primary"
-                        onclick="window.AdminExpensesModule.showForm('${e.id}')">수정</button>
+                        data-action="showForm" data-id="${e.id}">수정</button>
                     <button class="btn btn-sm btn-danger"
-                        onclick="window.AdminExpensesModule.delete('${e.id}')">삭제</button>
+                        data-action="delete" data-id="${e.id}">삭제</button>
                 </td>
             </tr>`).join('');
+
+        // Event delegation for action buttons
+        const table = document.querySelector('#adminExpensesTable');
+        if (table) {
+            table.removeEventListener('click', this._tableHandler);
+            this._tableHandler = (e) => {
+                const btn = e.target.closest('[data-action]');
+                if (!btn) return;
+                const action = btn.dataset.action;
+                const id = btn.dataset.id;
+                if (typeof this[action] === 'function') {
+                    this[action](id);
+                }
+            };
+            table.addEventListener('click', this._tableHandler);
+        }
     },
 
     renderSummary() {

@@ -102,12 +102,28 @@ window.SalesManagementModule = {
                     <td>${window.Utils.formatNumber(o.salesAmount)}</td>
                     <td>
                         <button class="btn btn-sm btn-primary"
-                            onclick="window.SalesManagementModule.showOrderForm('${o.id}')">수정</button>
+                            data-action="showOrderForm" data-id="${o.id}">수정</button>
                         <button class="btn btn-sm btn-danger"
-                            onclick="window.SalesManagementModule.deleteOrder('${o.id}')">삭제</button>
+                            data-action="deleteOrder" data-id="${o.id}">삭제</button>
                     </td>
                 </tr>`;
         }).join('');
+
+        // Event delegation for action buttons
+        const table = document.querySelector('#ordersTable');
+        if (table) {
+            table.removeEventListener('click', this._tableHandler);
+            this._tableHandler = (e) => {
+                const btn = e.target.closest('[data-action]');
+                if (!btn) return;
+                const action = btn.dataset.action;
+                const id = btn.dataset.id;
+                if (typeof this[action] === 'function') {
+                    this[action](id);
+                }
+            };
+            table.addEventListener('click', this._tableHandler);
+        }
     },
 
     showOrderForm(orderId = null) {

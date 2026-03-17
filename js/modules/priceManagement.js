@@ -108,11 +108,27 @@ window.PriceManagementModule = {
                 <td>${r.remark || '-'}</td>
                 <td>
                     <button class="btn btn-sm btn-primary"
-                        onclick="window.PriceManagementModule.showDiamondRateForm('${r.id}')">수정</button>
+                        data-action="showDiamondRateForm" data-id="${r.id}">수정</button>
                     <button class="btn btn-sm btn-danger"
-                        onclick="window.PriceManagementModule.deleteDiamondRate('${r.id}')">삭제</button>
+                        data-action="deleteDiamondRate" data-id="${r.id}">삭제</button>
                 </td>
             </tr>`).join('');
+
+        // Event delegation for action buttons
+        const table = document.querySelector('#diamondRatesTable');
+        if (table) {
+            table.removeEventListener('click', this._diamondTableHandler);
+            this._diamondTableHandler = (e) => {
+                const btn = e.target.closest('[data-action]');
+                if (!btn) return;
+                const action = btn.dataset.action;
+                const id = btn.dataset.id;
+                if (typeof this[action] === 'function') {
+                    this[action](id);
+                }
+            };
+            table.addEventListener('click', this._diamondTableHandler);
+        }
     },
 
     showDiamondRateForm(rateId = null) {
@@ -219,11 +235,27 @@ window.PriceManagementModule = {
                 <td>${window.Utils.formatNumber(c.chargeAmount)}</td>
                 <td>
                     <button class="btn btn-sm btn-primary"
-                        onclick="window.PriceManagementModule.showOptionChargeForm('${c.id}')">수정</button>
+                        data-action="showOptionChargeForm" data-id="${c.id}">수정</button>
                     <button class="btn btn-sm btn-danger"
-                        onclick="window.PriceManagementModule.deleteOptionCharge('${c.id}')">삭제</button>
+                        data-action="deleteOptionCharge" data-id="${c.id}">삭제</button>
                 </td>
             </tr>`).join('');
+
+        // Event delegation for action buttons
+        const table = document.querySelector('#optionChargesTable');
+        if (table) {
+            table.removeEventListener('click', this._optionTableHandler);
+            this._optionTableHandler = (e) => {
+                const btn = e.target.closest('[data-action]');
+                if (!btn) return;
+                const action = btn.dataset.action;
+                const id = btn.dataset.id;
+                if (typeof this[action] === 'function') {
+                    this[action](id);
+                }
+            };
+            table.addEventListener('click', this._optionTableHandler);
+        }
     },
 
     showOptionChargeForm(chargeId = null) {
