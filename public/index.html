@@ -165,10 +165,10 @@
                         <h2>다이아단가표</h2>
                         <div class="button-group">
                             <button id="addDiamondRateBtn" class="btn btn-primary">+ 새 항목 추가</button>
-                            <button class="btn btn-secondary" onclick="window.PriceManagementModule.openDiamondCsvUpload()">📤 CSV 업로드</button>
-                            <button class="btn btn-secondary" onclick="window.PriceManagementModule.downloadDiamondCsvTemplate()">📥 양식 다운로드</button>
-                            <button class="btn btn-secondary" onclick="window.PriceManagementModule.downloadDiamondCsvData()">📊 데이터 다운로드</button>
-                            <button class="btn btn-outline" onclick="window.PriceManagementModule.openDiamondRequiredSettings()">⚙️ 필수항목 설정</button>
+                            <button id="csvUploadDiamondBtn" class="btn btn-secondary">📤 CSV 업로드</button>
+                            <button id="downloadDiamondTemplateBtn" class="btn btn-secondary">📥 양식 다운로드</button>
+                            <button id="downloadDiamondDataBtn" class="btn btn-secondary">📊 데이터 다운로드</button>
+                            <button id="diamondRequiredSettingsBtn" class="btn btn-outline">⚙️ 필수항목 설정</button>
                         </div>
                         <table id="diamondRatesTable" class="data-table">
                             <thead>
@@ -192,10 +192,10 @@
                         <h2>제품단가표</h2>
                         <div class="button-group">
                             <button id="addProductRateBtn" class="btn btn-primary">+ 새 항목 추가</button>
-                            <button class="btn btn-secondary" onclick="window.ProductRatesModule.openCsvUpload()">📤 CSV 업로드</button>
-                            <button class="btn btn-secondary" onclick="window.ProductRatesModule.downloadTemplate()">📥 양식 다운로드</button>
-                            <button class="btn btn-secondary" onclick="window.ProductRatesModule.downloadData()">📊 데이터 다운로드</button>
-                            <button class="btn btn-outline" onclick="window.ProductRatesModule.openRequiredSettings()">⚙️ 필수항목 설정</button>
+                            <button id="csvUploadProductBtn" class="btn btn-secondary">📤 CSV 업로드</button>
+                            <button id="downloadProductTemplateBtn" class="btn btn-secondary">📥 양식 다운로드</button>
+                            <button id="downloadProductDataBtn" class="btn btn-secondary">📊 데이터 다운로드</button>
+                            <button id="productRequiredSettingsBtn" class="btn btn-outline">⚙️ 필수항목 설정</button>
                         </div>
                         <div style="overflow-x:auto;">
                         <table id="productRatesTable" class="data-table">
@@ -213,9 +213,9 @@
                         <h2>각줄추가금액</h2>
                         <div class="button-group">
                             <button id="addOptionChargeBtn" class="btn btn-primary">+ 새 옵션 추가</button>
-                            <button class="btn btn-secondary" onclick="window.PriceManagementModule.openOptionCsvUpload()">📤 CSV 업로드</button>
-                            <button class="btn btn-secondary" onclick="window.PriceManagementModule.downloadOptionCsvTemplate()">📥 양식 다운로드</button>
-                            <button class="btn btn-outline" onclick="window.PriceManagementModule.openOptionRequiredSettings()">⚙️ 필수항목 설정</button>
+                            <button id="csvUploadOptionBtn" class="btn btn-secondary">📤 CSV 업로드</button>
+                            <button id="downloadOptionTemplateBtn" class="btn btn-secondary">📥 양식 다운로드</button>
+                            <button id="optionRequiredSettingsBtn" class="btn btn-outline">⚙️ 필수항목 설정</button>
                         </div>
                         <table id="optionChargesTable" class="data-table">
                             <thead>
@@ -263,10 +263,10 @@
                         <h2>매출표</h2>
                         <div class="button-group">
                             <button id="addOrderBtn" class="btn btn-primary">+ 새 주문 추가</button>
-                            <button class="btn btn-secondary" onclick="window.SalesManagementModule.openOrderCsvUpload()">📤 CSV 업로드</button>
-                            <button class="btn btn-secondary" onclick="window.SalesManagementModule.downloadOrderCsvTemplate()">📥 양식 다운로드</button>
-                            <button class="btn btn-secondary" onclick="window.SalesManagementModule.downloadOrderCsvData()">📊 데이터 다운로드</button>
-                            <button class="btn btn-outline" onclick="window.SalesManagementModule.openOrderRequiredSettings()">⚙️ 필수항목 설정</button>
+                            <button id="csvUploadOrdersBtn" class="btn btn-secondary">📤 CSV 업로드</button>
+                            <button id="downloadOrdersTemplateBtn" class="btn btn-secondary">📥 양식 다운로드</button>
+                            <button id="downloadOrdersDataBtn" class="btn btn-secondary">📊 데이터 다운로드</button>
+                            <button id="ordersRequiredSettingsBtn" class="btn btn-outline">⚙️ 필수항목 설정</button>
                         </div>
                         <table id="ordersTable" class="data-table">
                             <thead>
@@ -290,8 +290,8 @@
                         <h2>제조원가표</h2>
                         <div class="button-group">
                             <button id="addManufacturingCostBtn" class="btn btn-primary">+ 새 항목 추가</button>
-                            <button class="btn btn-secondary" onclick="window.ManufacturingCostsModule.downloadTemplate()">📥 양식 다운로드</button>
-                            <button class="btn btn-secondary" onclick="window.ManufacturingCostsModule.downloadData()">📊 데이터 다운로드</button>
+                            <button id="downloadMfgTemplateBtn" class="btn btn-secondary">📥 양식 다운로드</button>
+                            <button id="downloadMfgDataBtn" class="btn btn-secondary">📊 데이터 다운로드</button>
                         </div>
                         <div style="overflow-x:auto;">
                         <table id="manufacturingCostsTable" class="data-table">
@@ -327,9 +327,9 @@
                         <h2>판관비</h2>
                         <div class="button-group">
                             <button id="addAdminExpenseBtn" class="btn btn-primary">+ 새 항목 추가</button>
-                            <button class="btn btn-secondary" onclick="window.AdminExpensesModule.openCsvUpload()">📤 CSV 업로드</button>
-                            <button class="btn btn-secondary" onclick="window.AdminExpensesModule.downloadTemplate()">📥 양식 다운로드</button>
-                            <button class="btn btn-secondary" onclick="window.AdminExpensesModule.downloadData()">📊 데이터 다운로드</button>
+                            <button id="csvUploadAdminBtn" class="btn btn-secondary">📤 CSV 업로드</button>
+                            <button id="downloadAdminTemplateBtn" class="btn btn-secondary">📥 양식 다운로드</button>
+                            <button id="downloadAdminDataBtn" class="btn btn-secondary">📊 데이터 다운로드</button>
                         </div>
                         <div class="filter-group" style="display:flex;gap:12px;margin-bottom:12px;align-items:center;">
                             <label>연도:
@@ -376,7 +376,7 @@
                                 </select>
                             </label>
                             <button id="calcPlBtn" class="btn btn-primary">📊 계산</button>
-                            <button class="btn btn-secondary" onclick="window.ProfitLossModule.downloadData()">📊 데이터 다운로드</button>
+                            <button id="downloadPlDataBtn" class="btn btn-secondary">📊 데이터 다운로드</button>
                         </div>
                         <div style="overflow-x:auto; margin-top:16px;">
                         <table id="profitLossTable" class="data-table">

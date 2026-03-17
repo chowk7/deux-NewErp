@@ -17,6 +17,10 @@ window.ProfitLossModule = {
             });
         document.getElementById('calcPlBtn')
             ?.addEventListener('click', () => this.load());
+
+        // CSV 다운로드 버튼
+        document.getElementById('downloadPlDataBtn')
+            ?.addEventListener('click', () => this.downloadData());
     },
 
     async load() {

@@ -38,6 +38,23 @@ window.PriceManagementModule = {
             ?.addEventListener('click', () => this.showOptionChargeForm());
         document.getElementById('priceSettingsForm')
             ?.addEventListener('submit', (e) => this.savePriceSettings(e));
+
+        // CSV 업로드/다운로드 버튼
+        document.getElementById('csvUploadDiamondBtn')
+            ?.addEventListener('click', () => this.openDiamondCsvUpload());
+        document.getElementById('downloadDiamondTemplateBtn')
+            ?.addEventListener('click', () => this.downloadDiamondCsvTemplate());
+        document.getElementById('downloadDiamondDataBtn')
+            ?.addEventListener('click', () => this.downloadDiamondCsvData());
+        document.getElementById('diamondRequiredSettingsBtn')
+            ?.addEventListener('click', () => this.openDiamondRequiredSettings());
+
+        document.getElementById('csvUploadOptionBtn')
+            ?.addEventListener('click', () => this.openOptionCsvUpload());
+        document.getElementById('downloadOptionTemplateBtn')
+            ?.addEventListener('click', () => this.downloadOptionCsvTemplate());
+        document.getElementById('optionRequiredSettingsBtn')
+            ?.addEventListener('click', () => this.openOptionRequiredSettings());
     },
 
     async loadData(menuId) {

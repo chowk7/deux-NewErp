@@ -48,6 +48,16 @@ window.ProductRatesModule = {
     async init() {
         document.getElementById('addProductRateBtn')
             ?.addEventListener('click', () => this.showForm());
+
+        // CSV 버튼 리스너
+        document.getElementById('csvUploadProductBtn')
+            ?.addEventListener('click', () => this.openCsvUpload());
+        document.getElementById('downloadProductTemplateBtn')
+            ?.addEventListener('click', () => this.downloadTemplate());
+        document.getElementById('downloadProductDataBtn')
+            ?.addEventListener('click', () => this.downloadData());
+        document.getElementById('productRequiredSettingsBtn')
+            ?.addEventListener('click', () => this.openRequiredSettings());
     },
 
     async load() {

@@ -44,6 +44,16 @@ window.SalesManagementModule = {
     setupEventListeners() {
         document.getElementById('addOrderBtn')
             ?.addEventListener('click', () => this.showOrderForm());
+
+        // CSV 버튼 리스너
+        document.getElementById('csvUploadOrdersBtn')
+            ?.addEventListener('click', () => this.openOrderCsvUpload());
+        document.getElementById('downloadOrdersTemplateBtn')
+            ?.addEventListener('click', () => this.downloadOrderCsvTemplate());
+        document.getElementById('downloadOrdersDataBtn')
+            ?.addEventListener('click', () => this.downloadOrderCsvData());
+        document.getElementById('ordersRequiredSettingsBtn')
+            ?.addEventListener('click', () => this.openOrderRequiredSettings());
     },
 
     // ===== 매출표 =====

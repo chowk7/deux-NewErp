@@ -40,6 +40,14 @@ window.AdminExpensesModule = {
                 this.filterMonth = e.target.value;
                 this.load();
             });
+
+        // CSV 버튼 리스너
+        document.getElementById('csvUploadAdminBtn')
+            ?.addEventListener('click', () => this.openCsvUpload());
+        document.getElementById('downloadAdminTemplateBtn')
+            ?.addEventListener('click', () => this.downloadTemplate());
+        document.getElementById('downloadAdminDataBtn')
+            ?.addEventListener('click', () => this.downloadData());
     },
 
     async load() {

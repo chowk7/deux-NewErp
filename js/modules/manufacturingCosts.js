@@ -36,6 +36,12 @@ window.ManufacturingCostsModule = {
     async init() {
         document.getElementById('addManufacturingCostBtn')
             ?.addEventListener('click', () => this.showForm());
+
+        // CSV 다운로드 버튼
+        document.getElementById('downloadMfgTemplateBtn')
+            ?.addEventListener('click', () => this.downloadTemplate());
+        document.getElementById('downloadMfgDataBtn')
+            ?.addEventListener('click', () => this.downloadData());
     },
 
     async load() {
