@@ -7,7 +7,7 @@ window.PriceManagementModule = {
     // ===== 필드 스키마 =====
 
     DIAMOND_FIELDS: [
-        { key: 'diamondType',    label: '다이아 종류',        type: 'text',   defaultRequired: true  },
+        { key: 'diamondType',    label: '나석 종류',        type: 'text',   defaultRequired: true  },
         { key: 'costWithoutVat', label: '원가(VAT미포함)',     type: 'number', defaultRequired: true  },
         { key: 'costWithVat',    label: 'VAT포함가',          type: 'number', defaultRequired: true  },
         { key: 'vsWarrantyFee',  label: 'VS보증서추가금',      type: 'number', defaultRequired: false },
@@ -79,7 +79,7 @@ window.PriceManagementModule = {
         else if (menuId === 'price-settings') await this.loadPriceSettings();
     },
 
-    // ===== 다이아단가표 =====
+    // ===== 나석단가표 =====
 
     async loadDiamondRates() {
         this.diamondRequired = await window.Utils.getRequiredFields('diamondRates');
@@ -148,7 +148,7 @@ window.PriceManagementModule = {
         }).join('');
 
         window.Utils.openModal(
-            rateId ? '다이아단가 수정' : '다이아단가 추가',
+            rateId ? '나석단가 수정' : '나석단가 추가',
             `<div class="form-grid">${body}</div>`,
             async (data, wrapper) => {
                 if (rateId) await this._updateDiamondRate(rateId, data);
@@ -180,13 +180,13 @@ window.PriceManagementModule = {
         this.loadDiamondRates();
     },
 
-    // CSV - 다이아단가
+    // CSV - 나석단가
     downloadDiamondCsvTemplate() {
-        window.Utils.downloadCsvTemplate(this.DIAMOND_FIELDS, '다이아단가표_양식.csv');
+        window.Utils.downloadCsvTemplate(this.DIAMOND_FIELDS, '나석단가표_양식.csv');
     },
 
     downloadDiamondCsvData() {
-        window.Utils.downloadCsvData(this.DIAMOND_FIELDS, this.diamondRates, '다이아단가표.csv');
+        window.Utils.downloadCsvData(this.DIAMOND_FIELDS, this.diamondRates, '나석단가표.csv');
     },
 
     openDiamondCsvUpload() {

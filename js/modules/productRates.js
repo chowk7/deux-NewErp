@@ -11,6 +11,7 @@ window.ProductRatesModule = {
           options: ['반지','목걸이','팔찌','귀걸이','브로치','기타'] },
         { key: 'productName',     label: '상품명',          type: 'text',   calc: false },
         { key: 'size',            label: '사이즈',          type: 'text',   calc: false },
+        { key: 'sizeAddFee',      label: '사이즈추가금',    type: 'number', calc: false },
         { key: 'stoneQty',        label: '나석갯수',        type: 'number', calc: false },
         { key: 'workshop',        label: '공방',            type: 'text',   calc: false },
         { key: 'stoneCost',       label: '나석원가',        type: 'number', calc: false },
@@ -140,7 +141,7 @@ window.ProductRatesModule = {
         const salesCost   = vatCost + n('shipping');
         const marginPrice = ownMargin > 0 ? salesCost / (1 - ownMargin / 100) : salesCost;
         const expectedPrice = marginPrice + n('priceAdj');
-        const finalPrice  = n('finalPrice') || Math.ceil(expectedPrice / 1000) * 1000;
+        const finalPrice  = (n('finalPrice') || Math.ceil(expectedPrice / 1000) * 1000) + n('sizeAddFee');
         const discountPrice = finalPrice * (1 - n('discountRate') / 100);
         const ownMallProfit = discountPrice * (1 - ownMallFee / 100) - vatCost;
         const ownMallProfitRate = discountPrice > 0 ? (ownMallProfit / discountPrice) * 100 : 0;
@@ -154,7 +155,7 @@ window.ProductRatesModule = {
         const vatCost18k    = productCost18k * 1.1;
         const salesCost18k  = vatCost18k + n('shipping');
         const marginPrice18k= ownMargin > 0 ? salesCost18k / (1 - ownMargin / 100) : salesCost18k;
-        const finalPrice18k = n('finalPrice18k') || Math.ceil(marginPrice18k / 1000) * 1000;
+        const finalPrice18k = (n('finalPrice18k') || Math.ceil(marginPrice18k / 1000) * 1000) + n('sizeAddFee');
         const discountPrice18k = finalPrice18k * (1 - n('discountRate') / 100);
         const ownMallProfit18k = discountPrice18k * (1 - ownMallFee / 100) - vatCost18k;
         const ownMallProfitRate18k = discountPrice18k > 0 ? (ownMallProfit18k / discountPrice18k) * 100 : 0;
