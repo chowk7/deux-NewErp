@@ -22,7 +22,7 @@ window.Utils = {
 
         wrapper.innerHTML = `
             <div class="modal-overlay">
-                <div class="modal-content" onclick="event.stopPropagation()">
+                <div class="modal-content">
                     <div class="modal-header">
                         <h3>${title}</h3>
                         <button type="button" class="modal-close-btn" aria-label="닫기">✕</button>
@@ -39,8 +39,12 @@ window.Utils = {
             </div>
         `;
 
-        // 배경 클릭 닫기
-        wrapper.querySelector('.modal-overlay').addEventListener('click', () => wrapper.remove());
+        // 배경 클릭 닫기 (modal-overlay만 클릭했을 때)
+        wrapper.querySelector('.modal-overlay').addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) {
+                wrapper.remove();
+            }
+        });
 
         // 닫기 버튼
         wrapper.querySelector('.modal-close-btn').addEventListener('click', () => wrapper.remove());
@@ -72,7 +76,7 @@ window.Utils = {
             wrapper.setAttribute('data-modal', '');
             wrapper.innerHTML = `
                 <div class="modal-overlay">
-                    <div class="modal-content" style="max-width:400px;" onclick="event.stopPropagation()">
+                    <div class="modal-content" style="max-width:400px;">
                         <p style="margin-bottom:20px;">${message}</p>
                         <div class="modal-footer">
                             <button type="button" class="btn btn-danger" id="confirmYes">삭제</button>
@@ -83,7 +87,11 @@ window.Utils = {
             `;
             wrapper.querySelector('#confirmYes').addEventListener('click', () => { wrapper.remove(); resolve(true); });
             wrapper.querySelector('#confirmNo').addEventListener('click', () => { wrapper.remove(); resolve(false); });
-            wrapper.querySelector('.modal-overlay').addEventListener('click', () => { wrapper.remove(); resolve(false); });
+            wrapper.querySelector('.modal-overlay').addEventListener('click', (e) => {
+                if (e.target.classList.contains('modal-overlay')) {
+                    wrapper.remove(); resolve(false);
+                }
+            });
             document.body.appendChild(wrapper);
         });
     },
@@ -187,7 +195,7 @@ window.Utils = {
         wrapper.setAttribute('data-modal', '');
         wrapper.innerHTML = `
             <div class="modal-overlay">
-                <div class="modal-content" style="max-width:800px;" onclick="event.stopPropagation()">
+                <div class="modal-content" style="max-width:800px;">
                     <div class="modal-header">
                         <h3>CSV 일괄 업로드</h3>
                         <button type="button" class="modal-close-btn">✕</button>
@@ -223,7 +231,11 @@ window.Utils = {
 
         wrapper.querySelector('.modal-close-btn').addEventListener('click', () => wrapper.remove());
         wrapper.querySelector('.modal-cancel-btn').addEventListener('click', () => wrapper.remove());
-        wrapper.querySelector('.modal-overlay').addEventListener('click', () => wrapper.remove());
+        wrapper.querySelector('.modal-overlay').addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) {
+                wrapper.remove();
+            }
+        });
 
         // CSV 양식 다운로드
         wrapper.querySelector('#csvTemplateBtn').addEventListener('click', () => {
