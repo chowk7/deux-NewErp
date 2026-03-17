@@ -33,10 +33,13 @@ window.ManufacturingCostsModule = {
 
     costs: [],
     diamondRates: [],
+    productRates: [],
 
     async init() {
         // 나석단가표 로드
         await this.loadDiamondRates();
+        // 제품단가표 로드 (나석 정보 참조용)
+        await this.loadProductRates();
         document.getElementById('addManufacturingCostBtn')
             ?.addEventListener('click', () => this.showForm());
 
@@ -67,6 +70,17 @@ window.ManufacturingCostsModule = {
         } catch (e) {
             console.error('Failed to load diamond rates:', e);
             this.diamondRates = [];
+        }
+    },
+
+    async loadProductRates() {
+        try {
+            const snap = await window.firebaseDb
+                .collection('prices').doc('productRates').collection('items').get();
+            this.productRates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        } catch (e) {
+            console.error('Failed to load product rates:', e);
+            this.productRates = [];
         }
     },
 
@@ -400,7 +414,18 @@ window.ManufacturingCostsModule = {
         const stoneInfoBtn = wrapper.querySelector('#stoneInfoBtn');
         if (stoneInfoBtn) {
             stoneInfoBtn.addEventListener('click', () => {
-                const existingStones = cost?.stones || [];
+                // 1. 이미 수정된 나석 정보가 있으면 사용
+                let existingStones = cost?.stones || [];
+
+                // 2. 없으면 제품단가표에서 기본 나석 정보 로드
+                if (existingStones.length === 0 && cost?.productCode) {
+                    const product = this.productRates.find(p => p.productCode === cost.productCode);
+                    if (product && product.stones && product.stones.length > 0) {
+                        // 제품의 나석 정보를 복사 (독립적으로 수정 가능하도록)
+                        existingStones = JSON.parse(JSON.stringify(product.stones));
+                    }
+                }
+
                 window.StoneInputModalModule.open(this.diamondRates, existingStones, (stoneArray) => {
                     this.populateFormFromStones(stoneArray, wrapper);
                 });
