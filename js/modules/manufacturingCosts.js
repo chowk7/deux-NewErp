@@ -355,8 +355,11 @@ window.ManufacturingCostsModule = {
         const manufacturingCost = goldValue + n('settingCost') + n('laborCost') +
             n('platingCost') + stoneUsed + n('otherCost');
 
-        // 매출이익: orderId로 매출 찾아야 하지만 여기서는 수동입력된 매출금액 기준
-        const salesProfit = n('salesAmount') - manufacturingCost;
+        // 매출이익: 매출금액 * (1 - 수수료율/100) - 제조가격
+        // commissionRate는 판매표에서 오는 필드
+        const commissionRate = n('commissionRate') || 0;
+        const netSalesAmount = n('salesAmount') * (1 - commissionRate / 100);
+        const salesProfit = netSalesAmount - manufacturingCost;
         const salesProfitRate = n('salesAmount') > 0
             ? (salesProfit / n('salesAmount')) * 100 : 0;
 
