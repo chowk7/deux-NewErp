@@ -309,6 +309,7 @@
                             </div>
                             <button id="ordersRequiredSettingsBtn" class="btn btn-outline">⚙️ 필수항목 설정</button>
                             <button id="ordersDisplaySettingsBtn" class="btn btn-outline">📋 표시항목 설정</button>
+                            <button id="printOrderBtn" class="btn btn-success">🖨️ 주문서 출력</button>
                         </div>
                         <table id="ordersTable" class="data-table">
                             <thead>
@@ -448,6 +449,9 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage-compat.js"></script>
+
+    <!-- html2canvas for order printing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
     <!-- App Scripts -->
     <script src="/js/utils.js"></script>

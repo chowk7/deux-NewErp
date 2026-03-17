@@ -120,6 +120,10 @@ window.SalesManagementModule = {
         // 표시항목 설정
         document.getElementById('ordersDisplaySettingsBtn')
             ?.addEventListener('click', () => this.openOrderDisplaySettings());
+
+        // 주문서 출력 버튼
+        document.getElementById('printOrderBtn')
+            ?.addEventListener('click', () => this.printOrders());
     },
 
     openOrderDisplaySettings() {
@@ -979,5 +983,121 @@ window.SalesManagementModule = {
 
     openOrderRequiredSettings() {
         window.Utils.openRequiredFieldsModal('orders', this.ORDER_FIELDS);
+    },
+
+    async printOrders() {
+        const table = document.querySelector('#ordersTable');
+        const checkedIds = Array.from(table.querySelectorAll('tbody .row-checkbox:checked'))
+            .map(cb => cb.dataset.id);
+
+        if (checkedIds.length === 0) {
+            window.Utils.showNotification('선택된 주문이 없습니다.', 'warning');
+            return;
+        }
+
+        // 선택된 주문 데이터 수집
+        const selectedOrders = this.orders.filter(o => checkedIds.includes(o.id));
+
+        // 나석갯수 계산 함수
+        const getStoneQuantity = (order) => {
+            let totalQty = 0;
+            for (let i = 1; i <= 10; i++) {
+                const qty = order[`stoneQty${i}`];
+                if (qty) totalQty += parseInt(qty) || 0;
+            }
+            return totalQty || '-';
+        };
+
+        // HTML 테이블 생성
+        const tableHtml = `
+            <div style="font-family: Arial, sans-serif; padding: 20px; background: white;">
+                <table style="width: 100%; border-collapse: collapse; border: 2px solid #333;">
+                    <thead>
+                        <tr style="background-color: #f0f0f0;">
+                            <th style="border: 1px solid #333; padding: 10px; text-align: center; width: 12%;">주문일</th>
+                            <th style="border: 1px solid #333; padding: 10px; text-align: center; width: 13%;">고객명</th>
+                            <th style="border: 1px solid #333; padding: 10px; text-align: center; width: 15%;">제품명</th>
+                            <th style="border: 1px solid #333; padding: 10px; text-align: center; width: 15%;">옵션명</th>
+                            <th style="border: 1px solid #333; padding: 10px; text-align: center; width: 10%;">나석갯수</th>
+                            <th style="border: 1px solid #333; padding: 10px; text-align: center; width: 20%;">기타</th>
+                            <th style="border: 1px solid #333; padding: 10px; text-align: center; width: 15%;">보증서</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${selectedOrders.map(order => {
+                            const orderDate = order.orderDate?.toDate
+                                ? new Date(order.orderDate.toDate()).toLocaleDateString('ko-KR')
+                                : (order.orderDate || '-');
+                            const customerName = order.customerName || '-';
+                            const productName = order.productName || '-';
+                            const optionName = order.optionName || '-';
+                            const stoneQty = getStoneQuantity(order);
+                            const remark = order.remark || '-';
+                            const warranty = order.warranty || '-';
+
+                            return `
+                                <tr style="height: 40px;">
+                                    <td style="border: 1px solid #333; padding: 8px; text-align: center;">${orderDate}</td>
+                                    <td style="border: 1px solid #333; padding: 8px; text-align: center;">${customerName}</td>
+                                    <td style="border: 1px solid #333; padding: 8px; text-align: left;">${productName}</td>
+                                    <td style="border: 1px solid #333; padding: 8px; text-align: left;">${optionName}</td>
+                                    <td style="border: 1px solid #333; padding: 8px; text-align: center;">${stoneQty}</td>
+                                    <td style="border: 1px solid #333; padding: 8px; text-align: left;">${remark}</td>
+                                    <td style="border: 1px solid #333; padding: 8px; text-align: center;">${warranty}</td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        // 임시 DOM 요소 생성
+        const printContainer = document.createElement('div');
+        printContainer.innerHTML = tableHtml;
+        printContainer.style.position = 'fixed';
+        printContainer.style.left = '-9999px';
+        printContainer.style.top = '-9999px';
+        document.body.appendChild(printContainer);
+
+        try {
+            // html2canvas를 사용하여 이미지 생성
+            const canvas = await html2canvas(printContainer.querySelector('table'), {
+                scale: 2,
+                useCORS: true,
+                logging: false,
+                backgroundColor: '#ffffff'
+            });
+
+            // 현재 시간으로 파일명 생성
+            const now = new Date();
+            const timeString = now.getFullYear() +
+                String(now.getMonth() + 1).padStart(2, '0') +
+                String(now.getDate()).padStart(2, '0') + '_' +
+                String(now.getHours()).padStart(2, '0') +
+                String(now.getMinutes()).padStart(2, '0') +
+                String(now.getSeconds()).padStart(2, '0');
+
+            // JPG로 변환 및 다운로드
+            canvas.toBlob((blob) => {
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `주문서_${timeString}.jpg`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+
+                // 임시 컨테이너 제거
+                document.body.removeChild(printContainer);
+
+                window.Utils.showNotification(`${checkedIds.length}개 주문서가 다운로드되었습니다.`, 'success');
+            }, 'image/jpeg', 0.95);
+        } catch (error) {
+            console.error('Failed to generate order print:', error);
+            document.body.removeChild(printContainer);
+            window.Utils.showNotification('주문서 출력에 실패했습니다.', 'error');
+        }
     },
 };
