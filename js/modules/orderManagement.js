@@ -30,11 +30,21 @@ window.OrderManagementModule = {
     async init() {
         document.getElementById('addOrderMgmtBtn')
             ?.addEventListener('click', () => this.showForm());
+
+        // 표시항목 설정
+        document.getElementById('orderMgmtDisplaySettingsBtn')
+            ?.addEventListener('click', () => this.openDisplaySettings());
+    },
+
+    openDisplaySettings() {
+        window.Utils.openDisplayFieldsModal('orderManagement',
+            [...this.STATUS_FIELDS],
+            () => this.load());
     },
 
     async load() {
         const snap = await window.firebaseDb
-            .collection('sales').doc('orderManagement').collection('items')
+            .collection('sales').doc('orders').collection('items')
             .orderBy('createdAt', 'desc').get();
         this.items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         this.renderTable();
@@ -47,39 +57,83 @@ window.OrderManagementModule = {
     },
 
     renderTable() {
-        const tbody = document.querySelector('#orderManagementTable tbody');
+        const table = document.querySelector('#orderManagementTable');
+        const tbody = table?.querySelector('tbody');
         if (!tbody) return;
+
+        // 기본 표시 필드
+        const defaultDisplayFields = ['stoneRequested', 'workshopRequested', 'productionComplete', 'shippingReady', 'delivered'];
+
+        // sessionStorage에서 선택된 필드 로드
+        const displayFieldKeys = window.Utils.getDisplayFields('orderManagement', defaultDisplayFields);
+
+        // 필드 객체 매핑
+        const fieldMap = {};
+        this.STATUS_FIELDS.forEach(f => fieldMap[f.key] = f);
+
         if (this.items.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="8" style="text-align:center">데이터가 없습니다.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="${displayFieldKeys.length + 3}" style="text-align:center">데이터가 없습니다.</td></tr>`;
             return;
         }
-        tbody.innerHTML = this.items.map(item => `
-            <tr>
-                <td>${item.orderId || '-'}</td>
-                <td>${this._statusBadge(item.stoneRequested)} 나석</td>
-                <td>${this._statusBadge(item.workshopRequested)} 공방</td>
-                <td>${this._statusBadge(item.productionComplete)} 제작</td>
-                <td>${this._statusBadge(item.shippingReady)} 배송준비</td>
-                <td>${this._statusBadge(item.delivered)} 배송완료</td>
-                <td>
-                    ${this.IMAGE_TYPES.map(t =>
-                        item.images?.[t.key]
-                            ? `<a href="#" class="image-link" style="font-size:0.75rem;"
-                                data-action="viewImage" data-id="${item.id}" data-type="${t.key}">
-                                📎${t.label}</a> `
-                            : `<span style="color:#d1d5db;font-size:0.75rem">${t.label}</span> `
-                    ).join('')}
-                </td>
-                <td>
-                    <button class="btn btn-sm btn-primary"
-                        data-action="showForm" data-id="${item.id}">수정</button>
-                    <button class="btn btn-sm btn-danger"
-                        data-action="delete" data-id="${item.id}">삭제</button>
-                </td>
-            </tr>`).join('');
+
+        tbody.innerHTML = this.items.map(item => {
+            // 선택된 필드에 따라 행 생성
+            const cells = displayFieldKeys.map(key => {
+                const field = fieldMap[key];
+                if (!field) return '<td>-</td>';
+
+                // 상태 필드는 배지로 표시
+                if (field.type === 'checkbox') {
+                    const label = field.label.replace('여부', '');
+                    return `<td>${this._statusBadge(item[key])} ${label}</td>`;
+                }
+
+                // 날짜 필드
+                if (field.type === 'date') {
+                    let val = item[key];
+                    if (val) {
+                        val = val.toDate ? new Date(val.toDate()).toLocaleDateString('ko-KR') : val;
+                    }
+                    return `<td>${val || '-'}</td>`;
+                }
+
+                return `<td>${item[key] || '-'}</td>`;
+            }).join('');
+
+            return `
+                <tr>
+                    <td>${item.orderNumber || item.orderId || '-'}</td>
+                    ${cells}
+                    <td>
+                        ${this.IMAGE_TYPES.map(t =>
+                            item.images?.[t.key]
+                                ? `<a href="#" class="image-link" style="font-size:0.75rem;"
+                                    data-action="viewImage" data-id="${item.id}" data-type="${t.key}">
+                                    📎${t.label}</a> `
+                                : `<span style="color:#d1d5db;font-size:0.75rem">${t.label}</span> `
+                        ).join('')}
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-primary"
+                            data-action="showForm" data-id="${item.id}">수정</button>
+                        <button class="btn btn-sm btn-danger"
+                            data-action="delete" data-id="${item.id}">삭제</button>
+                    </td>
+                </tr>`;
+        }).join('');
+
+        // 테이블 헤더 업데이트
+        const thead = table?.querySelector('thead tr');
+        if (thead) {
+            const statusHeaders = displayFieldKeys.map(key => {
+                const field = fieldMap[key];
+                const label = field ? field.label.replace('여부', '') : key;
+                return `<th>${label}</th>`;
+            }).join('');
+            thead.innerHTML = '<th>주문번호</th>' + statusHeaders + '<th>첨부이미지</th><th>관리</th>';
+        }
 
         // Event delegation for action buttons
-        const table = document.querySelector('#orderManagementTable');
         if (table) {
             table.removeEventListener('click', this._tableHandler);
             this._tableHandler = (e) => {
@@ -197,10 +251,10 @@ window.OrderManagementModule = {
                 }
 
                 if (itemId) {
-                    await window.firebaseDb.collection('sales').doc('orderManagement')
+                    await window.firebaseDb.collection('sales').doc('orders')
                         .collection('items').doc(itemId).update(docData);
                 } else {
-                    await window.firebaseDb.collection('sales').doc('orderManagement')
+                    await window.firebaseDb.collection('sales').doc('orders')
                         .collection('items').add({ ...docData, createdAt: new Date() });
                 }
                 w.remove();
@@ -250,7 +304,7 @@ window.OrderManagementModule = {
         }
         const updatedImages = { ...(item?.images || {}) };
         delete updatedImages[imageType];
-        await window.firebaseDb.collection('sales').doc('orderManagement')
+        await window.firebaseDb.collection('sales').doc('orders')
             .collection('items').doc(itemId)
             .update({ images: updatedImages, updatedAt: new Date() });
         this.load();
@@ -265,7 +319,7 @@ window.OrderManagementModule = {
                 if (path) try { await window.firebaseStorage.ref(path).delete(); } catch {}
             }
         }
-        await window.firebaseDb.collection('sales').doc('orderManagement')
+        await window.firebaseDb.collection('sales').doc('orders')
             .collection('items').doc(id).delete();
         this.load();
     },

@@ -56,37 +56,77 @@ window.ManufacturingCostsModule = {
 
     async load() {
         const snap = await window.firebaseDb
-            .collection('sales').doc('manufacturingCosts').collection('items')
+            .collection('sales').doc('orders').collection('items')
             .orderBy('createdAt', 'desc').get();
         this.costs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         this.renderTable();
     },
 
     renderTable() {
-        const tbody = document.querySelector('#manufacturingCostsTable tbody');
+        const table = document.querySelector('#manufacturingCostsTable');
+        const tbody = table?.querySelector('tbody');
         if (!tbody) return;
+
+        // 기본 표시 필드
+        const defaultDisplayFields = ['orderId', 'productionMonth', 'goldValue', 'stoneCostManual', 'manufacturingCost', 'salesProfitRate'];
+        const allFields = [...this.BASE_FIELDS, ...this.STONE_FIELDS];
+
+        // sessionStorage에서 선택된 필드 로드
+        const displayFieldKeys = window.Utils.getDisplayFields('manufacturingCosts', defaultDisplayFields);
+
+        // 필드 객체 매핑
+        const fieldMap = {};
+        allFields.forEach(f => fieldMap[f.key] = f);
+
         if (this.costs.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center">데이터가 없습니다.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="${displayFieldKeys.length + 1}" style="text-align:center">데이터가 없습니다.</td></tr>`;
             return;
         }
-        tbody.innerHTML = this.costs.map(c => `
-            <tr>
-                <td>${c.orderId || '-'}</td>
-                <td>${c.productionMonth || '-'}</td>
-                <td>${window.Utils.formatNumber(c.goldValue)}</td>
-                <td>${window.Utils.formatNumber(c.stoneCostManual || c.stoneCostRef)}</td>
-                <td>${window.Utils.formatNumber(c.manufacturingCost)}</td>
-                <td>${c.salesProfitRate ? c.salesProfitRate.toFixed(1) + '%' : '-'}</td>
-                <td>
-                    <button class="btn btn-sm btn-primary"
-                        data-action="showForm" data-id="${c.id}">수정</button>
-                    <button class="btn btn-sm btn-danger"
-                        data-action="delete" data-id="${c.id}">삭제</button>
-                </td>
-            </tr>`).join('');
+
+        tbody.innerHTML = this.costs.map(c => {
+            const cells = displayFieldKeys.map(key => {
+                const field = fieldMap[key];
+                let val = c[key];
+
+                // 특수 처리
+                if (key === 'stoneCostManual' && (!val || val === 0)) {
+                    val = c.stoneCostRef || 0;
+                }
+
+                // 포맷팅
+                if (key === 'salesProfitRate' && val !== undefined && val !== null && val !== '') {
+                    val = val.toFixed(1) + '%';
+                } else if (field?.type === 'number' && val !== undefined && val !== null && val !== '') {
+                    val = window.Utils.formatNumber(val);
+                } else if (val === undefined || val === null || val === '') {
+                    val = '-';
+                }
+
+                return `<td>${val}</td>`;
+            }).join('');
+
+            return `
+                <tr>
+                    ${cells}
+                    <td>
+                        <button class="btn btn-sm btn-primary"
+                            data-action="showForm" data-id="${c.id}">수정</button>
+                        <button class="btn btn-sm btn-danger"
+                            data-action="delete" data-id="${c.id}">삭제</button>
+                    </td>
+                </tr>`;
+        }).join('');
+
+        // 테이블 헤더 업데이트
+        const thead = table?.querySelector('thead tr');
+        if (thead) {
+            thead.innerHTML = displayFieldKeys.map(key => {
+                const field = fieldMap[key];
+                return `<th>${field ? field.label : key}</th>`;
+            }).join('') + '<th>관리</th>';
+        }
 
         // Event delegation for action buttons
-        const table = document.querySelector('#manufacturingCostsTable');
         if (table) {
             table.removeEventListener('click', this._tableHandler);
             this._tableHandler = (e) => {
@@ -165,11 +205,11 @@ window.ManufacturingCostsModule = {
                 });
                 const calculated = this.calculate(data);
                 if (costId) {
-                    await window.firebaseDb.collection('sales').doc('manufacturingCosts')
+                    await window.firebaseDb.collection('sales').doc('orders')
                         .collection('items').doc(costId)
                         .update({ ...calculated, updatedAt: new Date() });
                 } else {
-                    await window.firebaseDb.collection('sales').doc('manufacturingCosts')
+                    await window.firebaseDb.collection('sales').doc('orders')
                         .collection('items').add({ ...calculated, createdAt: new Date(), updatedAt: new Date() });
                 }
                 w.remove();
@@ -191,7 +231,7 @@ window.ManufacturingCostsModule = {
 
     async delete(id) {
         if (!(await window.Utils.confirm('이 항목을 삭제하시겠습니까?'))) return;
-        await window.firebaseDb.collection('sales').doc('manufacturingCosts')
+        await window.firebaseDb.collection('sales').doc('orders')
             .collection('items').doc(id).delete();
         this.load();
     },

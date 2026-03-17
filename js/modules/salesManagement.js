@@ -81,25 +81,48 @@ window.SalesManagementModule = {
     },
 
     renderOrdersTable() {
-        const tbody = document.querySelector('#ordersTable tbody');
+        const table = document.querySelector('#ordersTable');
+        const tbody = table?.querySelector('tbody');
         if (!tbody) return;
 
+        // 기본 표시 필드 (표시항목 설정이 없을 때)
+        const defaultDisplayFields = ['orderDate', 'orderNumber', 'customerName', 'productName', 'orderAmount', 'salesAmount'];
+
+        // sessionStorage에서 선택된 필드 로드
+        const displayFieldKeys = window.Utils.getDisplayFields('orders',
+            defaultDisplayFields.length > 0 ? defaultDisplayFields : this.ORDER_FIELDS.map(f => f.key));
+
+        // 필드 객체 매핑
+        const fieldMap = {};
+        this.ORDER_FIELDS.forEach(f => fieldMap[f.key] = f);
+
         if (this.orders.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center">데이터가 없습니다.</td></tr>';
+            tbody.innerHTML = `<tr><td colspan="${displayFieldKeys.length + 1}" style="text-align:center">데이터가 없습니다.</td></tr>`;
             return;
         }
 
         tbody.innerHTML = this.orders.map(o => {
-            const date = o.orderDate
-                ? new Date(o.orderDate.toDate()).toLocaleDateString('ko-KR') : '-';
+            const cells = displayFieldKeys.map(key => {
+                const field = fieldMap[key];
+                if (!field) return '<td>-</td>';
+
+                let val = o[key];
+
+                // 날짜 포맷
+                if (field.type === 'date' && val) {
+                    val = val.toDate ? new Date(val.toDate()).toLocaleDateString('ko-KR') : '-';
+                } else if (field.type === 'number' && val !== undefined && val !== null && val !== '') {
+                    val = window.Utils.formatNumber(val);
+                } else if (val === undefined || val === null || val === '') {
+                    val = '-';
+                }
+
+                return `<td>${val}</td>`;
+            }).join('');
+
             return `
                 <tr>
-                    <td>${date}</td>
-                    <td>${o.orderNumber || '-'}</td>
-                    <td>${o.customerName || '-'}</td>
-                    <td>${o.productName || '-'}</td>
-                    <td>${window.Utils.formatNumber(o.orderAmount)}</td>
-                    <td>${window.Utils.formatNumber(o.salesAmount)}</td>
+                    ${cells}
                     <td>
                         <button class="btn btn-sm btn-primary"
                             data-action="showOrderForm" data-id="${o.id}">수정</button>
@@ -109,8 +132,16 @@ window.SalesManagementModule = {
                 </tr>`;
         }).join('');
 
+        // 테이블 헤더 업데이트
+        const thead = table?.querySelector('thead tr');
+        if (thead) {
+            thead.innerHTML = displayFieldKeys.map(key => {
+                const field = fieldMap[key];
+                return `<th>${field ? field.label : key}</th>`;
+            }).join('') + '<th>관리</th>';
+        }
+
         // Event delegation for action buttons
-        const table = document.querySelector('#ordersTable');
         if (table) {
             table.removeEventListener('click', this._tableHandler);
             this._tableHandler = (e) => {
