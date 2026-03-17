@@ -157,9 +157,43 @@ window.SalesManagementModule = {
         }
     },
 
-    showOrderForm(orderId = null) {
+    async showOrderForm(orderId = null) {
         const order = orderId ? this.orders.find(o => o.id === orderId) : null;
         const req = this.orderRequired;
+
+        // 고객목록 로드
+        let customerOptions = [];
+        try {
+            const customerSnap = await window.firebaseDb.collection('sales').doc('customers').collection('items').orderBy('customerName').get();
+            const customers = customerSnap.docs.map(d => d.data().customerName);
+
+            // 중복 고객명 처리: 동명이인이 있으면 (1), (2) 등으로 표시
+            const customerMap = {};
+            customers.forEach(name => {
+                customerMap[name] = (customerMap[name] || 0) + 1;
+            });
+            customerOptions = customers.map(name =>
+                customerMap[name] > 1
+                    ? `${name}(${customers.filter(c => c === name).indexOf(name) + 1})`
+                    : name
+            );
+        } catch (e) {
+            // 고객목록 없음 무시
+        }
+
+        // 제품단가표 로드
+        let products = [];
+        try {
+            const productSnap = await window.firebaseDb.collection('prices').doc('productRates').collection('items').get();
+            products = productSnap.docs.map(d => ({
+                name: d.data().productName,
+                code: d.data().productCode,
+                id: d.id
+            }));
+        } catch (e) {
+            // 제품단가표 없음 무시
+        }
+        const productOptions = products.map(p => p.name);
 
         const body = `<div class="form-grid">` +
             this.ORDER_FIELDS.map(f => {
@@ -172,7 +206,27 @@ window.SalesManagementModule = {
                 }
 
                 let input;
-                if (f.type === 'select') {
+
+                // 특별한 필드 처리
+                if (f.key === 'customerName') {
+                    // 고객명: 드롭다운 + 신규 입력
+                    const opts = customerOptions.map(opt =>
+                        `<option value="${opt}" ${val === opt ? 'selected' : ''}>${opt}</option>`
+                    ).join('');
+                    input = `<select name="${f.key}" class="customer-select" ${isRequired ? 'required' : ''}>
+                                <option value="">선택</option>
+                                ${opts}
+                                <option value="">+ 신규 고객</option>
+                             </select>`;
+                } else if (f.key === 'productName') {
+                    // 상품명: 드롭다운
+                    const opts = productOptions.map(opt =>
+                        `<option value="${opt}" ${val === opt ? 'selected' : ''}>${opt}</option>`
+                    ).join('');
+                    input = `<select name="${f.key}" ${isRequired ? 'required' : ''}>
+                                <option value="">선택</option>${opts}
+                             </select>`;
+                } else if (f.type === 'select') {
                     const opts = (f.options || []).map(opt =>
                         `<option value="${opt}" ${val === opt ? 'selected' : ''}>${opt}</option>`
                     ).join('');
@@ -192,14 +246,27 @@ window.SalesManagementModule = {
                     </div>`;
             }).join('') + `</div>`;
 
-        window.Utils.openModal(
+        const wrapper = window.Utils.openModal(
             orderId ? '주문 수정' : '주문 추가',
             body,
-            async (data, wrapper) => {
+            async (data, w) => {
                 // 날짜 변환
                 if (data.orderDate) {
                     data.orderDate = firebase.firestore.Timestamp.fromDate(new Date(data.orderDate));
+                    // 판매년/월 자동 추출
+                    const date = new Date(data.orderDate.toDate ? data.orderDate.toDate() : data.orderDate);
+                    data.salesYear = date.getFullYear();
+                    data.salesMonth = date.getMonth() + 1;
                 }
+
+                // 상품명에서 제품코드 자동 매칭
+                if (data.productName) {
+                    const product = products.find(p => p.name === data.productName);
+                    if (product) {
+                        data.productCode = product.code;
+                    }
+                }
+
                 ['orderAmount','salesAmount','commissionRate','length'].forEach(k => {
                     if (data[k] !== undefined) data[k] = parseFloat(data[k]) || 0;
                 });
@@ -213,10 +280,23 @@ window.SalesManagementModule = {
                         .collection('sales').doc('orders').collection('items')
                         .add({ ...data, createdAt: new Date(), updatedAt: new Date() });
                 }
-                wrapper.remove();
+                w.remove();
                 this.loadOrders();
             }
         );
+
+        // 고객명 드롭다운 처리
+        const customerSelect = wrapper.querySelector('[name="customerName"]');
+        if (customerSelect) {
+            customerSelect.addEventListener('change', (e) => {
+                if (e.target.value === '+ 신규 고객' || (e.target.selectedIndex === 0 && customerOptions.length > 0)) {
+                    const name = prompt('새 고객명을 입력하세요:');
+                    if (name) {
+                        e.target.value = name;
+                    }
+                }
+            });
+        }
     },
 
     async deleteOrder(id) {
