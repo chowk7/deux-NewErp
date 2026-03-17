@@ -40,8 +40,7 @@ window.ManufacturingCostsModule = {
         await this.loadDiamondRates();
         // 제품단가표 로드 (나석 정보 참조용)
         await this.loadProductRates();
-        document.getElementById('addManufacturingCostBtn')
-            ?.addEventListener('click', () => this.showForm());
+        // 신규 입력 기능 삭제 - 매출표에서만 신규 입력 가능
 
         // CSV 업로드
         document.getElementById('csvUploadMfgBtn')
@@ -365,19 +364,30 @@ window.ManufacturingCostsModule = {
     },
 
     showForm(costId = null) {
+        // 신규 입력 불가 - costId가 없으면 경고 후 반환
+        if (!costId) {
+            window.Utils.showNotification('제조원가는 매출표에서 신규 입력됩니다.', 'info');
+            return;
+        }
+
         const cost = costId ? this.costs.find(c => c.id === costId) : null;
-        const allFields = [...this.BASE_FIELDS];
+        // 제작월(productionMonth) 필드 제외
+        const allFields = [...this.BASE_FIELDS.filter(f => f.key !== 'productionMonth')];
 
         // 매출금액 참고 필드 추가
         const salesField = { key: 'salesAmount', label: '매출금액(이익계산용)', type: 'number', calc: false };
+        // 주문번호 필드 추가
+        const orderField = { key: 'orderId', label: '주문번호(연결)', type: 'text', calc: false };
 
         const makeInput = (f) => {
             const val = cost?.[f.key] ?? '';
+            // 주문번호(orderId)와 매출금액(salesAmount)은 수정 불가
+            const isReadOnly = f.key === 'orderId' || f.key === 'salesAmount' || f.calc;
             return `
                 <div class="form-group">
                     <label>${f.label}${f.calc ? ' <span style="color:#9ca3af;font-size:0.75rem">(자동)</span>' : ''}</label>
                     <input type="${f.type}" name="${f.key}" value="${val}" step="0.01"
-                        ${f.calc ? 'readonly style="background:#f3f4f6;"' : ''}>
+                        ${isReadOnly ? 'readonly style="background:#f3f4f6;"' : ''}>
                 </div>`;
         };
 
@@ -401,13 +411,14 @@ window.ManufacturingCostsModule = {
 
         const body = `
             <div class="form-grid">
+                ${makeInput(orderField)}
                 ${makeInput(salesField)}
                 ${allFields.map(makeInput).join('')}
                 ${stoneSection}
             </div>`;
 
         const wrapper = window.Utils.openModal(
-            costId ? '제조원가 수정' : '제조원가 추가', body,
+            '제조원가 수정', body,
             async (data, w) => {
                 Object.keys(data).forEach(k => {
                     if (k !== 'orderId' && k !== 'productionMonth') {
@@ -415,14 +426,10 @@ window.ManufacturingCostsModule = {
                     }
                 });
                 const calculated = this.calculate(data);
-                if (costId) {
-                    await window.firebaseDb.collection('sales').doc('orders')
-                        .collection('items').doc(costId)
-                        .update({ ...calculated, updatedAt: new Date() });
-                } else {
-                    await window.firebaseDb.collection('sales').doc('orders')
-                        .collection('items').add({ ...calculated, createdAt: new Date(), updatedAt: new Date() });
-                }
+                // 수정만 가능 (신규 입력은 매출표에서만)
+                await window.firebaseDb.collection('sales').doc('orders')
+                    .collection('items').doc(costId)
+                    .update({ ...calculated, updatedAt: new Date() });
                 w.remove();
                 this.load();
             }
@@ -499,18 +506,21 @@ window.ManufacturingCostsModule = {
     },
 
     downloadTemplate() {
+        // 제작월(productionMonth) 필드 제외
         window.Utils.downloadCsvTemplate(
-            [...this.BASE_FIELDS.filter(f => !f.calc), ...this.STONE_FIELDS],
+            [...this.BASE_FIELDS.filter(f => !f.calc && f.key !== 'productionMonth'), ...this.STONE_FIELDS],
             '제조원가표_양식.csv');
     },
     downloadData() {
+        // 제작월(productionMonth) 필드 제외
         window.Utils.downloadCsvData(
-            [...this.BASE_FIELDS, ...this.STONE_FIELDS], this.costs, '제조원가표.csv');
+            [...this.BASE_FIELDS.filter(f => f.key !== 'productionMonth'), ...this.STONE_FIELDS], this.costs, '제조원가표.csv');
     },
 
     openCsvUpload() {
+        // 제작월(productionMonth) 필드 제외
         window.Utils.openCsvUploadModal(
-            [...this.BASE_FIELDS.filter(f => !f.calc), ...this.STONE_FIELDS],
+            [...this.BASE_FIELDS.filter(f => !f.calc && f.key !== 'productionMonth'), ...this.STONE_FIELDS],
             async (rows) => {
                 const batch = window.firebaseDb.batch();
                 const collection = window.firebaseDb

@@ -12,7 +12,12 @@ window.StoneInputModalModule = {
 
     // 초기화
     init(diamondRates, existingStones = [], callback) {
-        this.diamondRates = diamondRates || [];
+        // diamondRates를 이름순으로 오름차순 정렬
+        this.diamondRates = (diamondRates || []).sort((a, b) => {
+            const aName = (a.diamondType || '').toLowerCase();
+            const bName = (b.diamondType || '').toLowerCase();
+            return aName.localeCompare(bName, 'ko-KR');
+        });
         this.stoneInputArray = (existingStones || []).map((s, i) => ({
             id: s.id || `stone_${Date.now()}_${i}`,
             stoneType: s.stoneType || '',
@@ -37,13 +42,10 @@ window.StoneInputModalModule = {
                     <h4 style="margin-bottom:12px; font-size:0.95rem; color:#1f2937;">새 나석 추가</h4>
 
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
-                        <!-- 나석 종류 -->
+                        <!-- 나석 종류 (검색 드롭다운) -->
                         <div class="form-group">
                             <label style="display:block; margin-bottom:6px; font-weight:500; font-size:0.9rem;">나석 종류 *</label>
-                            <select id="stoneTypeSelect" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px; font-size:0.9rem;">
-                                <option value="">-- 선택 --</option>
-                                ${this.diamondRates.map(d => `<option value="${d.diamondType}">${d.diamondType}</option>`).join('')}
-                            </select>
+                            <div id="stoneTypeSelectContainer" style="width:100%;"></div>
                         </div>
 
                         <!-- 개수 -->
@@ -119,6 +121,20 @@ window.StoneInputModalModule = {
             }
         );
 
+        // 나석 종류 검색 드롭다운 생성 (이름순 정렬)
+        const stoneTypeContainer = wrapper.querySelector('#stoneTypeSelectContainer');
+        if (stoneTypeContainer) {
+            const stoneTypeOptions = this.diamondRates.map(d => d.diamondType);
+            const searchableSelect = window.Utils.createSearchableSelect(
+                stoneTypeOptions,
+                '',
+                null,
+                '나석 종류 검색...',
+                'stoneType'
+            );
+            stoneTypeContainer.replaceWith(searchableSelect);
+        }
+
         // 이벤트 리스너 등록
         this.attachEventListeners(wrapper);
         this.renderStoneList();
@@ -127,12 +143,13 @@ window.StoneInputModalModule = {
 
     // 이벤트 리스너 등록
     attachEventListeners(wrapper) {
-        const stoneTypeSelect = wrapper.querySelector('#stoneTypeSelect');
+        // 검색 드롭다운 또는 일반 select에서 input 찾기
+        const stoneTypeInput = wrapper.querySelector('[name="stoneType"]');
         const stoneCertSelect = wrapper.querySelector('#stoneCertSelect');
         const addStoneBtn = wrapper.querySelector('#addStoneBtn');
 
-        // 나석 종류 선택 시
-        stoneTypeSelect?.addEventListener('change', (e) => {
+        // 나석 종류 선택 시 (searchable select에서는 input 사용)
+        stoneTypeInput?.addEventListener('change', (e) => {
             this.onStoneTypeChange(e.target.value, wrapper);
         });
 
@@ -166,8 +183,8 @@ window.StoneInputModalModule = {
 
     // 가격 표시 업데이트
     updatePriceDisplay(wrapper) {
-        const stoneTypeSelect = wrapper.querySelector('#stoneTypeSelect');
-        const diamondType = stoneTypeSelect.value;
+        const stoneTypeInput = wrapper.querySelector('[name="stoneType"]');
+        const diamondType = stoneTypeInput?.value;
 
         if (diamondType) {
             this.onStoneTypeChange(diamondType, wrapper);
@@ -176,11 +193,11 @@ window.StoneInputModalModule = {
 
     // 나석 추가 버튼 클릭
     onAddStoneClick(wrapper) {
-        const stoneTypeSelect = wrapper.querySelector('#stoneTypeSelect');
+        const stoneTypeInput = wrapper.querySelector('[name="stoneType"]');
         const stoneQtyInput = wrapper.querySelector('#stoneQtyInput');
         const stoneCertSelect = wrapper.querySelector('#stoneCertSelect');
 
-        const diamondType = stoneTypeSelect.value;
+        const diamondType = stoneTypeInput?.value;
         const qty = parseInt(stoneQtyInput.value) || 0;
         const cert = stoneCertSelect.value;
 
