@@ -28,8 +28,7 @@ window.OrderManagementModule = {
     items: [],
 
     async init() {
-        document.getElementById('addOrderMgmtBtn')
-            ?.addEventListener('click', () => this.showForm());
+        // 신규 입력 기능 삭제 - 매출표에서만 신규 입력 가능
 
         // 표시항목 설정
         document.getElementById('orderMgmtDisplaySettingsBtn')

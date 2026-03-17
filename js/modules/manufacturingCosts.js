@@ -41,20 +41,7 @@ window.ManufacturingCostsModule = {
         // 제품단가표 로드 (나석 정보 참조용)
         await this.loadProductRates();
         // 신규 입력 기능 삭제 - 매출표에서만 신규 입력 가능
-
-        // CSV 업로드
-        document.getElementById('csvUploadMfgBtn')
-            ?.addEventListener('click', () => {
-                const downloadDiv = document.getElementById('mfgDownloadBtns');
-                if (downloadDiv) downloadDiv.style.display = downloadDiv.style.display === 'none' ? 'inline-block' : 'none';
-                this.openCsvUpload();
-            });
-
-        // CSV 다운로드 버튼
-        document.getElementById('downloadMfgTemplateBtn')
-            ?.addEventListener('click', () => this.downloadTemplate());
-        document.getElementById('downloadMfgDataBtn')
-            ?.addEventListener('click', () => this.downloadData());
+        // CSV 업로드/다운로드 기능 삭제 - 통합 CSV에서만 사용 가능
 
         // 표시항목 설정
         document.getElementById('mfgDisplaySettingsBtn')
