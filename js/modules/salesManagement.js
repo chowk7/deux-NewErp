@@ -40,12 +40,54 @@ window.SalesManagementModule = {
         { key: 'addressDetail',   label: '주소상세',      type: 'text',   defaultRequired: false },
     ],
 
+    // 통합 CSV 필드 (매출 + 제조원가 + 주문관리)
+    INTEGRATED_CSV_FIELDS: null, // init에서 동적 생성
+
     orders: [],
     orderRequired: [],
     pageSize: 50,
     orderSortState: { column: null, direction: 'asc' },
 
     async init() {
+        // 통합 CSV 필드 초기화 (매출 + 제조원가 + 주문관리)
+        this.INTEGRATED_CSV_FIELDS = [
+            // 매출 필드
+            ...this.ORDER_FIELDS,
+            { key: 'separator1', label: '--- 제조원가 ---', type: 'text' },
+            // 제조원가 필드 (calc 필드 제외)
+            { key: 'productWeight',   label: '제품중량(참고g)', type: 'number' },
+            { key: 'stoneWeight',     label: '나석중량(참고ct)',type: 'number' },
+            { key: 'goldWeight14k',   label: '금중량14K(g)',    type: 'number' },
+            { key: 'goldWeightPure',  label: '금중량순금해리(g)',type: 'number' },
+            { key: 'goldMarketPrice', label: '금시세(순금1g)',  type: 'number' },
+            { key: 'settingCost',     label: '물림비',         type: 'number' },
+            { key: 'laborCost',       label: '공임',           type: 'number' },
+            { key: 'platingCost',     label: '도금/각인',      type: 'number' },
+            { key: 'stoneCostManual', label: '나석가격(수동입력)',type: 'number' },
+            { key: 'otherCost',       label: '기타비용',       type: 'number' },
+            { key: 'productionMonth', label: '제작월(YYYY-MM)', type: 'text' },
+            // 나석 10개 필드
+            ...Array.from({length: 10}, (_, i) => [
+                { key: `stoneType${i+1}`,    label: `나석종류${i+1}`,   type: 'text'   },
+                { key: `stoneQty${i+1}`,     label: `나석갯수${i+1}`,   type: 'number' },
+                { key: `stoneCert${i+1}`,    label: `나석보증서${i+1}`,  type: 'text'   },
+                { key: `stonePrice${i+1}`,   label: `나석가격${i+1}`,   type: 'number' },
+            ]).flat(),
+            { key: 'separator2', label: '--- 주문관리 ---', type: 'text' },
+            // 주문관리 필드
+            { key: 'stoneRequestDate',    label: '나석신청일',   type: 'date'     },
+            { key: 'stoneCertificationDate', label: '나석보증서발급일', type: 'date' },
+            { key: 'workshopRequestDate', label: '공방신청일',   type: 'date'     },
+            { key: 'workshopDeliveryDate', label: '공방납품일',  type: 'date'     },
+            { key: 'completionDate',      label: '제작완료일',   type: 'date'     },
+            { key: 'shippingReadyDate',   label: '배송준비일',   type: 'date'     },
+            { key: 'stoneRequested',      label: '나석신청여부', type: 'checkbox' },
+            { key: 'workshopRequested',   label: '공방신청여부', type: 'checkbox' },
+            { key: 'productionComplete',  label: '제작완료여부', type: 'checkbox' },
+            { key: 'shippingReady',       label: '배송준비여부', type: 'checkbox' },
+            { key: 'delivered',           label: '배송완료여부', type: 'checkbox' },
+            { key: 'deliveryRemarks',     label: '배송비고',      type: 'text'    },
+        ];
         this.setupEventListeners();
     },
 
@@ -60,6 +102,18 @@ window.SalesManagementModule = {
             ?.addEventListener('click', () => this.downloadOrderCsvTemplate());
         document.getElementById('downloadOrdersDataBtn')
             ?.addEventListener('click', () => this.downloadOrderCsvData());
+
+        // 통합 CSV 버튼 리스너 (매출+제조원가+주문관리)
+        document.getElementById('downloadIntegratedCsvTemplateBtn')
+            ?.addEventListener('click', () => this.downloadIntegratedCsvTemplate());
+        document.getElementById('downloadIntegratedCsvDataBtn')
+            ?.addEventListener('click', () => this.downloadIntegratedCsvData());
+        document.getElementById('csvUploadIntegratedBtn')
+            ?.addEventListener('click', () => {
+                const downloadDiv = document.getElementById('integratedDownloadBtns');
+                if (downloadDiv) downloadDiv.style.display = downloadDiv.style.display === 'none' ? 'inline-block' : 'none';
+                this.openIntegratedCsvUpload();
+            });
         document.getElementById('ordersRequiredSettingsBtn')
             ?.addEventListener('click', () => this.openOrderRequiredSettings());
 
@@ -845,6 +899,76 @@ window.SalesManagementModule = {
             });
             await batch.commit();
             alert(`${rows.length}개 주문이 저장되었습니다.`);
+            this.loadOrders();
+        });
+    },
+
+    // 통합 CSV - 매출표 + 제조원가 + 주문관리 (하나의 파일로 업로드)
+    downloadIntegratedCsvTemplate() {
+        // separator 필드는 제외하고 다운로드
+        const fields = this.INTEGRATED_CSV_FIELDS.filter(f => !f.key.startsWith('separator'));
+        window.Utils.downloadCsvTemplate(fields, '통합_양식.csv');
+    },
+
+    downloadIntegratedCsvData() {
+        const fields = this.INTEGRATED_CSV_FIELDS.filter(f => !f.key.startsWith('separator'));
+        const rows = this.orders.map(o => {
+            const row = { ...o };
+            // 날짜 포맷팅
+            ['orderDate', 'stoneRequestDate', 'stoneCertificationDate', 'workshopRequestDate',
+             'workshopDeliveryDate', 'completionDate', 'shippingReadyDate'].forEach(k => {
+                if (row[k]?.toDate) {
+                    row[k] = row[k].toDate().toLocaleDateString('ko-KR');
+                }
+            });
+            return row;
+        });
+        window.Utils.downloadCsvData(fields, rows, '통합.csv');
+    },
+
+    openIntegratedCsvUpload() {
+        const fields = this.INTEGRATED_CSV_FIELDS.filter(f => !f.key.startsWith('separator'));
+        window.Utils.openCsvUploadModal(fields, async (rows) => {
+            const batch = window.firebaseDb.batch();
+            rows.forEach(row => {
+                const ref = window.firebaseDb
+                    .collection('sales').doc('orders').collection('items').doc();
+
+                // 날짜 변환
+                ['orderDate', 'stoneRequestDate', 'stoneCertificationDate', 'workshopRequestDate',
+                 'workshopDeliveryDate', 'completionDate', 'shippingReadyDate'].forEach(k => {
+                    if (row[k]) {
+                        const d = new Date(row[k]);
+                        row[k] = isNaN(d) ? null : firebase.firestore.Timestamp.fromDate(d);
+                    }
+                });
+
+                // 숫자 변환
+                ['orderAmount','salesAmount','commissionRate','productWeight','stoneWeight',
+                 'goldWeight14k','goldWeightPure','goldMarketPrice','settingCost','laborCost',
+                 'platingCost','stoneCostManual','otherCost'].forEach(k => {
+                    if (row[k] !== undefined) row[k] = parseFloat(row[k]) || 0;
+                });
+
+                // 나석 숫자 필드 변환
+                for (let i = 1; i <= 10; i++) {
+                    if (row[`stoneQty${i}`]) row[`stoneQty${i}`] = parseFloat(row[`stoneQty${i}`]) || 0;
+                    if (row[`stonePrice${i}`]) row[`stonePrice${i}`] = parseFloat(row[`stonePrice${i}`]) || 0;
+                }
+
+                // 체크박스 변환
+                ['stoneRequested','workshopRequested','productionComplete','shippingReady','delivered'].forEach(k => {
+                    if (row[k] === 'true' || row[k] === true || row[k] === '1' || row[k] === 1) {
+                        row[k] = true;
+                    } else {
+                        row[k] = false;
+                    }
+                });
+
+                batch.set(ref, { ...row, createdAt: new Date(), updatedAt: new Date() });
+            });
+            await batch.commit();
+            window.Utils.showNotification(`${rows.length}개 항목(매출+제조원가+주문관리)이 저장되었습니다.`, 'success');
             this.loadOrders();
         });
     },
