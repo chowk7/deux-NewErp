@@ -308,13 +308,7 @@ window.ProductRatesModule = {
                                 <div id="stonesContainer" style="border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px;">
                                     ${stoneRows.map((stone, idx) => `
                                         <div class="stone-row" data-index="${idx}" style="display: flex; gap: 8px; margin-bottom: 8px; align-items: center;">
-                                            <select name="stoneType_${idx}" data-stone-types="${stoneOptions}" class="stone-type-select"
-                                                style="flex: 1; padding: 6px; border: 1px solid #d1d5db; border-radius: 4px;">
-                                                <option value="">나석 종류</option>
-                                                ${stoneOptions.split(',').map(type =>
-                                                    `<option value="${type}" ${stone.type === type ? 'selected' : ''}>${type}</option>`
-                                                ).join('')}
-                                            </select>
+                                            <div class="stone-type-container" data-index="${idx}" data-value="${stone.type}" style="flex: 1;"></div>
                                             <input type="number" name="stoneQty_${idx}" value="${stone.qty || 0}" min="0" step="0.01"
                                                 placeholder="수량" class="stone-qty-input"
                                                 style="width: 80px; padding: 6px; border: 1px solid #d1d5db; border-radius: 4px;">
@@ -356,6 +350,8 @@ window.ProductRatesModule = {
                 ※ (자동) 표시 항목은 가격 설정 및 입력값 기준으로 자동계산됩니다. 저장 시 계산값이 함께 저장됩니다.
             </p>`;
 
+        const stoneOptions = (this.diamondRates || []).map(d => d.diamondType);
+
         const wrapper = window.Utils.openModal(
             productId ? '제품단가 수정' : '제품단가 추가', body,
             async (data, w) => {
@@ -364,7 +360,7 @@ window.ProductRatesModule = {
                 const stoneRows = stonesContainer?.querySelectorAll('.stone-row') || [];
                 const newStones = Array.from(stoneRows)
                     .map(row => ({
-                        type: row.querySelector('.stone-type-select').value,
+                        type: row.querySelector('.searchable-select-input[name="stoneType"]')?.value || '',
                         qty: parseFloat(row.querySelector('.stone-qty-input').value) || 0
                     }))
                     .filter(s => s.type && s.qty > 0);
@@ -389,6 +385,27 @@ window.ProductRatesModule = {
             }
         );
 
+        // 나석 종류 검색 드롭다운 설정 헬퍼 함수
+        const setupStoneTypeSearchable = (container) => {
+            const containers = container.querySelectorAll('.stone-type-container');
+            containers.forEach(el => {
+                if (el.querySelector('.searchable-select-input')) return; // 이미 변환됨
+                const value = el.getAttribute('data-value') || '';
+                const idx = el.getAttribute('data-index');
+                const searchableSelect = window.Utils.createSearchableSelect(
+                    stoneOptions,
+                    value,
+                    null,
+                    '나석 종류 검색...',
+                    `stoneType`
+                );
+                el.replaceWith(searchableSelect);
+            });
+        };
+
+        // 초기 stone type 검색 드롭다운 설정
+        setupStoneTypeSearchable(wrapper);
+
         // 나석 추가 버튼
         const addStoneBtn = wrapper.querySelector('#addStoneBtn');
         if (addStoneBtn) {
@@ -396,29 +413,52 @@ window.ProductRatesModule = {
                 e.preventDefault();
                 const container = wrapper.querySelector('#stonesContainer');
                 const rowCount = container.querySelectorAll('.stone-row').length;
-                const stoneOptions = (this.diamondRates || []).map(d => d.diamondType).join(',');
                 const newRow = document.createElement('div');
                 newRow.className = 'stone-row';
                 newRow.setAttribute('data-index', rowCount);
                 newRow.style.cssText = 'display: flex; gap: 8px; margin-bottom: 8px; align-items: center;';
-                newRow.innerHTML = `
-                    <select name="stoneType_${rowCount}" class="stone-type-select"
-                        style="flex: 1; padding: 6px; border: 1px solid #d1d5db; border-radius: 4px;">
-                        <option value="">나석 종류</option>
-                        ${stoneOptions.split(',').map(type => `<option value="${type}">${type}</option>`).join('')}
-                    </select>
-                    <input type="number" name="stoneQty_${rowCount}" value="0" min="0" step="0.01"
-                        placeholder="수량" class="stone-qty-input"
-                        style="width: 80px; padding: 6px; border: 1px solid #d1d5db; border-radius: 4px;">
-                    <button type="button" class="remove-stone-btn" data-index="${rowCount}"
-                        style="padding: 6px 10px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer;">
-                        삭제
-                    </button>
-                `;
+
+                // 나석 종류 컨테이너를 생성하고 나중에 검색 드롭다운으로 변환
+                const stoneTypeContainer = document.createElement('div');
+                stoneTypeContainer.className = 'stone-type-container';
+                stoneTypeContainer.setAttribute('data-index', rowCount);
+                stoneTypeContainer.setAttribute('data-value', '');
+                stoneTypeContainer.style.flex = '1';
+
+                const qtyInput = document.createElement('input');
+                qtyInput.type = 'number';
+                qtyInput.name = `stoneQty_${rowCount}`;
+                qtyInput.className = 'stone-qty-input';
+                qtyInput.value = '0';
+                qtyInput.min = '0';
+                qtyInput.step = '0.01';
+                qtyInput.placeholder = '수량';
+                qtyInput.style.cssText = 'width: 80px; padding: 6px; border: 1px solid #d1d5db; border-radius: 4px;';
+
+                const removeBtn = document.createElement('button');
+                removeBtn.type = 'button';
+                removeBtn.className = 'remove-stone-btn';
+                removeBtn.setAttribute('data-index', rowCount);
+                removeBtn.textContent = '삭제';
+                removeBtn.style.cssText = 'padding: 6px 10px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer;';
+
+                newRow.appendChild(stoneTypeContainer);
+                newRow.appendChild(qtyInput);
+                newRow.appendChild(removeBtn);
                 container.insertBefore(newRow, addStoneBtn);
 
+                // 새로 추가된 stoneTypeContainer를 검색 드롭다운으로 변환
+                const searchableSelect = window.Utils.createSearchableSelect(
+                    stoneOptions,
+                    '',
+                    null,
+                    '나석 종류 검색...',
+                    'stoneType'
+                );
+                stoneTypeContainer.replaceWith(searchableSelect);
+
                 // 삭제 버튼 이벤트
-                newRow.querySelector('.remove-stone-btn').addEventListener('click', (e) => {
+                removeBtn.addEventListener('click', (e) => {
                     e.preventDefault();
                     newRow.remove();
                     updateCalculatedFields();
@@ -445,7 +485,7 @@ window.ProductRatesModule = {
             const stoneRows = wrapper.querySelectorAll('.stone-row');
             const newStones = Array.from(stoneRows)
                 .map(row => ({
-                    type: row.querySelector('.stone-type-select').value,
+                    type: row.querySelector('.searchable-select-input[name="stoneType"]')?.value || '',
                     qty: parseFloat(row.querySelector('.stone-qty-input').value) || 0
                 }))
                 .filter(s => s.type && s.qty > 0);
