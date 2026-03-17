@@ -96,8 +96,6 @@ window.SalesManagementModule = {
             ?.addEventListener('click', () => this.showOrderForm());
 
         // CSV 버튼 리스너
-        document.getElementById('csvUploadOrdersBtn')
-            ?.addEventListener('click', () => this.openOrderCsvUpload());
         document.getElementById('downloadOrdersTemplateBtn')
             ?.addEventListener('click', () => this.downloadOrderCsvTemplate());
         document.getElementById('downloadOrdersDataBtn')
