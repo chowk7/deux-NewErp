@@ -256,23 +256,12 @@ window.SalesManagementModule = {
 
                 // 특별한 필드 처리
                 if (f.key === 'customerName') {
-                    // 고객명: 드롭다운 + 신규 입력
-                    const opts = customerOptions.map(opt =>
-                        `<option value="${opt}" ${val === opt ? 'selected' : ''}>${opt}</option>`
-                    ).join('');
-                    input = `<select name="${f.key}" class="customer-select" ${isRequired ? 'required' : ''}>
-                                <option value="">선택</option>
-                                ${opts}
-                                <option value="">+ 신규 고객</option>
-                             </select>`;
+                    // 고객명: 검색 드롭다운 + 신규 입력
+                    input = `<div id="customer-select-container" style="width:100%;"></div>
+                             <button type="button" class="btn btn-sm btn-secondary" id="newCustomerBtn" style="margin-top:6px; width:100%;">+ 신규 고객 추가</button>`;
                 } else if (f.key === 'productName') {
-                    // 상품명: 드롭다운
-                    const opts = productOptions.map(opt =>
-                        `<option value="${opt}" ${val === opt ? 'selected' : ''}>${opt}</option>`
-                    ).join('');
-                    input = `<select name="${f.key}" class="product-select" ${isRequired ? 'required' : ''}>
-                                <option value="">선택</option>${opts}
-                             </select>`;
+                    // 상품명: 검색 드롭다운
+                    input = `<div id="product-select-container" style="width:100%;"></div>`;
                 } else if (f.key === 'salesman') {
                     // 판매직원: 드롭다운 + 신규 입력
                     const opts = salesmen.map(s =>
@@ -388,12 +377,23 @@ window.SalesManagementModule = {
             }
         );
 
-        // 고객명 드롭다운 처리
-        const customerSelect = wrapper.querySelector('[name="customerName"]');
-        if (customerSelect) {
-            customerSelect.addEventListener('change', async (e) => {
-                if (e.target.value === '+ 신규 고객' || (e.target.selectedIndex === 0 && customerOptions.length > 0)) {
-                    // 신규 고객 정보 입력 모달
+        // 고객명 검색 드롭다운 설정
+        const customerContainer = wrapper.querySelector('#customer-select-container');
+        if (customerContainer) {
+            const searchableSelect = window.Utils.createSearchableSelect(
+                customerOptions,
+                order?.customerName || '',
+                null,
+                '고객명 검색...',
+                'customerName'
+            );
+            customerContainer.replaceWith(searchableSelect);
+
+            // 신규 고객 추가 버튼 처리
+            const newCustomerBtn = wrapper.querySelector('#newCustomerBtn');
+            if (newCustomerBtn) {
+                newCustomerBtn.addEventListener('click', async (e) => {
+                    e.preventDefault();
                     const customerBody = `
                         <div class="form-grid">
                             <div class="form-group">
@@ -453,7 +453,8 @@ window.SalesManagementModule = {
                             modal.remove();
 
                             // 원래 폼의 고객명 필드에 자동 설정
-                            e.target.value = data.newCustomerName;
+                            const customerInput = wrapper.querySelector('[name="customerName"]');
+                            if (customerInput) customerInput.value = data.newCustomerName;
 
                             // 우편번호 필드에도 자동 설정
                             const postalCodeInput = wrapper.querySelector('[name="postalCode"]');
@@ -463,37 +464,50 @@ window.SalesManagementModule = {
                         },
                         '저장'
                     );
-                }
-            });
+                });
+            }
         }
 
-        // 상품명 변경 시 자동으로 종류와 제품코드 업데이트
-        const productSelect = wrapper.querySelector('[name="productName"]');
-        if (productSelect) {
-            productSelect.addEventListener('change', (e) => {
-                const product = products.find(p => p.name === e.target.value);
-                if (product) {
-                    // 제품코드 자동 설정
-                    const codeInput = wrapper.querySelector('[name="productCode"]');
-                    if (codeInput) codeInput.value = product.code;
+        // 상품명 검색 드롭다운 설정
+        const productContainer = wrapper.querySelector('#product-select-container');
+        if (productContainer) {
+            const searchableSelect = window.Utils.createSearchableSelect(
+                productOptions,
+                order?.productName || '',
+                null,
+                '상품명 검색...',
+                'productName'
+            );
+            productContainer.replaceWith(searchableSelect);
 
-                    // 종류 자동 추출
-                    const codeChars = product.code.match(/[A-Za-z]/g);
-                    if (codeChars && codeChars.length >= 3) {
-                        const categoryChar = codeChars[2];
-                        const categoryMap = { 'E': '귀걸이', 'R': '반지', 'N': '목걸이', 'B': '팔찌' };
-                        const category = categoryMap[categoryChar] || '';
-                        const categorySelect = wrapper.querySelector('[name="category"]');
-                        if (categorySelect) categorySelect.value = category;
+            // 상품명 변경 시 자동으로 종류와 제품코드 업데이트
+            const productInput = wrapper.querySelector('.searchable-select-input[name="productName"]');
+            if (productInput) {
+                productInput.addEventListener('change', (e) => {
+                    const product = products.find(p => p.name === e.target.value);
+                    if (product) {
+                        // 제품코드 자동 설정
+                        const codeInput = wrapper.querySelector('[name="productCode"]');
+                        if (codeInput) codeInput.value = product.code;
 
-                        // 귀걸이면 뒷침 표시, 아니면 숨김
-                        const backSupportGroup = wrapper.querySelector('[name="backSupport"]')?.parentElement?.parentElement;
-                        if (backSupportGroup) {
-                            backSupportGroup.style.display = category === '귀걸이' ? '' : 'none';
+                        // 종류 자동 추출
+                        const codeChars = product.code.match(/[A-Za-z]/g);
+                        if (codeChars && codeChars.length >= 3) {
+                            const categoryChar = codeChars[2];
+                            const categoryMap = { 'E': '귀걸이', 'R': '반지', 'N': '목걸이', 'B': '팔찌' };
+                            const category = categoryMap[categoryChar] || '';
+                            const categorySelect = wrapper.querySelector('[name="category"]');
+                            if (categorySelect) categorySelect.value = category;
+
+                            // 귀걸이면 뒷침 표시, 아니면 숨김
+                            const backSupportGroup = wrapper.querySelector('[name="backSupport"]')?.parentElement?.parentElement;
+                            if (backSupportGroup) {
+                                backSupportGroup.style.display = category === '귀걸이' ? '' : 'none';
+                            }
                         }
                     }
-                }
-            });
+                });
+            }
         }
 
         // 구매경로 변경 시 구매경로상세 옵션 업데이트

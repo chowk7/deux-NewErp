@@ -456,5 +456,128 @@ window.Utils = {
 
     formatNumber(num) {
         return new Intl.NumberFormat('ko-KR').format(num || 0);
+    },
+
+    /**
+     * 검색 기능이 있는 드롭다운 생성
+     * @param {Array<string>} options - 선택 옵션 배열
+     * @param {string} selectedValue - 선택된 값 (optional)
+     * @param {Function} onSelect - 선택 시 콜백 (value) => void
+     * @param {string} placeholder - 플레이스홀더
+     * @param {string} fieldName - 필드 이름 (폼 제출용, optional)
+     * @returns {HTMLElement} - 컨테이너 엘리먼트
+     */
+    createSearchableSelect(options, selectedValue = '', onSelect = null, placeholder = '검색...', fieldName = '') {
+        const container = document.createElement('div');
+        container.className = 'searchable-select-container';
+        container.style.position = 'relative';
+        container.style.display = 'inline-block';
+        container.style.width = '100%';
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'searchable-select-input';
+        input.placeholder = placeholder;
+        input.value = selectedValue;
+        if (fieldName) input.name = fieldName;
+        input.style.cssText = `
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        `;
+
+        const dropdown = document.createElement('div');
+        dropdown.className = 'searchable-select-dropdown';
+        dropdown.style.cssText = `
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            border: 1px solid #d1d5db;
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            background: white;
+            max-height: 250px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        `;
+
+        const updateDropdown = (filterText) => {
+            dropdown.innerHTML = '';
+            const filtered = filterText.trim() === ''
+                ? options
+                : options.filter(opt =>
+                    opt.toLowerCase().includes(filterText.toLowerCase())
+                );
+
+            if (filtered.length === 0) {
+                const noOption = document.createElement('div');
+                noOption.style.cssText = `
+                    padding: 12px;
+                    color: #9ca3af;
+                    text-align: center;
+                    font-size: 13px;
+                `;
+                noOption.textContent = '검색 결과 없음';
+                dropdown.appendChild(noOption);
+            } else {
+                filtered.forEach(opt => {
+                    const optionEl = document.createElement('div');
+                    optionEl.textContent = opt;
+                    optionEl.className = 'searchable-select-option';
+                    optionEl.style.cssText = `
+                        padding: 10px 12px;
+                        cursor: pointer;
+                        border-bottom: 1px solid #f3f4f6;
+                        font-size: 14px;
+                    `;
+                    optionEl.addEventListener('mouseenter', () => {
+                        optionEl.style.backgroundColor = '#f0f9ff';
+                    });
+                    optionEl.addEventListener('mouseleave', () => {
+                        optionEl.style.backgroundColor = 'white';
+                    });
+                    optionEl.addEventListener('click', () => {
+                        input.value = opt;
+                        dropdown.style.display = 'none';
+                        if (onSelect) onSelect(opt);
+                    });
+                    dropdown.appendChild(optionEl);
+                });
+            }
+        };
+
+        input.addEventListener('focus', () => {
+            dropdown.style.display = 'block';
+            updateDropdown(input.value);
+        });
+
+        input.addEventListener('input', () => {
+            updateDropdown(input.value);
+        });
+
+        input.addEventListener('blur', () => {
+            // blur 후 약간의 지연을 주어 click 이벤트가 실행되도록 함
+            setTimeout(() => {
+                dropdown.style.display = 'none';
+            }, 200);
+        });
+
+        container.appendChild(input);
+        container.appendChild(dropdown);
+
+        // 드롭다운 외부 클릭 감지
+        document.addEventListener('click', (e) => {
+            if (!container.contains(e.target)) {
+                dropdown.style.display = 'none';
+            }
+        });
+
+        return container;
     }
 };
