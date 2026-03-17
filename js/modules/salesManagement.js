@@ -497,6 +497,10 @@ window.SalesManagementModule = {
                     if (data[k] !== undefined) data[k] = parseFloat(data[k]) || 0;
                 });
 
+                // 이미지 파일 필드 제거 (Firestore에 저장할 수 없음)
+                delete data.img_salesReceipt;
+                delete data.img_orderSheet;
+
                 // 귀걸이(E)가 아니면 뒷침 제거
                 if (data.category !== 'E(귀걸이)') {
                     data.backSupport = '';
