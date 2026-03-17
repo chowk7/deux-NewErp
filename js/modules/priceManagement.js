@@ -183,7 +183,7 @@ window.PriceManagementModule = {
                 bulkDeleteBtn.id = 'bulkDeleteDiamondBtn';
                 bulkDeleteBtn.className = 'btn btn-danger';
                 bulkDeleteBtn.style.marginLeft = '8px';
-                const buttonGroup = document.querySelector('#pricesContent .button-group');
+                const buttonGroup = document.querySelector('#diamondRatesContent .button-group');
                 if (buttonGroup) buttonGroup.appendChild(bulkDeleteBtn);
             }
             bulkDeleteBtn.textContent = `🗑️ ${checkedCount}개 삭제`;

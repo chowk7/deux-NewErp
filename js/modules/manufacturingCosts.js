@@ -94,7 +94,26 @@ window.ManufacturingCostsModule = {
         const snap = await window.firebaseDb
             .collection('sales').doc('orders').collection('items')
             .orderBy('createdAt', 'desc').get();
-        this.costs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        const allItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        // orderId가 없는 항목 = 매출 정보
+        const orders = allItems.filter(item => !item.orderId);
+        // orderId가 있는 항목 = 제조원가 정보
+        this.costs = allItems.filter(item => item.orderId);
+
+        // 제조원가에 매출 정보 조인
+        this.costs = this.costs.map(cost => {
+            const order = orders.find(o => o.id === cost.orderId);
+            return {
+                ...cost,
+                customerName: order?.customerName || '-',
+                productName: order?.productName || '-',
+                orderDate: order?.orderDate || null,
+                orderNumber: order?.orderNumber || cost.orderId
+            };
+        });
+
         this.renderTable();
     },
 
@@ -104,15 +123,24 @@ window.ManufacturingCostsModule = {
         if (!tbody) return;
 
         // 기본 표시 필드
-        const defaultDisplayFields = ['orderId', 'productionMonth', 'goldValue', 'stoneCostManual', 'manufacturingCost', 'salesProfitRate'];
+        const defaultDisplayFields = ['orderNumber', 'customerName', 'productName', 'productionMonth', 'goldValue', 'stoneCostManual', 'manufacturingCost', 'salesProfitRate'];
         const allFields = [...this.BASE_FIELDS, ...this.STONE_FIELDS];
+
+        // 동적 필드 추가 (orderNumber, customerName, productName, orderDate)
+        const dynamicFields = [
+            { key: 'orderNumber',    label: '주문번호',    type: 'text' },
+            { key: 'customerName',   label: '고객명',      type: 'text' },
+            { key: 'productName',    label: '상품명',      type: 'text' },
+            { key: 'orderDate',      label: '주문일',      type: 'date' }
+        ];
+        const displayFields = [...allFields, ...dynamicFields];
 
         // sessionStorage에서 선택된 필드 로드
         const displayFieldKeys = window.Utils.getDisplayFields('manufacturingCosts', defaultDisplayFields);
 
         // 필드 객체 매핑
         const fieldMap = {};
-        allFields.forEach(f => fieldMap[f.key] = f);
+        displayFields.forEach(f => fieldMap[f.key] = f);
 
         if (this.costs.length === 0) {
             tbody.innerHTML = `<tr><td colspan="${displayFieldKeys.length + 2}" style="text-align:center">데이터가 없습니다.</td></tr>`;
@@ -130,7 +158,9 @@ window.ManufacturingCostsModule = {
                 }
 
                 // 포맷팅
-                if (key === 'salesProfitRate' && val !== undefined && val !== null && val !== '') {
+                if (key === 'orderDate' && val) {
+                    val = val.toDate ? new Date(val.toDate()).toLocaleDateString('ko-KR') : '-';
+                } else if (key === 'salesProfitRate' && val !== undefined && val !== null && val !== '') {
                     val = val.toFixed(1) + '%';
                 } else if (field?.type === 'number' && val !== undefined && val !== null && val !== '') {
                     val = window.Utils.formatNumber(val);

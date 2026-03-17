@@ -46,7 +46,26 @@ window.OrderManagementModule = {
         const snap = await window.firebaseDb
             .collection('sales').doc('orders').collection('items')
             .orderBy('createdAt', 'desc').get();
-        this.items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        const allItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        // orderId가 없는 항목 = 매출 정보
+        const orders = allItems.filter(item => !item.orderId);
+        // orderId가 있는 항목 = 주문관리 정보
+        this.items = allItems.filter(item => item.orderId);
+
+        // 주문관리에 매출 정보 조인
+        this.items = this.items.map(item => {
+            const order = orders.find(o => o.id === item.orderId);
+            return {
+                ...item,
+                customerName: order?.customerName || '-',
+                productName: order?.productName || '-',
+                orderDate: order?.orderDate || null,
+                orderNumber: order?.orderNumber || item.orderId
+            };
+        });
+
         this.renderTable();
     },
 
@@ -62,14 +81,23 @@ window.OrderManagementModule = {
         if (!tbody) return;
 
         // 기본 표시 필드
-        const defaultDisplayFields = ['stoneRequested', 'workshopRequested', 'productionComplete', 'shippingReady', 'delivered'];
+        const defaultDisplayFields = ['orderNumber', 'customerName', 'productName', 'stoneRequested', 'workshopRequested', 'productionComplete', 'shippingReady', 'delivered'];
 
         // sessionStorage에서 선택된 필드 로드
         const displayFieldKeys = window.Utils.getDisplayFields('orderManagement', defaultDisplayFields);
 
+        // 동적 필드 추가 (orderNumber, customerName, productName, orderDate)
+        const dynamicFields = [
+            { key: 'orderNumber',    label: '주문번호',    type: 'text' },
+            { key: 'customerName',   label: '고객명',      type: 'text' },
+            { key: 'productName',    label: '상품명',      type: 'text' },
+            { key: 'orderDate',      label: '주문일',      type: 'date' }
+        ];
+        const displayFields = [...this.STATUS_FIELDS, ...dynamicFields];
+
         // 필드 객체 매핑
         const fieldMap = {};
-        this.STATUS_FIELDS.forEach(f => fieldMap[f.key] = f);
+        displayFields.forEach(f => fieldMap[f.key] = f);
 
         if (this.items.length === 0) {
             tbody.innerHTML = `<tr><td colspan="${displayFieldKeys.length + 4}" style="text-align:center">데이터가 없습니다.</td></tr>`;
@@ -103,7 +131,6 @@ window.OrderManagementModule = {
             return `
                 <tr data-id="${item.id}">
                     <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${item.id}"></td>
-                    <td>${item.orderNumber || item.orderId || '-'}</td>
                     ${cells}
                     <td>
                         ${this.IMAGE_TYPES.map(t =>
@@ -136,7 +163,7 @@ window.OrderManagementModule = {
                 const label = field ? field.label.replace('여부', '') : key;
                 return `<th>${label}</th>`;
             }).join('');
-            thead.innerHTML = '<th>주문번호</th>' + statusHeaders + '<th>첨부이미지</th><th>관리</th>';
+            thead.innerHTML = statusHeaders + '<th>첨부이미지</th><th>관리</th>';
             thead.insertBefore(checkboxTh, thead.firstChild);
         }
 

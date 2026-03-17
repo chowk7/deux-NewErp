@@ -73,7 +73,7 @@ window.CustomerManagementModule = {
         this.FIELDS.forEach(f => fieldMap[f.key] = f);
 
         if (this.customers.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="${displayFieldKeys.length + 1}" style="text-align:center">데이터가 없습니다.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="${displayFieldKeys.length + 2}" style="text-align:center">데이터가 없습니다.</td></tr>`;
             return;
         }
 
@@ -95,7 +95,8 @@ window.CustomerManagementModule = {
             }).join('');
 
             return `
-                <tr>
+                <tr data-id="${c.id}">
+                    <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${c.id}"></td>
                     ${cells}
                     <td>
                         <button class="btn btn-sm btn-primary"
@@ -109,10 +110,21 @@ window.CustomerManagementModule = {
         // 테이블 헤더 업데이트
         const thead = table?.querySelector('thead tr');
         if (thead) {
+            const checkboxTh = document.createElement('th');
+            checkboxTh.style.textAlign = 'center';
+            checkboxTh.className = 'header-checkbox-th';
+            checkboxTh.innerHTML = '<input type="checkbox" class="header-checkbox">';
+
+            if (thead.firstChild?.className === 'header-checkbox-th') {
+                thead.firstChild.remove();
+            }
+
             thead.innerHTML = displayFieldKeys.map(key => {
                 const field = fieldMap[key];
                 return `<th>${field ? field.label : key}</th>`;
             }).join('') + '<th>관리</th>';
+
+            thead.insertBefore(checkboxTh, thead.firstChild);
         }
 
         // Event delegation for action buttons
@@ -128,7 +140,67 @@ window.CustomerManagementModule = {
                 }
             };
             table.addEventListener('click', this._tableHandler);
+
+            // 헤더 체크박스 이벤트
+            const headerCheckbox = table.querySelector('thead .header-checkbox');
+            if (headerCheckbox) {
+                headerCheckbox.addEventListener('change', (e) => {
+                    const allCheckboxes = table.querySelectorAll('tbody .row-checkbox');
+                    allCheckboxes.forEach(cb => cb.checked = e.target.checked);
+                    this.updateBulkDeleteBtn();
+                });
+            }
+
+            // 각 행의 체크박스 이벤트
+            const checkboxes = table.querySelectorAll('tbody .row-checkbox');
+            checkboxes.forEach(cb => {
+                cb.addEventListener('change', () => this.updateBulkDeleteBtn());
+            });
         }
+
+        this.updateBulkDeleteBtn();
+    },
+
+    updateBulkDeleteBtn() {
+        const table = document.querySelector('#customersTable');
+        const checkedCount = table?.querySelectorAll('tbody .row-checkbox:checked').length || 0;
+        let bulkDeleteBtn = document.getElementById('bulkDeleteCustomerBtn');
+
+        if (checkedCount > 0) {
+            if (!bulkDeleteBtn) {
+                bulkDeleteBtn = document.createElement('button');
+                bulkDeleteBtn.id = 'bulkDeleteCustomerBtn';
+                bulkDeleteBtn.className = 'btn btn-danger';
+                bulkDeleteBtn.style.marginLeft = '8px';
+                const buttonGroup = document.querySelector('#customersContent .button-group');
+                if (buttonGroup) buttonGroup.appendChild(bulkDeleteBtn);
+            }
+            bulkDeleteBtn.textContent = `🗑️ ${checkedCount}개 삭제`;
+            bulkDeleteBtn.onclick = () => this.bulkDelete();
+        } else if (bulkDeleteBtn) {
+            bulkDeleteBtn.remove();
+        }
+    },
+
+    async bulkDelete() {
+        const table = document.querySelector('#customersTable');
+        const checkedIds = Array.from(table.querySelectorAll('tbody .row-checkbox:checked'))
+            .map(cb => cb.dataset.id);
+
+        if (checkedIds.length === 0) return;
+        if (!(await window.Utils.confirm(`${checkedIds.length}개 고객을 삭제하시겠습니까?`))) return;
+
+        const batch = window.firebaseDb.batch();
+        const collection = window.firebaseDb.collection('sales').doc('customers').collection('items');
+
+        for (const id of checkedIds) {
+            batch.delete(collection.doc(id));
+        }
+
+        await batch.commit();
+        this.loadCustomers();
+        window.Utils.showNotification(`${checkedIds.length}개 고객이 삭제되었습니다.`, 'success');
+    }
     },
 
     showForm(customerId = null) {

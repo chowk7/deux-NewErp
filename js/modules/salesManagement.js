@@ -562,7 +562,7 @@ window.SalesManagementModule = {
                 bulkDeleteBtn.id = 'bulkDeleteOrderBtn';
                 bulkDeleteBtn.className = 'btn btn-danger';
                 bulkDeleteBtn.style.marginLeft = '8px';
-                const buttonGroup = document.querySelector('#salesContent .button-group');
+                const buttonGroup = document.querySelector('#ordersContent .button-group');
                 if (buttonGroup) buttonGroup.appendChild(bulkDeleteBtn);
             }
             bulkDeleteBtn.textContent = `🗑️ ${checkedCount}개 삭제`;
