@@ -103,11 +103,12 @@ window.PriceManagementModule = {
         if (!tbody) return;
 
         if (this.diamondRates.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center">데이터가 없습니다.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center">데이터가 없습니다.</td></tr>';
             return;
         }
         tbody.innerHTML = this.diamondRates.map(r => `
-            <tr>
+            <tr data-id="${r.id}">
+                <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${r.id}"></td>
                 <td>${r.diamondType || '-'}</td>
                 <td>${window.Utils.formatNumber(r.costWithoutVat)}</td>
                 <td>${window.Utils.formatNumber(r.costWithVat)}</td>
@@ -122,8 +123,22 @@ window.PriceManagementModule = {
                 </td>
             </tr>`).join('');
 
-        // Event delegation for action buttons
+        // 테이블 헤더 업데이트
         const table = document.querySelector('#diamondRatesTable');
+        const thead = table?.querySelector('thead tr');
+        if (thead) {
+            const checkboxTh = document.createElement('th');
+            checkboxTh.style.textAlign = 'center';
+            checkboxTh.className = 'header-checkbox-th';
+            checkboxTh.innerHTML = '<input type="checkbox" class="header-checkbox">';
+
+            if (thead.firstChild?.className === 'header-checkbox-th') {
+                thead.firstChild.remove();
+            }
+            thead.insertBefore(checkboxTh, thead.firstChild);
+        }
+
+        // Event delegation for action buttons
         if (table) {
             table.removeEventListener('click', this._diamondTableHandler);
             this._diamondTableHandler = (e) => {
@@ -136,7 +151,66 @@ window.PriceManagementModule = {
                 }
             };
             table.addEventListener('click', this._diamondTableHandler);
+
+            // 헤더 체크박스 이벤트
+            const headerCheckbox = table.querySelector('thead .header-checkbox');
+            if (headerCheckbox) {
+                headerCheckbox.addEventListener('change', (e) => {
+                    const allCheckboxes = table.querySelectorAll('tbody .row-checkbox');
+                    allCheckboxes.forEach(cb => cb.checked = e.target.checked);
+                    this.updateDiamondBulkDeleteBtn();
+                });
+            }
+
+            // 각 행의 체크박스 이벤트
+            const checkboxes = table.querySelectorAll('tbody .row-checkbox');
+            checkboxes.forEach(cb => {
+                cb.addEventListener('change', () => this.updateDiamondBulkDeleteBtn());
+            });
         }
+
+        this.updateDiamondBulkDeleteBtn();
+    },
+
+    updateDiamondBulkDeleteBtn() {
+        const table = document.querySelector('#diamondRatesTable');
+        const checkedCount = table?.querySelectorAll('tbody .row-checkbox:checked').length || 0;
+        let bulkDeleteBtn = document.getElementById('bulkDeleteDiamondBtn');
+
+        if (checkedCount > 0) {
+            if (!bulkDeleteBtn) {
+                bulkDeleteBtn = document.createElement('button');
+                bulkDeleteBtn.id = 'bulkDeleteDiamondBtn';
+                bulkDeleteBtn.className = 'btn btn-danger';
+                bulkDeleteBtn.style.marginLeft = '8px';
+                const buttonGroup = document.querySelector('#pricesContent .button-group');
+                if (buttonGroup) buttonGroup.appendChild(bulkDeleteBtn);
+            }
+            bulkDeleteBtn.textContent = `🗑️ ${checkedCount}개 삭제`;
+            bulkDeleteBtn.onclick = () => this.bulkDeleteDiamondRates();
+        } else if (bulkDeleteBtn) {
+            bulkDeleteBtn.remove();
+        }
+    },
+
+    async bulkDeleteDiamondRates() {
+        const table = document.querySelector('#diamondRatesTable');
+        const checkedIds = Array.from(table.querySelectorAll('tbody .row-checkbox:checked'))
+            .map(cb => cb.dataset.id);
+
+        if (checkedIds.length === 0) return;
+        if (!(await window.Utils.confirm(`${checkedIds.length}개 항목을 삭제하시겠습니까?`))) return;
+
+        const batch = window.firebaseDb.batch();
+        const collection = window.firebaseDb.collection('prices').doc('diamondRates').collection('items');
+
+        for (const id of checkedIds) {
+            batch.delete(collection.doc(id));
+        }
+
+        await batch.commit();
+        this.loadDiamondRates();
+        window.Utils.showNotification(`${checkedIds.length}개 항목이 삭제되었습니다.`, 'success');
     },
 
     showDiamondRateForm(rateId = null) {

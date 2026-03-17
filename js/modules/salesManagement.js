@@ -104,7 +104,7 @@ window.SalesManagementModule = {
         this.ORDER_FIELDS.forEach(f => fieldMap[f.key] = f);
 
         if (this.orders.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="${displayFieldKeys.length + 1}" style="text-align:center">데이터가 없습니다.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="${displayFieldKeys.length + 2}" style="text-align:center">데이터가 없습니다.</td></tr>`;
             return;
         }
 
@@ -128,7 +128,8 @@ window.SalesManagementModule = {
             }).join('');
 
             return `
-                <tr>
+                <tr data-id="${o.id}">
+                    <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${o.id}"></td>
                     ${cells}
                     <td>
                         <button class="btn btn-sm btn-primary"
@@ -142,10 +143,21 @@ window.SalesManagementModule = {
         // 테이블 헤더 업데이트
         const thead = table?.querySelector('thead tr');
         if (thead) {
+            const checkboxTh = document.createElement('th');
+            checkboxTh.style.textAlign = 'center';
+            checkboxTh.className = 'header-checkbox-th';
+            checkboxTh.innerHTML = '<input type="checkbox" class="header-checkbox">';
+
+            if (thead.firstChild?.className === 'header-checkbox-th') {
+                thead.firstChild.remove();
+            }
+
             thead.innerHTML = displayFieldKeys.map(key => {
                 const field = fieldMap[key];
                 return `<th>${field ? field.label : key}</th>`;
             }).join('') + '<th>관리</th>';
+
+            thead.insertBefore(checkboxTh, thead.firstChild);
         }
 
         // Event delegation for action buttons
@@ -161,7 +173,25 @@ window.SalesManagementModule = {
                 }
             };
             table.addEventListener('click', this._tableHandler);
+
+            // 헤더 체크박스 이벤트
+            const headerCheckbox = table.querySelector('thead .header-checkbox');
+            if (headerCheckbox) {
+                headerCheckbox.addEventListener('change', (e) => {
+                    const allCheckboxes = table.querySelectorAll('tbody .row-checkbox');
+                    allCheckboxes.forEach(cb => cb.checked = e.target.checked);
+                    this.updateOrderBulkDeleteBtn();
+                });
+            }
+
+            // 각 행의 체크박스 이벤트
+            const checkboxes = table.querySelectorAll('tbody .row-checkbox');
+            checkboxes.forEach(cb => {
+                cb.addEventListener('change', () => this.updateOrderBulkDeleteBtn());
+            });
         }
+
+        this.updateOrderBulkDeleteBtn();
     },
 
     async showOrderForm(orderId = null) {
@@ -498,10 +528,80 @@ window.SalesManagementModule = {
     },
 
     async deleteOrder(id) {
-        if (!(await window.Utils.confirm('이 주문을 삭제하시겠습니까?'))) return;
-        await window.firebaseDb
-            .collection('sales').doc('orders').collection('items').doc(id).delete();
+        if (!(await window.Utils.confirm('이 주문과 관련된 모든 데이터(제조원가, 주문관리)가 삭제됩니다. 계속하시겠습니까?'))) return;
+
+        const batch = window.firebaseDb.batch();
+        const ordersCollection = window.firebaseDb.collection('sales').doc('orders').collection('items');
+
+        // 1. 매출 주문 삭제
+        batch.delete(ordersCollection.doc(id));
+
+        // 2. 해당 orderId를 가진 제조원가/주문관리 항목 찾아서 삭제
+        try {
+            const snap = await ordersCollection.where('orderId', '==', id).get();
+            snap.docs.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+        } catch (e) {
+            console.error('Failed to find related data:', e);
+        }
+
+        await batch.commit();
         this.loadOrders();
+        window.Utils.showNotification('주문이 삭제되었습니다.', 'success');
+    },
+
+    updateOrderBulkDeleteBtn() {
+        const table = document.querySelector('#ordersTable');
+        const checkedCount = table?.querySelectorAll('tbody .row-checkbox:checked').length || 0;
+        let bulkDeleteBtn = document.getElementById('bulkDeleteOrderBtn');
+
+        if (checkedCount > 0) {
+            if (!bulkDeleteBtn) {
+                bulkDeleteBtn = document.createElement('button');
+                bulkDeleteBtn.id = 'bulkDeleteOrderBtn';
+                bulkDeleteBtn.className = 'btn btn-danger';
+                bulkDeleteBtn.style.marginLeft = '8px';
+                const buttonGroup = document.querySelector('#salesContent .button-group');
+                if (buttonGroup) buttonGroup.appendChild(bulkDeleteBtn);
+            }
+            bulkDeleteBtn.textContent = `🗑️ ${checkedCount}개 삭제`;
+            bulkDeleteBtn.onclick = () => this.bulkDeleteOrders();
+        } else if (bulkDeleteBtn) {
+            bulkDeleteBtn.remove();
+        }
+    },
+
+    async bulkDeleteOrders() {
+        const table = document.querySelector('#ordersTable');
+        const checkedIds = Array.from(table.querySelectorAll('tbody .row-checkbox:checked'))
+            .map(cb => cb.dataset.id);
+
+        if (checkedIds.length === 0) return;
+        if (!(await window.Utils.confirm(`${checkedIds.length}개 주문과 관련된 모든 데이터(제조원가, 주문관리)가 삭제됩니다. 계속하시겠습니까?`))) return;
+
+        const batch = window.firebaseDb.batch();
+        const ordersCollection = window.firebaseDb.collection('sales').doc('orders').collection('items');
+
+        // 각 주문에 대해 삭제
+        for (const id of checkedIds) {
+            // 1. 매출 주문 삭제
+            batch.delete(ordersCollection.doc(id));
+
+            // 2. 해당 orderId를 가진 제조원가/주문관리 항목 찾아서 삭제
+            try {
+                const snap = await ordersCollection.where('orderId', '==', id).get();
+                snap.docs.forEach(doc => {
+                    batch.delete(doc.ref);
+                });
+            } catch (e) {
+                console.error('Failed to find related data:', e);
+            }
+        }
+
+        await batch.commit();
+        this.loadOrders();
+        window.Utils.showNotification(`${checkedIds.length}개 주문이 삭제되었습니다.`, 'success');
     },
 
     // CSV - 매출표 (날짜 등 복잡한 타입 제외하고 text 기반으로 처리)

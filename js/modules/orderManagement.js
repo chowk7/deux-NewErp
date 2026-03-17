@@ -72,7 +72,7 @@ window.OrderManagementModule = {
         this.STATUS_FIELDS.forEach(f => fieldMap[f.key] = f);
 
         if (this.items.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="${displayFieldKeys.length + 3}" style="text-align:center">데이터가 없습니다.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="${displayFieldKeys.length + 4}" style="text-align:center">데이터가 없습니다.</td></tr>`;
             return;
         }
 
@@ -101,7 +101,8 @@ window.OrderManagementModule = {
             }).join('');
 
             return `
-                <tr>
+                <tr data-id="${item.id}">
+                    <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${item.id}"></td>
                     <td>${item.orderNumber || item.orderId || '-'}</td>
                     ${cells}
                     <td>
@@ -125,12 +126,18 @@ window.OrderManagementModule = {
         // 테이블 헤더 업데이트
         const thead = table?.querySelector('thead tr');
         if (thead) {
+            const checkboxTh = document.createElement('th');
+            checkboxTh.style.textAlign = 'center';
+            checkboxTh.className = 'header-checkbox-th';
+            checkboxTh.innerHTML = '<input type="checkbox" class="header-checkbox">';
+
             const statusHeaders = displayFieldKeys.map(key => {
                 const field = fieldMap[key];
                 const label = field ? field.label.replace('여부', '') : key;
                 return `<th>${label}</th>`;
             }).join('');
             thead.innerHTML = '<th>주문번호</th>' + statusHeaders + '<th>첨부이미지</th><th>관리</th>';
+            thead.insertBefore(checkboxTh, thead.firstChild);
         }
 
         // Event delegation for action buttons
@@ -158,7 +165,66 @@ window.OrderManagementModule = {
                 }
             };
             table.addEventListener('click', this._tableHandler);
+
+            // 헤더 체크박스 이벤트
+            const headerCheckbox = table.querySelector('thead .header-checkbox');
+            if (headerCheckbox) {
+                headerCheckbox.addEventListener('change', (e) => {
+                    const allCheckboxes = table.querySelectorAll('tbody .row-checkbox');
+                    allCheckboxes.forEach(cb => cb.checked = e.target.checked);
+                    this.updateBulkDeleteBtn();
+                });
+            }
+
+            // 각 행의 체크박스 이벤트
+            const checkboxes = table.querySelectorAll('tbody .row-checkbox');
+            checkboxes.forEach(cb => {
+                cb.addEventListener('change', () => this.updateBulkDeleteBtn());
+            });
         }
+
+        this.updateBulkDeleteBtn();
+    },
+
+    updateBulkDeleteBtn() {
+        const table = document.querySelector('#orderManagementTable');
+        const checkedCount = table?.querySelectorAll('tbody .row-checkbox:checked').length || 0;
+        let bulkDeleteBtn = document.getElementById('bulkDeleteOrderMgmtBtn');
+
+        if (checkedCount > 0) {
+            if (!bulkDeleteBtn) {
+                bulkDeleteBtn = document.createElement('button');
+                bulkDeleteBtn.id = 'bulkDeleteOrderMgmtBtn';
+                bulkDeleteBtn.className = 'btn btn-danger';
+                bulkDeleteBtn.style.marginLeft = '8px';
+                const buttonGroup = document.querySelector('#orderManagementContent .button-group');
+                if (buttonGroup) buttonGroup.appendChild(bulkDeleteBtn);
+            }
+            bulkDeleteBtn.textContent = `🗑️ ${checkedCount}개 삭제`;
+            bulkDeleteBtn.onclick = () => this.bulkDelete();
+        } else if (bulkDeleteBtn) {
+            bulkDeleteBtn.remove();
+        }
+    },
+
+    async bulkDelete() {
+        const table = document.querySelector('#orderManagementTable');
+        const checkedIds = Array.from(table.querySelectorAll('tbody .row-checkbox:checked'))
+            .map(cb => cb.dataset.id);
+
+        if (checkedIds.length === 0) return;
+        if (!(await window.Utils.confirm(`${checkedIds.length}개 항목을 삭제하시겠습니까?`))) return;
+
+        const batch = window.firebaseDb.batch();
+        const collection = window.firebaseDb.collection('sales').doc('orders').collection('items');
+
+        for (const id of checkedIds) {
+            batch.delete(collection.doc(id));
+        }
+
+        await batch.commit();
+        this.load();
+        window.Utils.showNotification(`${checkedIds.length}개 항목이 삭제되었습니다.`, 'success');
     },
 
     showForm(itemId = null) {
