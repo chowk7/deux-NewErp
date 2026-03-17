@@ -8,6 +8,7 @@ window.CustomerManagementModule = {
         { key: 'customerName',    label: '고객명',        type: 'text',     defaultRequired: true  },
         { key: 'email',           label: '이메일',        type: 'email',    defaultRequired: false },
         { key: 'phone',           label: '전화번호',      type: 'text',     defaultRequired: false },
+        { key: 'postalCode',      label: '우편번호',      type: 'text',     defaultRequired: false },
         { key: 'address',         label: '주소',          type: 'text',     defaultRequired: false },
         { key: 'addressDetail',   label: '주소상세',      type: 'text',     defaultRequired: false },
         { key: 'ownMallSignup',   label: '자사몰가입여부', type: 'checkbox', defaultRequired: false },

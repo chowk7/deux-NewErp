@@ -8,6 +8,7 @@ window.SalesManagementModule = {
         { key: 'orderDate',       label: '주문일',       type: 'date',   defaultRequired: true  },
         { key: 'orderNumber',     label: '주문번호',      type: 'text',   defaultRequired: true  },
         { key: 'customerName',    label: '고객명',        type: 'text',   defaultRequired: true  },
+        { key: 'postalCode',      label: '우편번호',      type: 'text',   defaultRequired: false },
         { key: 'productName',     label: '상품명',        type: 'text',   defaultRequired: true  },
         { key: 'optionName',      label: '옵션명',        type: 'text',   defaultRequired: false },
         { key: 'remark',          label: '기타',          type: 'text',   defaultRequired: false },
@@ -269,6 +270,12 @@ window.SalesManagementModule = {
                     input = `<select name="${f.key}" ${isRequired ? 'required' : ''}>
                                 <option value="">선택</option>${opts}
                              </select>`;
+                } else if (f.key === 'size') {
+                    // 사이즈: 예시 표시
+                    input = `<input type="${f.type}" name="${f.key}" value="${val}"
+                                placeholder="예) 13호, S, M, L"
+                                step="${f.type === 'number' ? '0.01' : ''}"
+                                ${isRequired ? 'required' : ''}>`;
                 } else {
                     input = `<input type="${f.type}" name="${f.key}" value="${val}"
                                 step="${f.type === 'number' ? '0.01' : ''}"
@@ -354,12 +361,78 @@ window.SalesManagementModule = {
         // 고객명 드롭다운 처리
         const customerSelect = wrapper.querySelector('[name="customerName"]');
         if (customerSelect) {
-            customerSelect.addEventListener('change', (e) => {
+            customerSelect.addEventListener('change', async (e) => {
                 if (e.target.value === '+ 신규 고객' || (e.target.selectedIndex === 0 && customerOptions.length > 0)) {
-                    const name = prompt('새 고객명을 입력하세요:');
-                    if (name) {
-                        e.target.value = name;
-                    }
+                    // 신규 고객 정보 입력 모달
+                    const customerBody = `
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>고객명 <span style="color:red">*</span></label>
+                                <input type="text" name="newCustomerName" required>
+                            </div>
+                            <div class="form-group">
+                                <label>이메일</label>
+                                <input type="email" name="newCustomerEmail">
+                            </div>
+                            <div class="form-group">
+                                <label>전화번호</label>
+                                <input type="text" name="newCustomerPhone">
+                            </div>
+                            <div class="form-group">
+                                <label>우편번호</label>
+                                <input type="text" name="newCustomerPostalCode">
+                            </div>
+                            <div class="form-group">
+                                <label>주소</label>
+                                <input type="text" name="newCustomerAddress">
+                            </div>
+                            <div class="form-group">
+                                <label>주소상세</label>
+                                <input type="text" name="newCustomerAddressDetail">
+                            </div>
+                            <div class="form-group" style="flex-direction:row;align-items:center;gap:10px;">
+                                <input type="checkbox" name="newCustomerSignup" id="newCustomerSignup">
+                                <label for="newCustomerSignup" style="margin:0;">자사몰가입여부</label>
+                            </div>
+                        </div>
+                    `;
+
+                    const customerModal = window.Utils.openModal(
+                        '신규 고객 정보 입력',
+                        customerBody,
+                        async (data, modal) => {
+                            const customerId = `CUST_${Date.now()}`;
+                            const customerData = {
+                                id: customerId,
+                                customerName: data.newCustomerName,
+                                email: data.newCustomerEmail || '',
+                                phone: data.newCustomerPhone || '',
+                                postalCode: data.newCustomerPostalCode || '',
+                                address: data.newCustomerAddress || '',
+                                addressDetail: data.newCustomerAddressDetail || '',
+                                ownMallSignup: !!data.newCustomerSignup,
+                                createdAt: new Date(),
+                                updatedAt: new Date()
+                            };
+
+                            // 고객목록에 저장
+                            await window.firebaseDb
+                                .collection('sales').doc('customers').collection('items').doc(customerId)
+                                .set(customerData);
+
+                            modal.remove();
+
+                            // 원래 폼의 고객명 필드에 자동 설정
+                            e.target.value = data.newCustomerName;
+
+                            // 우편번호 필드에도 자동 설정
+                            const postalCodeInput = wrapper.querySelector('[name="postalCode"]');
+                            if (postalCodeInput && data.newCustomerPostalCode) {
+                                postalCodeInput.value = data.newCustomerPostalCode;
+                            }
+                        },
+                        '저장'
+                    );
                 }
             });
         }
