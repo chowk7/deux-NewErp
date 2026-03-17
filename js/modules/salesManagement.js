@@ -13,7 +13,7 @@ window.SalesManagementModule = {
         { key: 'optionName',      label: '옵션명',        type: 'text',   defaultRequired: false },
         { key: 'remark',          label: '기타',          type: 'text',   defaultRequired: false },
         { key: 'category',        label: '종류',          type: 'select', defaultRequired: false,
-          options: ['반지','목걸이','팔찌','귀걸이','브로치','기타'] },
+          options: ['R(반지)','N(목걸이)','B(팔찌)','E(귀걸이)'] },
         { key: 'productCode',     label: '상품코드',      type: 'text',   defaultRequired: false },
         { key: 'length',          label: '길이(cm)',      type: 'number', defaultRequired: false },
         { key: 'color',           label: '색상',          type: 'select', defaultRequired: false,
@@ -38,8 +38,6 @@ window.SalesManagementModule = {
         { key: 'phone',           label: '연락처',        type: 'text',   defaultRequired: false },
         { key: 'address',         label: '주소',          type: 'text',   defaultRequired: false },
         { key: 'addressDetail',   label: '주소상세',      type: 'text',   defaultRequired: false },
-        { key: 'salesYear',       label: '판매년',        type: 'number', defaultRequired: false },
-        { key: 'salesMonth',      label: '판매월',        type: 'number', defaultRequired: false },
     ],
 
     orders: [],
@@ -191,32 +189,47 @@ window.SalesManagementModule = {
         // 테이블 헤더 업데이트
         const thead = table?.querySelector('thead tr');
         if (thead) {
+            // 기존 모든 th 제거
+            Array.from(thead.querySelectorAll('th')).forEach(th => th.remove());
+
+            // 체크박스 헤더 생성
             const checkboxTh = document.createElement('th');
             checkboxTh.style.textAlign = 'center';
             checkboxTh.className = 'header-checkbox-th';
             checkboxTh.innerHTML = '<input type="checkbox" class="header-checkbox">';
+            thead.appendChild(checkboxTh);
 
-            if (thead.firstChild?.className === 'header-checkbox-th') {
-                thead.firstChild.remove();
-            }
-
-            thead.innerHTML = displayFieldKeys.map(key => {
+            // 필드 헤더 생성
+            displayFieldKeys.forEach(key => {
                 const field = fieldMap[key];
+                const th = document.createElement('th');
                 const label = field ? field.label : key;
                 const isSorted = this.orderSortState.column === key;
                 const arrow = isSorted ? (this.orderSortState.direction === 'asc' ? ' ▲' : ' ▼') : '';
-                return `<th data-column="${key}" style="cursor:pointer; user-select:none;">${label}${arrow}</th>`;
-            }).join('') + '<th>관리</th>';
-
-            thead.insertBefore(checkboxTh, thead.firstChild);
-
-            // 헤더 정렬 이벤트
-            thead.querySelectorAll('th[data-column]').forEach(th => {
+                th.textContent = label + arrow;
+                th.setAttribute('data-column', key);
+                th.style.cursor = 'pointer';
+                th.style.userSelect = 'none';
                 th.addEventListener('click', (e) => {
                     const column = e.target.dataset.column;
                     this.sortOrders(column);
                 });
+                thead.appendChild(th);
             });
+
+            // 관리 헤더 생성
+            const manageTh = document.createElement('th');
+            manageTh.textContent = '관리';
+            thead.appendChild(manageTh);
+
+            // 헤더 체크박스 이벤트
+            const headerCheckbox = checkboxTh.querySelector('.header-checkbox');
+            if (headerCheckbox) {
+                headerCheckbox.addEventListener('change', (e) => {
+                    const allCheckboxes = table.querySelectorAll('tbody .row-checkbox');
+                    allCheckboxes.forEach(cb => cb.checked = e.target.checked);
+                });
+            }
         }
 
         // Event delegation for action buttons
@@ -232,16 +245,6 @@ window.SalesManagementModule = {
                 }
             };
             table.addEventListener('click', this._tableHandler);
-
-            // 헤더 체크박스 이벤트
-            const headerCheckbox = table.querySelector('thead .header-checkbox');
-            if (headerCheckbox) {
-                headerCheckbox.addEventListener('change', (e) => {
-                    const allCheckboxes = table.querySelectorAll('tbody .row-checkbox');
-                    allCheckboxes.forEach(cb => cb.checked = e.target.checked);
-                    this.updateOrderBulkDeleteBtn();
-                });
-            }
 
             // 각 행의 체크박스 이벤트
             const checkboxes = table.querySelectorAll('tbody .row-checkbox');
@@ -368,7 +371,31 @@ window.SalesManagementModule = {
                         <label>${f.label}${isRequired ? ' <span style="color:red">*</span>' : ''}</label>
                         ${input}
                     </div>`;
-            }).join('') + `</div>`;
+            }).join('') + `
+            <div style="grid-column:1/-1; border-top:1px solid #e5e7eb; padding-top:16px; margin-top:16px;">
+                <p style="font-weight:600;margin-bottom:12px;">영수증/주문서 이미지 첨부</p>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                    <div class="form-group">
+                        <label>영수증 이미지 (여러 개 가능)</label>
+                        <input type="file" name="img_salesReceipt" accept="image/*" multiple
+                            style="font-size:0.875rem;">
+                        ${order?.salesReceiptImages ? `<div style="margin-top:8px;">
+                            <p style="font-size:0.8rem;color:#6b7280;margin:4px 0;">저장된 이미지:</p>
+                            <div id="receipt-images-display" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+                        </div>` : ''}
+                    </div>
+                    <div class="form-group">
+                        <label>주문서 이미지 (여러 개 가능)</label>
+                        <input type="file" name="img_orderSheet" accept="image/*" multiple
+                            style="font-size:0.875rem;">
+                        ${order?.orderSheetImages ? `<div style="margin-top:8px;">
+                            <p style="font-size:0.8rem;color:#6b7280;margin:4px 0;">저장된 이미지:</p>
+                            <div id="order-images-display" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+                        </div>` : ''}
+                    </div>
+                </div>
+            </div>
+        </div>`;
 
         const wrapper = window.Utils.openModal(
             orderId ? '주문 수정' : '주문 추가',
@@ -377,10 +404,6 @@ window.SalesManagementModule = {
                 // 날짜 변환
                 if (data.orderDate) {
                     data.orderDate = firebase.firestore.Timestamp.fromDate(new Date(data.orderDate));
-                    // 판매년/월 자동 추출
-                    const date = new Date(data.orderDate.toDate ? data.orderDate.toDate() : data.orderDate);
-                    data.salesYear = date.getFullYear();
-                    data.salesMonth = date.getMonth() + 1;
                 }
 
                 // 상품명에서 제품코드 자동 매칭
@@ -395,7 +418,7 @@ window.SalesManagementModule = {
                         const codeChars = data.productCode.match(/[A-Za-z]/g);
                         if (codeChars && codeChars.length >= 3) {
                             const categoryChar = codeChars[2];
-                            const categoryMap = { 'E': '귀걸이', 'R': '반지', 'N': '목걸이', 'B': '팔찌' };
+                            const categoryMap = { 'E': 'E(귀걸이)', 'R': 'R(반지)', 'N': 'N(목걸이)', 'B': 'B(팔찌)' };
                             data.category = categoryMap[categoryChar] || '';
                         }
                     }
@@ -421,7 +444,7 @@ window.SalesManagementModule = {
                 });
 
                 // 귀걸이(E)가 아니면 뒷침 제거
-                if (data.category !== '귀걸이') {
+                if (data.category !== 'E(귀걸이)') {
                     data.backSupport = '';
                 }
 
@@ -601,15 +624,16 @@ window.SalesManagementModule = {
                         const codeChars = product.code.match(/[A-Za-z]/g);
                         if (codeChars && codeChars.length >= 3) {
                             const categoryChar = codeChars[2];
-                            const categoryMap = { 'E': '귀걸이', 'R': '반지', 'N': '목걸이', 'B': '팔찌' };
+                            const categoryMap = { 'E': 'E(귀걸이)', 'R': 'R(반지)', 'N': 'N(목걸이)', 'B': 'B(팔찌)' };
                             const category = categoryMap[categoryChar] || '';
                             const categorySelect = wrapper.querySelector('[name="category"]');
                             if (categorySelect) categorySelect.value = category;
 
                             // 귀걸이면 뒷침 표시, 아니면 숨김
+                            const isEarring = categoryChar === 'E';
                             const backSupportGroup = wrapper.querySelector('[name="backSupport"]')?.parentElement?.parentElement;
                             if (backSupportGroup) {
-                                backSupportGroup.style.display = category === '귀걸이' ? '' : 'none';
+                                backSupportGroup.style.display = isEarring ? '' : 'none';
                             }
                         }
                     }

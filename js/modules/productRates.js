@@ -212,7 +212,8 @@ window.ProductRatesModule = {
                 theadRow.querySelectorAll('th').forEach((th, idx) => {
                     if (idx > 0 && idx < columns.length + 1) { // 체크박스 제외, 관리 제외
                         const column = columns[idx - 1];
-                        const label = th.textContent.trim();
+                        // 기존 화살표 제거
+                        const label = th.textContent.trim().replace(/\s*[▲▼]\s*$/, '');
                         const isSorted = this.sortState.column === column;
                         const arrow = isSorted ? (this.sortState.direction === 'asc' ? ' ▲' : ' ▼') : '';
                         th.textContent = label + arrow;
