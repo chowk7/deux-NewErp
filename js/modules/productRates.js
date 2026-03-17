@@ -12,9 +12,12 @@ window.ProductRatesModule = {
         { key: 'productName',     label: '상품명',          type: 'text',   calc: false },
         { key: 'size',            label: '사이즈',          type: 'text',   calc: false },
         { key: 'sizeAddFee',      label: '사이즈추가금',    type: 'number', calc: false },
+        { key: 'stoneType',       label: '나석 종류',       type: 'select', calc: false, options: [] },
         { key: 'stoneQty',        label: '나석갯수',        type: 'number', calc: false },
+        { key: 'stoneCost',       label: '나석원가',        type: 'number', calc: true },
+        { key: 'stoneWarranty',   label: '보증서',         type: 'select', calc: false, options: ['없음', 'VS', 'VVS'] },
+        { key: 'stoneWarrantyFee',label: '보증서추가금',    type: 'number', calc: true },
         { key: 'workshop',        label: '공방',            type: 'text',   calc: false },
-        { key: 'stoneCost',       label: '나석원가',        type: 'number', calc: false },
         { key: 'laborCost',       label: '공임비',          type: 'number', calc: false },
         { key: 'goldWeight14k',   label: '금중량(14K기준g)', type: 'number', calc: false },
         { key: 'goldValue',       label: '금값',            type: 'number', calc: true },
@@ -45,8 +48,16 @@ window.ProductRatesModule = {
 
     products: [],
     settings: {},
+    diamondRates: [],
 
     async init() {
+        // 나석단가표 로드 및 드롭다운 옵션 설정
+        await this.loadDiamondRates();
+        const stoneTypeField = this.FIELDS.find(f => f.key === 'stoneType');
+        if (stoneTypeField && this.diamondRates) {
+            stoneTypeField.options = this.diamondRates.map(d => d.diamondType);
+        }
+
         document.getElementById('addProductRateBtn')
             ?.addEventListener('click', () => this.showForm());
 
@@ -68,6 +79,17 @@ window.ProductRatesModule = {
     openDisplaySettings() {
         window.Utils.openDisplayFieldsModal('productRates', this.FIELDS,
             () => this.load());
+    },
+
+    async loadDiamondRates() {
+        try {
+            const snap = await window.firebaseDb
+                .collection('prices').doc('diamondRates').collection('items').get();
+            this.diamondRates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        } catch (e) {
+            console.error('Failed to load diamond rates:', e);
+            this.diamondRates = [];
+        }
     },
 
     async load() {
@@ -134,14 +156,36 @@ window.ProductRatesModule = {
 
         const n = k => parseFloat(data[k]) || 0;
 
+        // === 나석 가격 계산 ===
+        const stoneTypeName = data['stoneType'];
+        const stoneQty = n('stoneQty');
+        const stoneWarranty = data['stoneWarranty'] || '없음';
+
+        const selectedStone = this.diamondRates?.find(d => d.diamondType === stoneTypeName);
+        const baseStonePrice = selectedStone ? parseFloat(selectedStone.costWithVat) || 0 : 0;
+        const stoneCost = baseStonePrice * stoneQty;
+
+        // 보증서 추가금 계산
+        let stoneWarrantyFee = 0;
+        if (selectedStone && stoneWarranty && stoneWarranty !== '없음') {
+            if (stoneWarranty === 'VS') {
+                stoneWarrantyFee = parseFloat(selectedStone.vsWarrantyFee) || 0;
+            } else if (stoneWarranty === 'VVS') {
+                stoneWarrantyFee = parseFloat(selectedStone.vvsWarrantyFee) || 0;
+            }
+        }
+
+        // 원가에 포함될 보증서 추가금 (80% 적용)
+        const stoneWarrantyCostComponent = stoneWarrantyFee * 0.8;
+
         // 14K 계산
         const goldValue   = n('goldWeight14k') * goldPrice * (14/24);
-        const productCost = n('stoneCost') + n('laborCost') + goldValue + n('otherMaterial');
+        const productCost = stoneCost + n('laborCost') + goldValue + n('otherMaterial') + stoneWarrantyCostComponent;
         const vatCost     = productCost * 1.1;
         const salesCost   = vatCost + n('shipping');
         const marginPrice = ownMargin > 0 ? salesCost / (1 - ownMargin / 100) : salesCost;
         const expectedPrice = marginPrice + n('priceAdj');
-        const finalPrice  = (n('finalPrice') || Math.ceil(expectedPrice / 1000) * 1000) + n('sizeAddFee');
+        const finalPrice  = (n('finalPrice') || Math.ceil(expectedPrice / 1000) * 1000) + n('sizeAddFee') + stoneWarrantyFee;
         const discountPrice = finalPrice * (1 - n('discountRate') / 100);
         const ownMallProfit = discountPrice * (1 - ownMallFee / 100) - vatCost;
         const ownMallProfitRate = discountPrice > 0 ? (ownMallProfit / discountPrice) * 100 : 0;
@@ -151,11 +195,11 @@ window.ProductRatesModule = {
         // 18K 계산
         const goldWeight18k = n('goldWeight14k') * weight18kRate;
         const goldValue18k  = goldWeight18k * goldPrice * (18/24);
-        const productCost18k= n('stoneCost') + n('laborCost') + goldValue18k + n('otherMaterial');
+        const productCost18k= stoneCost + n('laborCost') + goldValue18k + n('otherMaterial') + stoneWarrantyCostComponent;
         const vatCost18k    = productCost18k * 1.1;
         const salesCost18k  = vatCost18k + n('shipping');
         const marginPrice18k= ownMargin > 0 ? salesCost18k / (1 - ownMargin / 100) : salesCost18k;
-        const finalPrice18k = (n('finalPrice18k') || Math.ceil(marginPrice18k / 1000) * 1000) + n('sizeAddFee');
+        const finalPrice18k = (n('finalPrice18k') || Math.ceil(marginPrice18k / 1000) * 1000) + n('sizeAddFee') + stoneWarrantyFee;
         const discountPrice18k = finalPrice18k * (1 - n('discountRate') / 100);
         const ownMallProfit18k = discountPrice18k * (1 - ownMallFee / 100) - vatCost18k;
         const ownMallProfitRate18k = discountPrice18k > 0 ? (ownMallProfit18k / discountPrice18k) * 100 : 0;
@@ -163,6 +207,7 @@ window.ProductRatesModule = {
         const deptProfitRate18k = deptPrice18k > 0 ? ((deptPrice18k - vatCost18k) / deptPrice18k) * 100 : 0;
 
         return { ...data, goldValue, productCost, vatCost, salesCost, marginPrice, expectedPrice,
+            stoneCost, stoneWarrantyFee,
             finalPrice, discountPrice, ownMallProfit, ownMallProfitRate, deptPrice, deptProfitRate,
             goldValue18k, marginPrice18k, finalPrice18k, discountPrice18k,
             ownMallProfit18k, ownMallProfitRate18k, deptPrice18k, deptProfitRate18k };
@@ -220,7 +265,7 @@ window.ProductRatesModule = {
         );
 
         // 입력 시 실시간 계산 미리보기
-        wrapper.querySelector('#modalForm').addEventListener('input', () => {
+        const updateCalculatedFields = () => {
             const fd = new FormData(wrapper.querySelector('#modalForm'));
             const data = Object.fromEntries(fd);
             const calc = this.calculate(data);
@@ -230,7 +275,11 @@ window.ProductRatesModule = {
                     ? calc[f.key]
                     : parseFloat(calc[f.key] || 0).toFixed(2);
             });
-        });
+        };
+
+        // input, change 이벤트 모두 반영 (select, number input 모두 지원)
+        wrapper.querySelector('#modalForm').addEventListener('input', updateCalculatedFields);
+        wrapper.querySelector('#modalForm').addEventListener('change', updateCalculatedFields);
     },
 
     async delete(id) {
