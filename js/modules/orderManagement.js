@@ -49,22 +49,10 @@ window.OrderManagementModule = {
 
         const allItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-        // orderId가 없는 항목 = 매출 정보
-        const orders = allItems.filter(item => !item.orderId);
-        // orderId가 있는 항목 = 주문관리 정보
-        this.items = allItems.filter(item => item.orderId);
-
-        // 주문관리에 매출 정보 조인
-        this.items = this.items.map(item => {
-            const order = orders.find(o => o.id === item.orderId);
-            return {
-                ...item,
-                customerName: order?.customerName || '-',
-                productName: order?.productName || '-',
-                orderDate: order?.orderDate || null,
-                orderNumber: order?.orderNumber || item.orderId
-            };
-        });
+        // Phase 3-3: 모든 항목을 주문관리로 표시 (orderId 필터링 제거)
+        // 이전: orderId가 있는 항목만 = 주문관리
+        // 현재: 모든 항목에 주문관리 필드 포함
+        this.items = allItems;
 
         this.renderTable();
     },

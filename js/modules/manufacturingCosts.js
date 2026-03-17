@@ -97,22 +97,10 @@ window.ManufacturingCostsModule = {
 
         const allItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-        // orderId가 없는 항목 = 매출 정보
-        const orders = allItems.filter(item => !item.orderId);
-        // orderId가 있는 항목 = 제조원가 정보
-        this.costs = allItems.filter(item => item.orderId);
-
-        // 제조원가에 매출 정보 조인
-        this.costs = this.costs.map(cost => {
-            const order = orders.find(o => o.id === cost.orderId);
-            return {
-                ...cost,
-                customerName: order?.customerName || '-',
-                productName: order?.productName || '-',
-                orderDate: order?.orderDate || null,
-                orderNumber: order?.orderNumber || cost.orderId
-            };
-        });
+        // Phase 3-3: 모든 항목을 제조원가로 표시 (orderId 필터링 제거)
+        // 이전: orderId가 있는 항목만 = 제조원가
+        // 현재: 모든 항목에 제조원가 필드 포함
+        this.costs = allItems;
 
         this.renderTable();
     },

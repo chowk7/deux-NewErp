@@ -430,9 +430,54 @@ window.SalesManagementModule = {
                         .collection('sales').doc('orders').collection('items').doc(orderId)
                         .update({ ...data, updatedAt: new Date() });
                 } else {
+                    // Phase 3-3: 매출 저장 시 제조원가/주문관리 기본값도 함께 저장
+                    const fullData = {
+                        ...data,
+                        // 제조원가 기본값
+                        productWeight: 0,
+                        stoneWeight: 0,
+                        goldWeight14k: 0,
+                        goldWeightPure: 0,
+                        goldMarketPrice: 0,
+                        goldValue: 0,
+                        settingCost: 0,
+                        laborCost: 0,
+                        platingCost: 0,
+                        stoneCostManual: 0,
+                        stoneCostRef: 0,
+                        otherCost: 0,
+                        manufacturingCost: 0,
+                        productionMonth: '',
+                        salesProfit: 0,
+                        salesProfitRate: 0,
+                        // 나석 10개 필드
+                        ...Array.from({length: 10}, (_, i) => ({
+                            [`stoneType${i+1}`]: '',
+                            [`stoneQty${i+1}`]: 0,
+                            [`stoneCert${i+1}`]: '',
+                            [`stonePrice${i+1}`]: 0
+                        })).reduce((acc, obj) => ({...acc, ...obj}), {}),
+                        // 주문관리 기본값
+                        stoneRequestDate: null,
+                        stoneCertificationDate: null,
+                        workshopRequestDate: null,
+                        workshopDeliveryDate: null,
+                        completionDate: null,
+                        shippingReadyDate: null,
+                        stoneRequested: false,
+                        workshopRequested: false,
+                        productionComplete: false,
+                        shippingReady: false,
+                        delivered: false,
+                        deliveryRemarks: '',
+                        // 시스템 필드
+                        createdAt: new Date(),
+                        updatedAt: new Date()
+                    };
+
                     await window.firebaseDb
                         .collection('sales').doc('orders').collection('items')
-                        .add({ ...data, createdAt: new Date(), updatedAt: new Date() });
+                        .add(fullData);
                 }
                 w.remove();
                 this.loadOrders();
