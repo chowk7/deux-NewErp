@@ -984,6 +984,13 @@ window.SalesManagementModule = {
     },
 
     async printOrders() {
+        // html2canvas 라이브러리 로드 확인
+        if (typeof html2canvas === 'undefined') {
+            window.Utils.showNotification('라이브러리를 로드하는 중입니다. 잠시 후 다시 시도해주세요.', 'warning');
+            console.error('html2canvas is not loaded');
+            return;
+        }
+
         const table = document.querySelector('#ordersTable');
         const checkedIds = Array.from(table.querySelectorAll('tbody .row-checkbox:checked'))
             .map(cb => cb.dataset.id);
