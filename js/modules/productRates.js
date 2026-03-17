@@ -48,6 +48,7 @@ window.ProductRatesModule = {
     products: [],
     settings: {},
     diamondRates: [],
+    sortState: { column: null, direction: 'asc' },
 
     async init() {
         // 나석단가표 로드 및 드롭다운 옵션 설정
@@ -104,6 +105,53 @@ window.ProductRatesModule = {
             .collection('prices').doc('productRates').collection('items')
             .orderBy('createdAt', 'desc').get();
         this.products = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        this.sortState = { column: null, direction: 'asc' };
+        this.renderTable();
+    },
+
+    sortProducts(column) {
+        // 같은 컬럼 클릭 시 방향 전환, 다른 컬럼 클릭 시 asc로 정렬
+        if (this.sortState.column === column) {
+            this.sortState.direction = this.sortState.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+            this.sortState.column = column;
+            this.sortState.direction = 'asc';
+        }
+
+        // 데이터 정렬
+        this.products.sort((a, b) => {
+            let aVal = a[column];
+            let bVal = b[column];
+
+            // Firestore Timestamp 처리
+            if (aVal?.toDate) aVal = aVal.toDate();
+            if (bVal?.toDate) bVal = bVal.toDate();
+
+            // null/undefined 처리
+            if (aVal == null && bVal == null) return 0;
+            if (aVal == null) return 1;
+            if (bVal == null) return -1;
+
+            // 숫자 비교
+            if (typeof aVal === 'number' && typeof bVal === 'number') {
+                return this.sortState.direction === 'asc' ? aVal - bVal : bVal - aVal;
+            }
+
+            // 날짜 비교
+            if (aVal instanceof Date && bVal instanceof Date) {
+                return this.sortState.direction === 'asc' ? aVal - bVal : bVal - aVal;
+            }
+
+            // 문자열 비교
+            const aStr = String(aVal).toLowerCase();
+            const bStr = String(bVal).toLowerCase();
+            if (this.sortState.direction === 'asc') {
+                return aStr.localeCompare(bStr, 'ko-KR');
+            } else {
+                return bStr.localeCompare(aStr, 'ko-KR');
+            }
+        });
+
         this.renderTable();
     },
 
@@ -146,6 +194,35 @@ window.ProductRatesModule = {
                 }
             };
             table.addEventListener('click', this._tableHandler);
+
+            // 테이블 헤더 정렬 기능 추가
+            const theadRow = table.querySelector('thead tr');
+            if (theadRow) {
+                // 기존 클릭 이벤트 제거
+                const thElements = theadRow.querySelectorAll('th');
+                thElements.forEach(th => {
+                    if (th.dataset.column) {
+                        const newTh = th.cloneNode(true);
+                        th.parentNode.replaceChild(newTh, th);
+                    }
+                });
+
+                // 새로운 클릭 이벤트 추가
+                const columns = ['ownCode', 'productCode', 'productName', 'category', 'productCost', 'finalPrice', 'ownMallProfitRate'];
+                theadRow.querySelectorAll('th').forEach((th, idx) => {
+                    if (idx > 0 && idx < columns.length + 1) { // 체크박스 제외, 관리 제외
+                        const column = columns[idx - 1];
+                        const label = th.textContent.trim();
+                        const isSorted = this.sortState.column === column;
+                        const arrow = isSorted ? (this.sortState.direction === 'asc' ? ' ▲' : ' ▼') : '';
+                        th.textContent = label + arrow;
+                        th.setAttribute('data-column', column);
+                        th.style.cursor = 'pointer';
+                        th.style.userSelect = 'none';
+                        th.addEventListener('click', () => this.sortProducts(column));
+                    }
+                });
+            }
 
             // 테이블 헤더에 체크박스 추가
             const thead = table?.querySelector('thead tr');

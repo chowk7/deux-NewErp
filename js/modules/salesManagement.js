@@ -45,6 +45,7 @@ window.SalesManagementModule = {
     orders: [],
     orderRequired: [],
     pageSize: 50,
+    orderSortState: { column: null, direction: 'asc' },
 
     async init() {
         this.setupEventListeners();
@@ -84,6 +85,53 @@ window.SalesManagementModule = {
             .orderBy('createdAt', 'desc').limit(this.pageSize).get();
 
         this.orders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        this.orderSortState = { column: null, direction: 'asc' };
+        this.renderOrdersTable();
+    },
+
+    sortOrders(column) {
+        // 같은 컬럼 클릭 시 방향 전환, 다른 컬럼 클릭 시 asc로 정렬
+        if (this.orderSortState.column === column) {
+            this.orderSortState.direction = this.orderSortState.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+            this.orderSortState.column = column;
+            this.orderSortState.direction = 'asc';
+        }
+
+        // 데이터 정렬
+        this.orders.sort((a, b) => {
+            let aVal = a[column];
+            let bVal = b[column];
+
+            // Firestore Timestamp 처리
+            if (aVal?.toDate) aVal = aVal.toDate();
+            if (bVal?.toDate) bVal = bVal.toDate();
+
+            // null/undefined 처리
+            if (aVal == null && bVal == null) return 0;
+            if (aVal == null) return 1;
+            if (bVal == null) return -1;
+
+            // 숫자 비교
+            if (typeof aVal === 'number' && typeof bVal === 'number') {
+                return this.orderSortState.direction === 'asc' ? aVal - bVal : bVal - aVal;
+            }
+
+            // 날짜 비교
+            if (aVal instanceof Date && bVal instanceof Date) {
+                return this.orderSortState.direction === 'asc' ? aVal - bVal : bVal - aVal;
+            }
+
+            // 문자열 비교
+            const aStr = String(aVal).toLowerCase();
+            const bStr = String(bVal).toLowerCase();
+            if (this.orderSortState.direction === 'asc') {
+                return aStr.localeCompare(bStr, 'ko-KR');
+            } else {
+                return bStr.localeCompare(aStr, 'ko-KR');
+            }
+        });
+
         this.renderOrdersTable();
     },
 
@@ -154,10 +202,21 @@ window.SalesManagementModule = {
 
             thead.innerHTML = displayFieldKeys.map(key => {
                 const field = fieldMap[key];
-                return `<th>${field ? field.label : key}</th>`;
+                const label = field ? field.label : key;
+                const isSorted = this.orderSortState.column === key;
+                const arrow = isSorted ? (this.orderSortState.direction === 'asc' ? ' ▲' : ' ▼') : '';
+                return `<th data-column="${key}" style="cursor:pointer; user-select:none;">${label}${arrow}</th>`;
             }).join('') + '<th>관리</th>';
 
             thead.insertBefore(checkboxTh, thead.firstChild);
+
+            // 헤더 정렬 이벤트
+            thead.querySelectorAll('th[data-column]').forEach(th => {
+                th.addEventListener('click', (e) => {
+                    const column = e.target.dataset.column;
+                    this.sortOrders(column);
+                });
+            });
         }
 
         // Event delegation for action buttons
