@@ -87,9 +87,19 @@ window.AdminExpensesModule = {
             tbody.innerHTML = `<tr><td colspan="8" style="text-align:center">데이터가 없습니다.</td></tr>`;
             return;
         }
-        tbody.innerHTML = this.expenses.map(e => `
+        tbody.innerHTML = this.expenses.map(e => {
+            // date를 포맷팅
+            let dateStr = '-';
+            if (e.date) {
+                if (e.date.toDate) {
+                    dateStr = new Date(e.date.toDate()).toLocaleDateString('ko-KR');
+                } else if (typeof e.date === 'string') {
+                    dateStr = new Date(e.date).toLocaleDateString('ko-KR');
+                }
+            }
+            return `
             <tr>
-                <td>${e.date || '-'}</td>
+                <td>${dateStr}</td>
                 <td><span class="badge">${e.accountType || '-'}</span></td>
                 <td>${e.description || '-'}</td>
                 <td>${e.vendor || '-'}</td>
@@ -102,7 +112,8 @@ window.AdminExpensesModule = {
                     <button class="btn btn-sm btn-danger"
                         data-action="delete" data-id="${e.id}">삭제</button>
                 </td>
-            </tr>`).join('');
+            </tr>`;
+        }).join('');
 
         // Event delegation for action buttons
         const table = document.querySelector('#adminExpensesTable');
@@ -178,7 +189,16 @@ window.AdminExpensesModule = {
         window.Utils.openModal(
             expId ? '판관비 수정' : '판관비 추가', body,
             async (data, w) => {
+                // 데이터 정규화
                 data.amount = parseFloat(data.amount) || 0;
+                data.expenseYear = String(data.expenseYear || new Date().getFullYear());
+                data.expenseMonth = String(data.expenseMonth || String(new Date().getMonth() + 1).padStart(2,'0')).padStart(2,'0');
+
+                // date를 Firestore Timestamp로 변환
+                if (data.date && typeof data.date === 'string') {
+                    data.date = firebase.firestore.Timestamp.fromDate(new Date(data.date));
+                }
+
                 if (expId) {
                     await window.firebaseDb.collection('sales').doc('adminExpenses')
                         .collection('items').doc(expId)
@@ -207,11 +227,19 @@ window.AdminExpensesModule = {
             const batch = window.firebaseDb.batch();
             rows.forEach(r => {
                 r.amount = parseFloat(r.amount) || 0;
+                r.expenseYear = String(r.expenseYear || new Date().getFullYear());
+                r.expenseMonth = String(r.expenseMonth || String(new Date().getMonth() + 1).padStart(2,'0')).padStart(2,'0');
+
+                // date를 Firestore Timestamp로 변환
+                if (r.date && typeof r.date === 'string') {
+                    r.date = firebase.firestore.Timestamp.fromDate(new Date(r.date));
+                }
+
                 const ref = window.firebaseDb.collection('sales').doc('adminExpenses').collection('items').doc();
                 batch.set(ref, { ...r, createdAt: new Date(), updatedAt: new Date() });
             });
             await batch.commit();
-            alert(`${rows.length}개 항목 저장 완료`);
+            window.Utils.showNotification(`${rows.length}개 항목이 저장되었습니다.`, 'success');
             this.load();
         });
     },

@@ -20,6 +20,7 @@ window.CustomerManagementModule = {
 
     async init() {
         this.setupEventListeners();
+        await this.loadCustomers();
     },
 
     setupEventListeners() {
@@ -110,21 +111,36 @@ window.CustomerManagementModule = {
         // 테이블 헤더 업데이트
         const thead = table?.querySelector('thead tr');
         if (thead) {
+            // 기존 체크박스 헤더 제거
+            const existingCheckboxTh = thead.querySelector('.header-checkbox-th');
+            if (existingCheckboxTh) {
+                existingCheckboxTh.remove();
+            }
+
+            // 체크박스 헤더 생성
             const checkboxTh = document.createElement('th');
             checkboxTh.style.textAlign = 'center';
             checkboxTh.className = 'header-checkbox-th';
             checkboxTh.innerHTML = '<input type="checkbox" class="header-checkbox">';
 
-            if (thead.firstChild?.className === 'header-checkbox-th') {
-                thead.firstChild.remove();
-            }
+            // 모든 th 제거하고 새로 생성
+            Array.from(thead.querySelectorAll('th')).forEach(th => th.remove());
 
-            thead.innerHTML = displayFieldKeys.map(key => {
+            // 체크박스 헤더 추가
+            thead.appendChild(checkboxTh);
+
+            // 필드 헤더 추가
+            displayFieldKeys.forEach(key => {
                 const field = fieldMap[key];
-                return `<th>${field ? field.label : key}</th>`;
-            }).join('') + '<th>관리</th>';
+                const th = document.createElement('th');
+                th.textContent = field ? field.label : key;
+                thead.appendChild(th);
+            });
 
-            thead.insertBefore(checkboxTh, thead.firstChild);
+            // 관리 헤더 추가
+            const manageTh = document.createElement('th');
+            manageTh.textContent = '관리';
+            thead.appendChild(manageTh);
         }
 
         // Event delegation for action buttons
