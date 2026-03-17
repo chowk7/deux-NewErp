@@ -103,6 +103,7 @@ class DiamonJewelryApp {
             'dashboard': 'dashboardContent',
             'diamond-rates': 'diamondRatesContent',
             'product-rates': 'productRatesContent',
+            'customers': 'customersContent',
             'option-charges': 'optionChargesContent',
             'price-settings': 'priceSettingsContent',
             'orders': 'ordersContent',
@@ -126,6 +127,8 @@ class DiamonJewelryApp {
                     window.SalesManagementModule.loadOrders();
                 } else if (window.ProductRatesModule && menuId === 'product-rates') {
                     window.ProductRatesModule.load();
+                } else if (window.CustomerManagementModule && menuId === 'customers') {
+                    window.CustomerManagementModule.loadCustomers();
                 } else if (window.ManufacturingCostsModule && menuId === 'manufacturing-costs') {
                     window.ManufacturingCostsModule.load();
                 } else if (window.OrderManagementModule && menuId === 'order-management') {
@@ -218,6 +221,7 @@ class DiamonJewelryApp {
      */
     setupNewModules() {
         if (window.ProductRatesModule) window.ProductRatesModule.init();
+        if (window.CustomerManagementModule) window.CustomerManagementModule.init();
         if (window.ManufacturingCostsModule) window.ManufacturingCostsModule.init();
         if (window.OrderManagementModule) window.OrderManagementModule.init();
         if (window.AdminExpensesModule) window.AdminExpensesModule.init();

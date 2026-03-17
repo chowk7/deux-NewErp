@@ -9,7 +9,7 @@ window.ProductRatesModule = {
         { key: 'productCode',     label: '상품코드',        type: 'text',   calc: false },
         { key: 'category',        label: '종류',            type: 'select', calc: false,
           options: ['반지','목걸이','팔찌','귀걸이','브로치','기타'] },
-        { key: 'productName',     label: '제품명',          type: 'text',   calc: false },
+        { key: 'productName',     label: '상품명',          type: 'text',   calc: false },
         { key: 'size',            label: '사이즈',          type: 'text',   calc: false },
         { key: 'stoneQty',        label: '나석갯수',        type: 'number', calc: false },
         { key: 'workshop',        label: '공방',            type: 'text',   calc: false },
