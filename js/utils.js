@@ -415,6 +415,45 @@ window.Utils = {
         return saved.length > 0 ? saved : allFieldKeys;
     },
 
+    /**
+     * 알림 표시
+     * @param {string} message - 메시지
+     * @param {string} type - 타입 (success, error, warning, info)
+     * @param {number} duration - 표시 시간 (ms, 기본 3000)
+     */
+    showNotification(message, type = 'info', duration = 3000) {
+        const notification = document.createElement('div');
+        notification.className = `notification notification-${type}`;
+        notification.textContent = message;
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            border-radius: 6px;
+            color: white;
+            font-size: 14px;
+            z-index: 10000;
+            animation: slideIn 0.3s ease-out;
+        `;
+
+        const bgColorMap = {
+            'success': '#10b981',
+            'error': '#ef4444',
+            'warning': '#f59e0b',
+            'info': '#3b82f6'
+        };
+
+        notification.style.backgroundColor = bgColorMap[type] || bgColorMap['info'];
+
+        document.body.appendChild(notification);
+
+        setTimeout(() => {
+            notification.style.animation = 'slideOut 0.3s ease-out';
+            setTimeout(() => notification.remove(), 300);
+        }, duration);
+    },
+
     formatNumber(num) {
         return new Intl.NumberFormat('ko-KR').format(num || 0);
     }
