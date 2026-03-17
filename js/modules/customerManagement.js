@@ -260,7 +260,6 @@ window.CustomerManagementModule = {
         await batch.commit();
         this.loadCustomers();
         window.Utils.showNotification(`${checkedIds.length}개 고객이 삭제되었습니다.`, 'success');
-    }
     },
 
     showForm(customerId = null) {
