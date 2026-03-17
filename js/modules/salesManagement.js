@@ -14,19 +14,25 @@ window.SalesManagementModule = {
         { key: 'category',        label: '종류',          type: 'select', defaultRequired: false,
           options: ['반지','목걸이','팔찌','귀걸이','브로치','기타'] },
         { key: 'productCode',     label: '상품코드',      type: 'text',   defaultRequired: false },
-        { key: 'length',          label: '길이',          type: 'number', defaultRequired: false },
-        { key: 'color',           label: '색상',          type: 'text',   defaultRequired: false },
+        { key: 'length',          label: '길이(cm)',      type: 'number', defaultRequired: false },
+        { key: 'color',           label: '색상',          type: 'select', defaultRequired: false,
+          options: ['14K화이트','14K옐로우','14K로즈','18K화이트','18K옐로우','18K로즈'] },
         { key: 'size',            label: '사이즈',        type: 'text',   defaultRequired: false },
-        { key: 'lockType',        label: '잠금장치',      type: 'text',   defaultRequired: false },
+        { key: 'lockType',        label: '잠금장치',      type: 'select', defaultRequired: false,
+          options: ['언더락','싱글고리형'] },
         { key: 'chainThickness',  label: '체인굵기',      type: 'text',   defaultRequired: false },
-        { key: 'backSupport',     label: '뒷침',          type: 'text',   defaultRequired: false },
-        { key: 'warranty',        label: '보증서',        type: 'text',   defaultRequired: false },
+        { key: 'backSupport',     label: '뒷침',          type: 'select', defaultRequired: false,
+          options: ['일반','프리미엄'] },
+        { key: 'warranty',        label: '보증서',        type: 'select', defaultRequired: false,
+          options: ['없음','VS','VVS'] },
         { key: 'orderAmount',     label: '최종주문금액',  type: 'number', defaultRequired: true  },
         { key: 'salesAmount',     label: '매출금액',      type: 'number', defaultRequired: true  },
         { key: 'purchasePath',    label: '구매경로',      type: 'select', defaultRequired: false,
-          options: ['자사몰','백화점','직거래','기타'] },
+          options: ['온라인','오프라인'] },
+        { key: 'purchasePathDetail', label: '구매경로상세', type: 'select', defaultRequired: false,
+          options: [] },
         { key: 'salesman',        label: '판매직원',      type: 'text',   defaultRequired: false },
-        { key: 'commissionRate',  label: '수수료율',      type: 'number', defaultRequired: false },
+        { key: 'commissionRate',  label: '수수료율(%)',   type: 'number', defaultRequired: false },
         { key: 'recipient',       label: '수령인',        type: 'text',   defaultRequired: false },
         { key: 'phone',           label: '연락처',        type: 'text',   defaultRequired: false },
         { key: 'address',         label: '주소',          type: 'text',   defaultRequired: false },
@@ -195,6 +201,16 @@ window.SalesManagementModule = {
         }
         const productOptions = products.map(p => p.name);
 
+        // 판매직원 목록 로드
+        let salesmen = [];
+        try {
+            const ordersSnap = await window.firebaseDb.collection('sales').doc('orders').collection('items').get();
+            const allOrders = ordersSnap.docs.map(d => d.data().salesman).filter(s => s);
+            salesmen = [...new Set(allOrders)];
+        } catch (e) {
+            // 주문 데이터 없음 무시
+        }
+
         const body = `<div class="form-grid">` +
             this.ORDER_FIELDS.map(f => {
                 const isRequired = req.includes(f.key);
@@ -223,8 +239,28 @@ window.SalesManagementModule = {
                     const opts = productOptions.map(opt =>
                         `<option value="${opt}" ${val === opt ? 'selected' : ''}>${opt}</option>`
                     ).join('');
-                    input = `<select name="${f.key}" ${isRequired ? 'required' : ''}>
+                    input = `<select name="${f.key}" class="product-select" ${isRequired ? 'required' : ''}>
                                 <option value="">선택</option>${opts}
+                             </select>`;
+                } else if (f.key === 'salesman') {
+                    // 판매직원: 드롭다운 + 신규 입력
+                    const opts = salesmen.map(s =>
+                        `<option value="${s}" ${val === s ? 'selected' : ''}>${s}</option>`
+                    ).join('');
+                    input = `<input type="text" name="${f.key}" value="${val}" placeholder="판매직원 입력 또는 선택" list="salesman-list">
+                             <datalist id="salesman-list">
+                                ${opts}
+                             </datalist>`;
+                } else if (f.key === 'purchasePathDetail') {
+                    // 구매경로상세: purchasePath에 따라 동적으로 변경
+                    const onlineOptions = ['자사몰','신세계V','SSG','현대몰'];
+                    const offlineOptions = ['백화점(현대본점)','백화점(현대무역점)','백화점(현대킨텍스)','백화점(현대목동점)'];
+                    const opts = (order?.purchasePath === '오프라인' ? offlineOptions : onlineOptions).map(opt =>
+                        `<option value="${opt}" ${val === opt ? 'selected' : ''}>${opt}</option>`
+                    ).join('');
+                    input = `<select name="${f.key}" class="purchase-detail-select">
+                                <option value="">선택</option>${opts}
+                                <option value="">+ 신규 입력</option>
                              </select>`;
                 } else if (f.type === 'select') {
                     const opts = (f.options || []).map(opt =>
@@ -265,11 +301,41 @@ window.SalesManagementModule = {
                     if (product) {
                         data.productCode = product.code;
                     }
+
+                    // 종류(category) 자동 추출: 제품코드의 왼쪽 세번째 영문
+                    if (data.productCode) {
+                        const codeChars = data.productCode.match(/[A-Za-z]/g);
+                        if (codeChars && codeChars.length >= 3) {
+                            const categoryChar = codeChars[2];
+                            const categoryMap = { 'E': '귀걸이', 'R': '반지', 'N': '목걸이', 'B': '팔찌' };
+                            data.category = categoryMap[categoryChar] || '';
+                        }
+                    }
+                }
+
+                // 옵션명 자동생성: {길이}/{색상}/{사이즈}/{잠금장치}/{체인굵기}/{뒷침}
+                if (!data.optionName || data.optionName === '') {
+                    const parts = [
+                        data.length ? `${data.length}cm` : '',
+                        data.color || '',
+                        data.size || '',
+                        data.lockType || '',
+                        data.chainThickness || '',
+                        data.backSupport || ''
+                    ].filter(p => p);
+                    if (parts.length > 0) {
+                        data.optionName = parts.join('/');
+                    }
                 }
 
                 ['orderAmount','salesAmount','commissionRate','length'].forEach(k => {
                     if (data[k] !== undefined) data[k] = parseFloat(data[k]) || 0;
                 });
+
+                // 귀걸이(E)가 아니면 뒷침 제거
+                if (data.category !== '귀걸이') {
+                    data.backSupport = '';
+                }
 
                 if (orderId) {
                     await window.firebaseDb
@@ -293,6 +359,65 @@ window.SalesManagementModule = {
                     const name = prompt('새 고객명을 입력하세요:');
                     if (name) {
                         e.target.value = name;
+                    }
+                }
+            });
+        }
+
+        // 상품명 변경 시 자동으로 종류와 제품코드 업데이트
+        const productSelect = wrapper.querySelector('[name="productName"]');
+        if (productSelect) {
+            productSelect.addEventListener('change', (e) => {
+                const product = products.find(p => p.name === e.target.value);
+                if (product) {
+                    // 제품코드 자동 설정
+                    const codeInput = wrapper.querySelector('[name="productCode"]');
+                    if (codeInput) codeInput.value = product.code;
+
+                    // 종류 자동 추출
+                    const codeChars = product.code.match(/[A-Za-z]/g);
+                    if (codeChars && codeChars.length >= 3) {
+                        const categoryChar = codeChars[2];
+                        const categoryMap = { 'E': '귀걸이', 'R': '반지', 'N': '목걸이', 'B': '팔찌' };
+                        const category = categoryMap[categoryChar] || '';
+                        const categorySelect = wrapper.querySelector('[name="category"]');
+                        if (categorySelect) categorySelect.value = category;
+
+                        // 귀걸이면 뒷침 표시, 아니면 숨김
+                        const backSupportGroup = wrapper.querySelector('[name="backSupport"]')?.parentElement?.parentElement;
+                        if (backSupportGroup) {
+                            backSupportGroup.style.display = category === '귀걸이' ? '' : 'none';
+                        }
+                    }
+                }
+            });
+        }
+
+        // 구매경로 변경 시 구매경로상세 옵션 업데이트
+        const purchaseSelect = wrapper.querySelector('[name="purchasePath"]');
+        if (purchaseSelect) {
+            purchaseSelect.addEventListener('change', (e) => {
+                const detailSelect = wrapper.querySelector('[name="purchasePathDetail"]');
+                if (detailSelect) {
+                    const onlineOptions = ['자사몰','신세계V','SSG','현대몰'];
+                    const offlineOptions = ['백화점(현대본점)','백화점(현대무역점)','백화점(현대킨텍스)','백화점(현대목동점)'];
+                    const options = e.target.value === '오프라인' ? offlineOptions : onlineOptions;
+                    detailSelect.innerHTML = `<option value="">선택</option>` +
+                        options.map(opt => `<option value="${opt}">${opt}</option>`).join('') +
+                        `<option value="">+ 신규 입력</option>`;
+                    detailSelect.value = '';
+                }
+            });
+        }
+
+        // 구매경로상세에서 신규입력 처리
+        const detailSelect = wrapper.querySelector('[name="purchasePathDetail"]');
+        if (detailSelect) {
+            detailSelect.addEventListener('change', (e) => {
+                if (e.target.value === '+ 신규 입력' || e.target.value === '') {
+                    const value = prompt('새로운 구매경로상세를 입력하세요:');
+                    if (value) {
+                        e.target.value = value;
                     }
                 }
             });
