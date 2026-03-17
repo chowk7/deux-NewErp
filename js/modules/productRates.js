@@ -757,18 +757,131 @@ window.ProductRatesModule = {
         this.load();
     },
 
-    downloadTemplate() { window.Utils.downloadCsvTemplate(this.FIELDS.filter(f => !f.calc), '제품단가표_양식.csv'); },
-    downloadData()     { window.Utils.downloadCsvData(this.FIELDS, this.products, '제품단가표.csv'); },
-    openCsvUpload()    {
-        window.Utils.openCsvUploadModal(this.FIELDS.filter(f => !f.calc), async (rows) => {
+    downloadTemplate() {
+        // 나석 10개 필드 추가
+        const fieldsWithStones = [
+            ...this.FIELDS.filter(f => !f.calc && f.key !== 'stones'),
+            // 나석 10개 필드 (CSV 용)
+            { key: 'stoneType1', label: '나석종류1' },
+            { key: 'stoneQty1', label: '나석갯수1' },
+            { key: 'stoneType2', label: '나석종류2' },
+            { key: 'stoneQty2', label: '나석갯수2' },
+            { key: 'stoneType3', label: '나석종류3' },
+            { key: 'stoneQty3', label: '나석갯수3' },
+            { key: 'stoneType4', label: '나석종류4' },
+            { key: 'stoneQty4', label: '나석갯수4' },
+            { key: 'stoneType5', label: '나석종류5' },
+            { key: 'stoneQty5', label: '나석갯수5' },
+            { key: 'stoneType6', label: '나석종류6' },
+            { key: 'stoneQty6', label: '나석갯수6' },
+            { key: 'stoneType7', label: '나석종류7' },
+            { key: 'stoneQty7', label: '나석갯수7' },
+            { key: 'stoneType8', label: '나석종류8' },
+            { key: 'stoneQty8', label: '나석갯수8' },
+            { key: 'stoneType9', label: '나석종류9' },
+            { key: 'stoneQty9', label: '나석갯수9' },
+            { key: 'stoneType10', label: '나석종류10' },
+            { key: 'stoneQty10', label: '나석갯수10' }
+        ];
+        window.Utils.downloadCsvTemplate(fieldsWithStones, '제품단가표_양식.csv');
+    },
+
+    downloadData() {
+        // 나석 10개 필드로 변환
+        const fieldsWithStones = [
+            ...this.FIELDS.filter(f => !f.calc && f.key !== 'stones'),
+            { key: 'stoneType1', label: '나석종류1' },
+            { key: 'stoneQty1', label: '나석갯수1' },
+            { key: 'stoneType2', label: '나석종류2' },
+            { key: 'stoneQty2', label: '나석갯수2' },
+            { key: 'stoneType3', label: '나석종류3' },
+            { key: 'stoneQty3', label: '나석갯수3' },
+            { key: 'stoneType4', label: '나석종류4' },
+            { key: 'stoneQty4', label: '나석갯수4' },
+            { key: 'stoneType5', label: '나석종류5' },
+            { key: 'stoneQty5', label: '나석갯수5' },
+            { key: 'stoneType6', label: '나석종류6' },
+            { key: 'stoneQty6', label: '나석갯수6' },
+            { key: 'stoneType7', label: '나석종류7' },
+            { key: 'stoneQty7', label: '나석갯수7' },
+            { key: 'stoneType8', label: '나석종류8' },
+            { key: 'stoneQty8', label: '나석갯수8' },
+            { key: 'stoneType9', label: '나석종류9' },
+            { key: 'stoneQty9', label: '나석갯수9' },
+            { key: 'stoneType10', label: '나석종류10' },
+            { key: 'stoneQty10', label: '나석갯수10' }
+        ];
+
+        // 데이터를 stones 배열에서 개별 필드로 변환
+        const expandedProducts = this.products.map(p => {
+            const expanded = { ...p };
+            // stones 배열을 개별 필드로 확장
+            for (let i = 0; i < 10; i++) {
+                const stone = p.stones?.[i];
+                expanded[`stoneType${i+1}`] = stone?.type || '';
+                expanded[`stoneQty${i+1}`] = stone?.qty || '';
+            }
+            return expanded;
+        });
+
+        window.Utils.downloadCsvData(fieldsWithStones, expandedProducts, '제품단가표.csv');
+    },
+
+    openCsvUpload() {
+        // 나석 10개 필드 포함한 필드 정의
+        const fieldsForCsv = [
+            ...this.FIELDS.filter(f => !f.calc && f.key !== 'stones'),
+            { key: 'stoneType1', label: '나석종류1' },
+            { key: 'stoneQty1', label: '나석갯수1' },
+            { key: 'stoneType2', label: '나석종류2' },
+            { key: 'stoneQty2', label: '나석갯수2' },
+            { key: 'stoneType3', label: '나석종류3' },
+            { key: 'stoneQty3', label: '나석갯수3' },
+            { key: 'stoneType4', label: '나석종류4' },
+            { key: 'stoneQty4', label: '나석갯수4' },
+            { key: 'stoneType5', label: '나석종류5' },
+            { key: 'stoneQty5', label: '나석갯수5' },
+            { key: 'stoneType6', label: '나석종류6' },
+            { key: 'stoneQty6', label: '나석갯수6' },
+            { key: 'stoneType7', label: '나석종류7' },
+            { key: 'stoneQty7', label: '나석갯수7' },
+            { key: 'stoneType8', label: '나석종류8' },
+            { key: 'stoneQty8', label: '나석갯수8' },
+            { key: 'stoneType9', label: '나석종류9' },
+            { key: 'stoneQty9', label: '나석갯수9' },
+            { key: 'stoneType10', label: '나석종류10' },
+            { key: 'stoneQty10', label: '나석갯수10' }
+        ];
+
+        window.Utils.openCsvUploadModal(fieldsForCsv, async (rows) => {
             const batch = window.firebaseDb.batch();
             rows.forEach(r => {
+                // stoneType1~10과 stoneQty1~10을 stones 배열로 변환
+                const stones = [];
+                for (let i = 1; i <= 10; i++) {
+                    const type = r[`stoneType${i}`];
+                    const qty = r[`stoneQty${i}`];
+                    if (type && qty) {
+                        stones.push({
+                            type: type,
+                            qty: parseFloat(qty) || 0
+                        });
+                    }
+                }
+                r.stones = stones;
+
+                // 개별 필드 제거
+                for (let i = 1; i <= 10; i++) {
+                    delete r[`stoneType${i}`];
+                    delete r[`stoneQty${i}`];
+                }
+
                 const calculated = this.calculate(r);
                 const ref = window.firebaseDb.collection('prices').doc('productRates').collection('items').doc();
                 batch.set(ref, { ...calculated, createdAt: new Date(), updatedAt: new Date() });
             });
             await batch.commit();
-            alert(`${rows.length}개 항목 저장 완료`);
+            window.Utils.showNotification(`${rows.length}개 항목이 저장되었습니다.`, 'success');
             this.load();
         });
     },
