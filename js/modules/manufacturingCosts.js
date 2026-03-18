@@ -152,8 +152,6 @@ window.ManufacturingCostsModule = {
                     <td>
                         <button class="btn btn-sm btn-primary"
                             data-action="showForm" data-id="${c.id}">수정</button>
-                        <button class="btn btn-sm btn-danger"
-                            data-action="delete" data-id="${c.id}">삭제</button>
                     </td>
                 </tr>`;
         }).join('');
@@ -199,32 +197,9 @@ window.ManufacturingCostsModule = {
 
             // 각 행의 체크박스 이벤트
             const checkboxes = table.querySelectorAll('tbody .row-checkbox');
-            checkboxes.forEach(cb => {
-                cb.addEventListener('change', () => this.updateBulkDeleteBtn());
-            });
         }
     },
 
-    updateBulkDeleteBtn() {
-        const table = document.querySelector('#manufacturingCostsTable');
-        const checkedCount = table?.querySelectorAll('tbody .row-checkbox:checked').length || 0;
-        let bulkDeleteBtn = document.getElementById('bulkDeleteMfgBtn');
-
-        if (checkedCount > 0) {
-            if (!bulkDeleteBtn) {
-                bulkDeleteBtn = document.createElement('button');
-                bulkDeleteBtn.id = 'bulkDeleteMfgBtn';
-                bulkDeleteBtn.className = 'btn btn-danger';
-                bulkDeleteBtn.style.marginLeft = '8px';
-                const buttonGroup = document.querySelector('#manufacturingCostsContent .button-group');
-                if (buttonGroup) buttonGroup.appendChild(bulkDeleteBtn);
-            }
-            bulkDeleteBtn.textContent = `🗑️ ${checkedCount}개 삭제`;
-            bulkDeleteBtn.onclick = () => this.bulkDelete();
-        } else if (bulkDeleteBtn) {
-            bulkDeleteBtn.remove();
-        }
-    },
 
     // 나석 배열로부터 폼 필드 업데이트
     populateFormFromStones(stoneArray, wrapper) {
@@ -270,26 +245,6 @@ window.ManufacturingCostsModule = {
         });
 
         window.Utils.showNotification(`${stoneArray.length}개의 나석이 추가되었습니다`, 'success');
-    },
-
-    async bulkDelete() {
-        const table = document.querySelector('#manufacturingCostsTable');
-        const checkedIds = Array.from(table.querySelectorAll('tbody .row-checkbox:checked'))
-            .map(cb => cb.dataset.id);
-
-        if (checkedIds.length === 0) return;
-        if (!(await window.Utils.confirm(`${checkedIds.length}개 항목을 삭제하시겠습니까?`))) return;
-
-        const batch = window.firebaseDb.batch();
-        const collection = window.firebaseDb.collection('sales').doc('orders').collection('items');
-
-        for (const id of checkedIds) {
-            batch.delete(collection.doc(id));
-        }
-
-        await batch.commit();
-        this.load();
-        window.Utils.showNotification(`${checkedIds.length}개 항목이 삭제되었습니다.`, 'success');
     },
 
     calculate(data) {
@@ -488,12 +443,6 @@ window.ManufacturingCostsModule = {
         }
     },
 
-    async delete(id) {
-        if (!(await window.Utils.confirm('이 항목을 삭제하시겠습니까?'))) return;
-        await window.firebaseDb.collection('sales').doc('orders')
-            .collection('items').doc(id).delete();
-        this.load();
-    },
 
     downloadTemplate() {
         // 제작월(productionMonth) 필드 제외

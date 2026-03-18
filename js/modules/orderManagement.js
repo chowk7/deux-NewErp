@@ -131,8 +131,6 @@ window.OrderManagementModule = {
                     <td>
                         <button class="btn btn-sm btn-primary"
                             data-action="showForm" data-id="${item.id}">수정</button>
-                        <button class="btn btn-sm btn-danger"
-                            data-action="delete" data-id="${item.id}">삭제</button>
                     </td>
                 </tr>`;
         }).join('');
@@ -190,55 +188,7 @@ window.OrderManagementModule = {
                 });
             }
 
-            // 각 행의 체크박스 이벤트
-            const checkboxes = table.querySelectorAll('tbody .row-checkbox');
-            checkboxes.forEach(cb => {
-                cb.addEventListener('change', () => this.updateBulkDeleteBtn());
-            });
         }
-
-        this.updateBulkDeleteBtn();
-    },
-
-    updateBulkDeleteBtn() {
-        const table = document.querySelector('#orderManagementTable');
-        const checkedCount = table?.querySelectorAll('tbody .row-checkbox:checked').length || 0;
-        let bulkDeleteBtn = document.getElementById('bulkDeleteOrderMgmtBtn');
-
-        if (checkedCount > 0) {
-            if (!bulkDeleteBtn) {
-                bulkDeleteBtn = document.createElement('button');
-                bulkDeleteBtn.id = 'bulkDeleteOrderMgmtBtn';
-                bulkDeleteBtn.className = 'btn btn-danger';
-                bulkDeleteBtn.style.marginLeft = '8px';
-                const buttonGroup = document.querySelector('#orderManagementContent .button-group');
-                if (buttonGroup) buttonGroup.appendChild(bulkDeleteBtn);
-            }
-            bulkDeleteBtn.textContent = `🗑️ ${checkedCount}개 삭제`;
-            bulkDeleteBtn.onclick = () => this.bulkDelete();
-        } else if (bulkDeleteBtn) {
-            bulkDeleteBtn.remove();
-        }
-    },
-
-    async bulkDelete() {
-        const table = document.querySelector('#orderManagementTable');
-        const checkedIds = Array.from(table.querySelectorAll('tbody .row-checkbox:checked'))
-            .map(cb => cb.dataset.id);
-
-        if (checkedIds.length === 0) return;
-        if (!(await window.Utils.confirm(`${checkedIds.length}개 항목을 삭제하시겠습니까?`))) return;
-
-        const batch = window.firebaseDb.batch();
-        const collection = window.firebaseDb.collection('sales').doc('orders').collection('items');
-
-        for (const id of checkedIds) {
-            batch.delete(collection.doc(id));
-        }
-
-        await batch.commit();
-        this.load();
-        window.Utils.showNotification(`${checkedIds.length}개 항목이 삭제되었습니다.`, 'success');
     },
 
     showForm(itemId = null) {
@@ -390,17 +340,4 @@ window.OrderManagementModule = {
         this.load();
     },
 
-    async delete(id) {
-        if (!(await window.Utils.confirm('이 항목을 삭제하시겠습니까?'))) return;
-        // 연결된 이미지도 삭제
-        const item = this.items.find(i => i.id === id);
-        if (item?.images) {
-            for (const path of Object.values(item.images)) {
-                if (path) try { await window.firebaseStorage.ref(path).delete(); } catch {}
-            }
-        }
-        await window.firebaseDb.collection('sales').doc('orders')
-            .collection('items').doc(id).delete();
-        this.load();
-    },
 };
