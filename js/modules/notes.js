@@ -5,6 +5,7 @@ const notes = {
     async init() {
         await this.loadNotes();
         this.setupEventListeners();
+        this.setupModalCloseButtons();
         this.renderNotes();
     },
 
@@ -15,6 +16,15 @@ const notes = {
             ?.addEventListener('click', () => this.saveNote());
         document.getElementById('deleteNoteBtn')
             ?.addEventListener('click', () => this.deleteNote());
+    },
+
+    setupModalCloseButtons() {
+        document.querySelectorAll('[data-modal]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const modalId = btn.getAttribute('data-modal');
+                this.closeModal(modalId);
+            });
+        });
     },
 
     async loadNotes() {
@@ -75,12 +85,26 @@ const notes = {
         });
     },
 
+    openModal(modalId) {
+        const modal = document.getElementById(modalId);
+        if (modal) {
+            modal.classList.remove('hidden');
+        }
+    },
+
+    closeModal(modalId) {
+        const modal = document.getElementById(modalId);
+        if (modal) {
+            modal.classList.add('hidden');
+        }
+    },
+
     showNewNoteModal() {
         this.currentNoteId = null;
         document.getElementById('noteTitle').value = '';
         document.getElementById('noteContent').value = '';
         document.getElementById('deleteNoteBtn').style.display = 'none';
-        window.Utils.openModal('noteModal');
+        this.openModal('noteModal');
     },
 
     showNoteModal(noteId) {
@@ -91,7 +115,7 @@ const notes = {
             document.getElementById('noteTitle').value = note.title || '';
             document.getElementById('noteContent').value = note.content || '';
             document.getElementById('deleteNoteBtn').style.display = 'block';
-            window.Utils.openModal('noteModal');
+            this.openModal('noteModal');
         }
     },
 
@@ -139,7 +163,7 @@ const notes = {
 
             await this.loadNotes();
             this.renderNotes();
-            window.Utils.closeModal('noteModal');
+            this.closeModal('noteModal');
             window.Utils.showNotification('노트가 저장되었습니다.', 'success');
         } catch (error) {
             console.error('Failed to save note:', error);
@@ -165,7 +189,7 @@ const notes = {
 
             await this.loadNotes();
             this.renderNotes();
-            window.Utils.closeModal('noteModal');
+            this.closeModal('noteModal');
             window.Utils.showNotification('노트가 삭제되었습니다.', 'success');
         } catch (error) {
             console.error('Failed to delete note:', error);
