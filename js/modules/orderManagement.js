@@ -26,9 +26,9 @@ window.OrderManagementModule = {
     ],
 
     items: [],
+    allItems: [], // 필터링 전 전체 데이터
     pageSize: 50,
     currentPage: 1,
-    totalCount: 0,
 
     async init() {
         // 신규 입력 기능 삭제 - 매출표에서만 신규 입력 가능
@@ -48,23 +48,19 @@ window.OrderManagementModule = {
         try {
             this.currentPage = page || 1;
 
-            // 전체 개수 조회
-            const countSnap = await window.firebaseDb
-                .collection('sales').doc('orders').collection('items').get();
-            this.totalCount = countSnap.size;
+            // 처음 로드일 때만 Firebase에서 전체 데이터 조회
+            if (this.allItems.length === 0) {
+                const snap = await window.firebaseDb
+                    .collection('sales').doc('orders').collection('items')
+                    .orderBy('createdAt', 'desc')
+                    .get();
+                this.allItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            }
 
-            // 페이지 데이터 조회
-            const offset = (this.currentPage - 1) * this.pageSize;
-            const snap = await window.firebaseDb
-                .collection('sales').doc('orders').collection('items')
-                .orderBy('createdAt', 'desc')
-                .limit(this.pageSize)
-                .offset(offset)
-                .get();
-
-            const allItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-            this.items = allItems;
+            // 페이지에 맞는 데이터만 추출
+            const startIdx = (this.currentPage - 1) * this.pageSize;
+            const endIdx = startIdx + this.pageSize;
+            this.items = this.allItems.slice(startIdx, endIdx);
 
             this.renderTable();
             this.renderPagination();
@@ -213,7 +209,8 @@ window.OrderManagementModule = {
         const paginationContainer = document.getElementById('orderManagementPagination');
         if (!paginationContainer) return;
 
-        const totalPages = Math.ceil(this.totalCount / this.pageSize);
+        const totalCount = this.allItems.length;
+        const totalPages = Math.ceil(totalCount / this.pageSize);
         const maxPageButtons = 5;
 
         let startPage = Math.max(1, this.currentPage - Math.floor(maxPageButtons / 2));
@@ -248,7 +245,7 @@ window.OrderManagementModule = {
                 </div>
 
                 <div style="color: #6b7280; font-size: 0.875rem;">
-                    ${(this.currentPage - 1) * this.pageSize + 1} - ${Math.min(this.currentPage * this.pageSize, this.totalCount)} / 총 ${this.totalCount}개
+                    ${(this.currentPage - 1) * this.pageSize + 1} - ${Math.min(this.currentPage * this.pageSize, totalCount)} / 총 ${totalCount}개
                 </div>
             </div>`;
 
@@ -266,7 +263,8 @@ window.OrderManagementModule = {
         });
 
         document.getElementById('orderMgmtNextPageBtn')?.addEventListener('click', () => {
-            const totalPages = Math.ceil(this.totalCount / this.pageSize);
+            const totalCount = this.allItems.length;
+            const totalPages = Math.ceil(totalCount / this.pageSize);
             if (this.currentPage < totalPages) this.load(this.currentPage + 1);
         });
 
