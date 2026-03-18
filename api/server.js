@@ -389,12 +389,15 @@ async function refreshImwebToken() {
     }
 
     try {
+        // ✅ 수정: camelCase → snake_case (아임웹 API 요구사항)
         const params = new URLSearchParams({
-            grantType: 'refresh_token',
-            clientId: tokens.clientId,
-            clientSecret: tokens.clientSecret,
-            refreshToken: tokens.refreshToken
+            grant_type: 'refresh_token',
+            client_id: tokens.clientId,
+            client_secret: tokens.clientSecret,
+            refresh_token: tokens.refreshToken
         });
+
+        console.log('[Imweb] Refreshing token...');
 
         const response = await fetch('https://openapi.imweb.me/oauth2/token', {
             method: 'POST',
@@ -403,16 +406,23 @@ async function refreshImwebToken() {
         });
 
         if (!response.ok) {
-            throw new Error(`Token refresh failed: ${response.statusText}`);
+            // 🔧 추가: 상세 에러 로깅
+            const errorData = await response.text();
+            console.error(`[Imweb] Token refresh failed (${response.status}):`, errorData);
+            throw new Error(`Token refresh failed: ${response.statusText} - ${errorData}`);
         }
 
         const data = await response.json();
-        tokens.accessToken = data.accessToken;
-        tokens.refreshToken = data.refreshToken;
+
+        // ✅ 수정: snake_case 응답 필드명 (또는 camelCase fallback)
+        tokens.accessToken = data.access_token || data.accessToken;
+        tokens.refreshToken = data.refresh_token || data.refreshToken;
+
         saveImwebTokens(tokens);
+        console.log('[Imweb] Token refreshed successfully');
         return tokens;
     } catch (error) {
-        console.error('Token refresh error:', error);
+        console.error('[Imweb] Token refresh error:', error);
         throw error;
     }
 }
@@ -447,18 +457,36 @@ app.get('/api/imweb/orders', verifyToken, async (req, res) => {
             headers
         });
 
-        // 토큰 만료 시 갱신
+        // 토큰 만료 시 갱신 및 재시도
         if (response.status === 401) {
-            await refreshImwebToken();
-            const newTokens = loadImwebTokens();
-            headers['Authorization'] = `Bearer ${newTokens.accessToken}`;
-            response = await fetch(`https://openapi.imweb.me/orders?${params}`, {
-                headers
-            });
+            console.log('[Imweb] Token expired, attempting refresh...');
+            try {
+                await refreshImwebToken();
+                const newTokens = loadImwebTokens();
+                headers['Authorization'] = `Bearer ${newTokens.accessToken}`;
+
+                response = await fetch(`https://openapi.imweb.me/orders?${params}`, {
+                    headers
+                });
+            } catch (refreshError) {
+                // 토큰 갱신 실패
+                console.error('[Imweb] Failed to refresh token:', refreshError);
+                return res.status(401).json({
+                    error: 'Token refresh failed',
+                    details: refreshError.message
+                });
+            }
         }
 
         if (!response.ok) {
-            return res.status(response.status).json({ error: 'Failed to fetch imweb orders' });
+            // 🔧 추가: 상세 응답 로깅
+            const errorText = await response.text();
+            console.error(`[Imweb] API error (${response.status}):`, errorText);
+            return res.status(response.status).json({
+                error: 'Failed to fetch imweb orders',
+                status: response.status,
+                details: errorText.substring(0, 500)  // 처음 500자만
+            });
         }
 
         const data = await response.json();
@@ -492,8 +520,11 @@ app.get('/api/imweb/orders', verifyToken, async (req, res) => {
 
         res.status(200).json({ success: true, orders, count: orders.length });
     } catch (error) {
-        console.error('Imweb orders error:', error);
-        res.status(500).json({ error: 'Failed to fetch imweb orders', details: error.message });
+        console.error('[Imweb] Unhandled error:', error);
+        res.status(500).json({
+            error: 'Failed to fetch imweb orders',
+            details: error.message
+        });
     }
 });
 
