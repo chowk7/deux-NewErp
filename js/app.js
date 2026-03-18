@@ -111,6 +111,7 @@ class DiamonJewelryApp {
             'order-management': 'orderManagementContent',
             'admin-expenses': 'adminExpensesContent',
             'profit-loss': 'profitLossContent',
+            'notes': 'notesContent',
             'images': 'imagesContent'
         };
 
@@ -137,6 +138,8 @@ class DiamonJewelryApp {
                     window.AdminExpensesModule.load();
                 } else if (window.ProfitLossModule && menuId === 'profit-loss') {
                     window.ProfitLossModule.load();
+                } else if (menuId === 'notes') {
+                    notes.loadNotes().then(() => notes.renderNotes());
                 }
             }
         }
@@ -226,6 +229,7 @@ class DiamonJewelryApp {
         if (window.OrderManagementModule) window.OrderManagementModule.init();
         if (window.AdminExpensesModule) window.AdminExpensesModule.init();
         if (window.ProfitLossModule) window.ProfitLossModule.init();
+        if (window.notes) window.notes.init();
     }
 
     /**

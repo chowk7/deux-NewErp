@@ -149,6 +149,7 @@
                             <li><a href="#" data-menu="admin-expenses" class="nav-link">💼 판관비</a></li>
                             <li><a href="#" data-menu="profit-loss" class="nav-link">📈 P&L표</a></li>
                             <li class="nav-section">기타</li>
+                            <li><a href="#" data-menu="notes" class="nav-link">📝 노트</a></li>
                             <li><a href="#" data-menu="images" class="nav-link">🖼️ 이미지 관리</a></li>
                         </ul>
                     </nav>
@@ -434,6 +435,34 @@
                         </div>
                     </section>
 
+                    <!-- 노트 섹션 -->
+                    <section id="notesContent" class="content-section hidden">
+                        <h2>노트</h2>
+                        <div class="button-group">
+                            <button id="newNoteBtn" class="btn btn-primary">+ 새 노트</button>
+                        </div>
+                        <div id="notesContainer" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; margin-top: 20px;"></div>
+                    </section>
+
+                    <!-- 노트 상세 모달 -->
+                    <div id="noteModal" class="modal hidden">
+                        <div class="modal-content" style="width: 90%; max-width: 800px; height: 90%;">
+                            <div class="modal-header">
+                                <h3>노트</h3>
+                                <button class="close-modal" data-modal="noteModal">&times;</button>
+                            </div>
+                            <div class="modal-body" style="display: flex; flex-direction: column; height: calc(100% - 120px); padding: 20px;">
+                                <input type="text" id="noteTitle" placeholder="노트 제목" style="margin-bottom: 10px; padding: 8px; font-size: 14px; border: 1px solid #ddd; border-radius: 4px;">
+                                <textarea id="noteContent" placeholder="노트 내용을 입력하세요..." style="flex: 1; padding: 10px; font-family: 'Monaco', 'Menlo', monospace; font-size: 13px; border: 1px solid #ddd; border-radius: 4px; resize: none;"></textarea>
+                            </div>
+                            <div class="modal-footer" style="display: flex; gap: 10px; justify-content: flex-end; padding: 15px 20px; border-top: 1px solid #ddd;">
+                                <button id="deleteNoteBtn" class="btn btn-danger">🗑️ 삭제</button>
+                                <button id="saveNoteBtn" class="btn btn-primary">💾 저장</button>
+                                <button class="btn btn-outline" data-modal="noteModal">닫기</button>
+                            </div>
+                        </div>
+                    </div>
+
                     <section id="imagesContent" class="content-section hidden">
                         <h2>이미지 관리</h2>
                         <p>준비 중입니다...</p>
@@ -465,6 +494,7 @@
     <script src="/js/modules/orderManagement.js"></script>
     <script src="/js/modules/adminExpenses.js"></script>
     <script src="/js/modules/profitLoss.js"></script>
+    <script src="/js/modules/notes.js"></script>
     <script src="/js/app.js"></script>
 </body>
 </html>
