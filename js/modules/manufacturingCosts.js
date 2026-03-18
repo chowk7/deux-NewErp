@@ -37,6 +37,7 @@ window.ManufacturingCostsModule = {
     productRates: [],
     pageSize: 50,
     currentPage: 1,
+    mfgSortState: { column: null, direction: 'asc' },
 
     async init() {
         // 나석단가표 로드
@@ -236,9 +237,17 @@ window.ManufacturingCostsModule = {
 
             thead.innerHTML = displayFieldKeys.map(key => {
                 const field = fieldMap[key];
-                return `<th>${field ? field.label : key}</th>`;
+                const label = field ? field.label : key;
+                const isSorted = this.mfgSortState.column === key;
+                const indicator = isSorted ? (this.mfgSortState.direction === 'asc' ? ' ▲' : ' ▼') : '';
+                return `<th data-column="${key}" style="cursor:pointer;user-select:none;">${label}${indicator}</th>`;
             }).join('') + '<th>관리</th>';
             thead.insertBefore(checkboxTh, thead.firstChild);
+
+            // 헤더 정렬 클릭 이벤트
+            thead.querySelectorAll('th[data-column]').forEach(th => {
+                th.addEventListener('click', () => this.sortMfgCosts(th.dataset.column));
+            });
         }
 
         // Event delegation for action buttons
@@ -292,14 +301,15 @@ window.ManufacturingCostsModule = {
                                     salesProfitRate: cost.salesProfitRate,
                                     updatedAt: new Date()
                                 });
-                            // renderTable() 호출 제거 - allCosts의 데이터가 이미 업데이트됨
-                            // 대신 allCosts의 해당 항목도 업데이트
+                            // allCosts의 해당 항목도 업데이트
                             const allCostItem = this.allCosts.find(c => c.id === costId);
                             if (allCostItem) {
                                 allCostItem.inputCompleted = cost.inputCompleted;
                                 allCostItem.salesProfit = cost.salesProfit;
                                 allCostItem.salesProfitRate = cost.salesProfitRate;
                             }
+                            // UI 실시간 반영
+                            this.renderTable();
                         } catch (error) {
                             console.error('Failed to update inputCompleted:', error);
                             window.Utils.showNotification('저장 실패', 'error');
@@ -314,6 +324,37 @@ window.ManufacturingCostsModule = {
         } catch (error) {
             console.error('[ManufacturingCosts] renderTable 오류:', error);
         }
+    },
+
+    sortMfgCosts(column) {
+        if (this.mfgSortState.column === column) {
+            this.mfgSortState.direction = this.mfgSortState.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+            this.mfgSortState.column = column;
+            this.mfgSortState.direction = 'asc';
+        }
+
+        const dir = this.mfgSortState.direction === 'asc' ? 1 : -1;
+        const col = column;
+
+        this.costs.sort((a, b) => {
+            let av = a[col], bv = b[col];
+
+            // 날짜
+            if (av && av.toDate) av = av.toDate();
+            if (bv && bv.toDate) bv = bv.toDate();
+            if (av instanceof Date && bv instanceof Date) return (av - bv) * dir;
+
+            // 숫자
+            if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
+
+            // 문자열
+            av = av == null ? '' : String(av);
+            bv = bv == null ? '' : String(bv);
+            return av.localeCompare(bv, 'ko') * dir;
+        });
+
+        this.renderTable();
     },
 
     renderPagination() {
