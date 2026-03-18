@@ -42,6 +42,7 @@ app.use(helmet({
         directives: {
             defaultSrc: ["'self'"],
             scriptSrc: ["'self'", "'unsafe-inline'", "https://www.gstatic.com", "https://cdn.jsdelivr.net"],
+            scriptSrcAttr: ["'unsafe-inline'"],
             styleSrc: ["'self'", "'unsafe-inline'"],
             connectSrc: [
                 "'self'",
@@ -51,6 +52,7 @@ app.use(helmet({
                 "https://www.gstatic.com",
                 "https://identitytoolkit.googleapis.com",
                 "https://securetoken.googleapis.com",
+                "https://openapi.imweb.me",
             ],
             imgSrc: ["'self'", "data:", "https://storage.googleapis.com"],
             frameSrc: ["'none'"],
