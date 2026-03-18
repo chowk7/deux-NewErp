@@ -910,6 +910,7 @@ window.SalesManagementModule = {
         }
 
         await batch.commit();
+        this.allOrders = [];
         this.loadOrders();
         window.Utils.showNotification('주문이 삭제되었습니다.', 'success');
     },
@@ -963,6 +964,7 @@ window.SalesManagementModule = {
         }
 
         await batch.commit();
+        this.allOrders = [];
         this.loadOrders();
         window.Utils.showNotification(`${checkedIds.length}개 주문이 삭제되었습니다.`, 'success');
     },
