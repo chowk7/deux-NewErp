@@ -81,7 +81,43 @@ window.ManufacturingCostsModule = {
             .collection('sales').doc('orders').collection('items')
             .orderBy('createdAt', 'desc').get();
 
-        const allItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        let allItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        // ✅ 기존 데이터 중 계산 필드가 비어있으면 자동 계산하여 저장
+        const needsUpdate = [];
+        allItems = allItems.map(item => {
+            // 계산 필드 확인
+            const needsCalc = !item.goldValue || !item.manufacturingCost ||
+                            item.salesProfit === undefined || item.salesProfitRate === undefined;
+
+            if (needsCalc) {
+                // 자동 계산
+                const calculated = this.calculate(item);
+                needsUpdate.push({ id: item.id, data: calculated });
+                return calculated;
+            }
+            return item;
+        });
+
+        // 계산이 필요한 항목들을 batch로 업데이트
+        if (needsUpdate.length > 0) {
+            const batch = window.firebaseDb.batch();
+            const collection = window.firebaseDb.collection('sales').doc('orders').collection('items');
+
+            for (const { id, data } of needsUpdate) {
+                batch.update(collection.doc(id), {
+                    ...data,
+                    updatedAt: new Date()
+                });
+            }
+
+            try {
+                await batch.commit();
+                console.log(`[ManufacturingCosts] 자동 계산 업데이트: ${needsUpdate.length}개 항목`);
+            } catch (error) {
+                console.error('Failed to update calculated fields:', error);
+            }
+        }
 
         // Phase 3-3: 모든 항목을 제조원가로 표시 (orderId 필터링 제거)
         // 이전: orderId가 있는 항목만 = 제조원가
@@ -250,8 +286,12 @@ window.ManufacturingCostsModule = {
     calculate(data) {
         const n = k => parseFloat(data[k]) || 0;
 
+        // ========== 자동 계산 로직 ==========
+        //
+        // 1️⃣ 금값 = 금중량순금해리(g) × 금시세(순금1g)
         const goldValue = n('goldWeightPure') * n('goldMarketPrice');
 
+        // 2️⃣ 제조가격 = 금값 + 물림비 + 공임 + 나석가격(수동입력) + 기타비용
         // 나석 가격 합산 + 보증서 추가금 계산
         let stoneCostRef = 0;
         let stoneWarrantyFeeTotal = 0;
@@ -294,14 +334,18 @@ window.ManufacturingCostsModule = {
 
         // 수동입력이 있으면 수동, 없으면 참고값 사용
         const stoneUsed = n('stoneCostManual') > 0 ? n('stoneCostManual') : (stoneCostRef + stoneWarrantyCost);
+
+        // 제조가격 = 금값 + 물림비 + 공임 + 나석가격 + 기타비용
         const manufacturingCost = goldValue + n('settingCost') + n('laborCost') +
             n('platingCost') + stoneUsed + n('otherCost');
 
-        // 매출이익: 매출금액 * (1 - 수수료율/100) - 제조가격
+        // 3️⃣ 매출이익 = 매출 × (1 - 수수료율(%)/100) - 제조가격
         // commissionRate는 판매표에서 오는 필드
         const commissionRate = n('commissionRate') || 0;
         const netSalesAmount = n('salesAmount') * (1 - commissionRate / 100);
         const salesProfit = netSalesAmount - manufacturingCost;
+
+        // 4️⃣ 매출이익률(%) = 매출이익 / 매출 × 100
         const salesProfitRate = n('salesAmount') > 0
             ? (salesProfit / n('salesAmount')) * 100 : 0;
 
@@ -466,11 +510,14 @@ window.ManufacturingCostsModule = {
                     .collection('sales').doc('orders').collection('items');
 
                 for (const row of rows) {
+                    // ✅ 각 행에 대해 calculate() 호출하여 자동 계산 필드 채우기
+                    const calculatedRow = this.calculate(row);
+
                     // orderId를 문서 ID로 사용하거나, 새 ID 생성
                     const docId = row.orderId || window.firebaseDb.collection('_').doc().id;
                     const docRef = collection.doc(docId);
                     batch.set(docRef, {
-                        ...row,
+                        ...calculatedRow,
                         createdAt: new Date(),
                         updatedAt: new Date()
                     });
@@ -478,7 +525,7 @@ window.ManufacturingCostsModule = {
 
                 await batch.commit();
                 this.load();
-                window.Utils.showNotification('제조원가 정보가 업로드되었습니다.', 'success');
+                window.Utils.showNotification('제조원가 정보가 업로드되었습니다. (자동 계산 적용됨)', 'success');
             }
         );
     },
