@@ -9,6 +9,7 @@ const compression = require('compression');
 const helmet = require('helmet');
 const admin = require('firebase-admin');
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config();
 
 // Firebase Admin 초기화
@@ -348,6 +349,149 @@ app.get('/api/prices/settings', verifyToken, async (req, res) => {
     } catch (error) {
         console.error('Error fetching settings:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ===== 아임웹 API 연동 =====
+
+// 아임웹 토큰 파일 경로
+const IMWEB_TOKENS_FILE = path.join(__dirname, 'imweb_tokens.json');
+
+// 토큰 로드
+function loadImwebTokens() {
+    try {
+        if (fs.existsSync(IMWEB_TOKENS_FILE)) {
+            const data = fs.readFileSync(IMWEB_TOKENS_FILE, 'utf-8');
+            return JSON.parse(data);
+        }
+    } catch (error) {
+        console.error('Failed to load imweb tokens:', error);
+    }
+    return null;
+}
+
+// 토큰 저장
+function saveImwebTokens(tokens) {
+    try {
+        fs.writeFileSync(IMWEB_TOKENS_FILE, JSON.stringify(tokens, null, 2));
+    } catch (error) {
+        console.error('Failed to save imweb tokens:', error);
+    }
+}
+
+// 토큰 갱신
+async function refreshImwebToken() {
+    const tokens = loadImwebTokens();
+    if (!tokens) {
+        throw new Error('Imweb tokens not found');
+    }
+
+    try {
+        const params = new URLSearchParams({
+            grantType: 'refresh_token',
+            clientId: tokens.clientId,
+            clientSecret: tokens.clientSecret,
+            refreshToken: tokens.refreshToken
+        });
+
+        const response = await fetch('https://openapi.imweb.me/oauth2/token', {
+            method: 'POST',
+            body: params,
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+        });
+
+        if (!response.ok) {
+            throw new Error(`Token refresh failed: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        tokens.accessToken = data.accessToken;
+        tokens.refreshToken = data.refreshToken;
+        saveImwebTokens(tokens);
+        return tokens;
+    } catch (error) {
+        console.error('Token refresh error:', error);
+        throw error;
+    }
+}
+
+// 아임웹 주문 조회
+app.get('/api/imweb/orders', verifyToken, async (req, res) => {
+    try {
+        const tokens = loadImwebTokens();
+        if (!tokens) {
+            return res.status(400).json({ error: 'Imweb tokens not configured' });
+        }
+
+        // 일주일 전 날짜
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - 7);
+
+        const formatDate = (date) => date.toISOString().split('T')[0];
+
+        const params = new URLSearchParams({
+            start_date: formatDate(startDate),
+            end_date: formatDate(endDate),
+            limit: 100
+        });
+
+        const headers = {
+            'Authorization': `Bearer ${tokens.accessToken}`,
+            'siteCode': tokens.siteCode
+        };
+
+        let response = await fetch(`https://openapi.imweb.me/orders?${params}`, {
+            headers
+        });
+
+        // 토큰 만료 시 갱신
+        if (response.status === 401) {
+            await refreshImwebToken();
+            const newTokens = loadImwebTokens();
+            headers['Authorization'] = `Bearer ${newTokens.accessToken}`;
+            response = await fetch(`https://openapi.imweb.me/orders?${params}`, {
+                headers
+            });
+        }
+
+        if (!response.ok) {
+            return res.status(response.status).json({ error: 'Failed to fetch imweb orders' });
+        }
+
+        const data = await response.json();
+
+        // 데이터 변환: 3단계 구조(Order > Sections > Items)를 평탄화
+        const orders = [];
+        if (data.data && data.data.list) {
+            data.data.list.forEach(order => {
+                if (order.sections && Array.isArray(order.sections)) {
+                    order.sections.forEach(section => {
+                        if (section.sectionItems && Array.isArray(section.sectionItems)) {
+                            section.sectionItems.forEach(item => {
+                                orders.push({
+                                    orderId: order.orderNo,
+                                    orderDate: order.wtime,
+                                    customerName: order.ordererName,
+                                    phone: section.delivery?.receiverCall || '',
+                                    address: (section.delivery?.addr1 || '') + ' ' + (section.delivery?.addr2 || ''),
+                                    productName: item.productInfo?.prodName || '',
+                                    quantity: item.quantity || 1,
+                                    price: item.price || 0,
+                                    options: item.productInfo?.optionInfo || {},
+                                    memo: order.memo || ''
+                                });
+                            });
+                        }
+                    });
+                }
+            });
+        }
+
+        res.status(200).json({ success: true, orders, count: orders.length });
+    } catch (error) {
+        console.error('Imweb orders error:', error);
+        res.status(500).json({ error: 'Failed to fetch imweb orders', details: error.message });
     }
 });
 

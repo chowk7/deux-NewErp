@@ -95,6 +95,10 @@ window.SalesManagementModule = {
         document.getElementById('addOrderBtn')
             ?.addEventListener('click', () => this.showOrderForm());
 
+        // 아임웹 가져오기 버튼
+        document.getElementById('importImwebBtn')
+            ?.addEventListener('click', () => window.ImwebIntegrationModule?.fetchImwebOrders());
+
         // CSV 버튼 리스너
         document.getElementById('downloadOrdersTemplateBtn')
             ?.addEventListener('click', () => this.downloadOrderCsvTemplate());
