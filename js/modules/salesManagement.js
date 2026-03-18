@@ -46,6 +46,8 @@ window.SalesManagementModule = {
     orders: [],
     orderRequired: [],
     pageSize: 50,
+    currentPage: 1,
+    totalCount: 0,
     orderSortState: { column: null, direction: 'asc' },
 
     async init() {
@@ -135,16 +137,33 @@ window.SalesManagementModule = {
 
     // ===== 매출표 =====
 
-    async loadOrders() {
-        this.orderRequired = await window.Utils.getRequiredFields('orders');
+    async loadOrders(page = 1) {
+        try {
+            this.orderRequired = await window.Utils.getRequiredFields('orders');
+            this.currentPage = page || 1;
 
-        const snap = await window.firebaseDb
-            .collection('sales').doc('orders').collection('items')
-            .orderBy('createdAt', 'desc').limit(this.pageSize).get();
+            // 전체 개수 조회
+            const countSnap = await window.firebaseDb
+                .collection('sales').doc('orders').collection('items').get();
+            this.totalCount = countSnap.size;
 
-        this.orders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        this.orderSortState = { column: null, direction: 'asc' };
-        this.renderOrdersTable();
+            // 페이지 데이터 조회
+            const offset = (this.currentPage - 1) * this.pageSize;
+            const snap = await window.firebaseDb
+                .collection('sales').doc('orders').collection('items')
+                .orderBy('createdAt', 'desc')
+                .limit(this.pageSize)
+                .offset(offset)
+                .get();
+
+            this.orders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            this.orderSortState = { column: null, direction: 'asc' };
+            this.renderOrdersTable();
+            this.renderPagination();
+        } catch (error) {
+            console.error('[SalesManagement] loadOrders 실패:', error);
+            window.Utils.showNotification('매출표 로드 실패', 'error');
+        }
     },
 
     sortOrders(column) {
@@ -314,6 +333,75 @@ window.SalesManagementModule = {
         }
 
         this.updateOrderBulkDeleteBtn();
+    },
+
+    renderPagination() {
+        const paginationContainer = document.getElementById('ordersPagination');
+        if (!paginationContainer) return;
+
+        const totalPages = Math.ceil(this.totalCount / this.pageSize);
+        const maxPageButtons = 5;
+
+        let startPage = Math.max(1, this.currentPage - Math.floor(maxPageButtons / 2));
+        let endPage = Math.min(totalPages, startPage + maxPageButtons - 1);
+
+        if (endPage - startPage + 1 < maxPageButtons) {
+            startPage = Math.max(1, endPage - maxPageButtons + 1);
+        }
+
+        let html = `
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 16px; background: #f9fafb; border-radius: 6px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <label for="pageSizeSelect" style="margin: 0;">페이지당 행:</label>
+                    <select id="pageSizeSelect" style="padding: 6px 12px; border: 1px solid #d1d5db; border-radius: 4px;">
+                        <option value="10" ${this.pageSize === 10 ? 'selected' : ''}>10개</option>
+                        <option value="50" ${this.pageSize === 50 ? 'selected' : ''}>50개</option>
+                        <option value="100" ${this.pageSize === 100 ? 'selected' : ''}>100개</option>
+                        <option value="200" ${this.pageSize === 200 ? 'selected' : ''}>200개</option>
+                    </select>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <button class="btn btn-sm" id="prevPageBtn" ${this.currentPage === 1 ? 'disabled' : ''}>이전</button>`;
+
+        for (let i = startPage; i <= endPage; i++) {
+            const isActive = i === this.currentPage;
+            html += `<button class="btn btn-sm page-btn" data-page="${i}" style="min-width: 36px; ${isActive ? 'background: #3b82f6; color: white;' : ''}">${i}</button>`;
+        }
+
+        html += `
+                    <button class="btn btn-sm" id="nextPageBtn" ${this.currentPage === totalPages ? 'disabled' : ''}>다음</button>
+                </div>
+
+                <div style="color: #6b7280; font-size: 0.875rem;">
+                    ${(this.currentPage - 1) * this.pageSize + 1} - ${Math.min(this.currentPage * this.pageSize, this.totalCount)} / 총 ${this.totalCount}개
+                </div>
+            </div>`;
+
+        paginationContainer.innerHTML = html;
+
+        // 이벤트 리스너
+        document.getElementById('pageSizeSelect')?.addEventListener('change', (e) => {
+            this.pageSize = parseInt(e.target.value);
+            this.currentPage = 1;
+            this.loadOrders(1);
+        });
+
+        document.getElementById('prevPageBtn')?.addEventListener('click', () => {
+            if (this.currentPage > 1) this.loadOrders(this.currentPage - 1);
+        });
+
+        document.getElementById('nextPageBtn')?.addEventListener('click', () => {
+            const totalPages = Math.ceil(this.totalCount / this.pageSize);
+            if (this.currentPage < totalPages) this.loadOrders(this.currentPage + 1);
+        });
+
+        document.querySelectorAll('.page-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const page = parseInt(btn.dataset.page);
+                this.loadOrders(page);
+            });
+        });
     },
 
     async showOrderForm(orderId = null) {

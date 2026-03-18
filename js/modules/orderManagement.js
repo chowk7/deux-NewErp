@@ -26,6 +26,9 @@ window.OrderManagementModule = {
     ],
 
     items: [],
+    pageSize: 50,
+    currentPage: 1,
+    totalCount: 0,
 
     async init() {
         // 신규 입력 기능 삭제 - 매출표에서만 신규 입력 가능
@@ -41,19 +44,34 @@ window.OrderManagementModule = {
             () => this.load());
     },
 
-    async load() {
-        const snap = await window.firebaseDb
-            .collection('sales').doc('orders').collection('items')
-            .orderBy('createdAt', 'desc').get();
+    async load(page = 1) {
+        try {
+            this.currentPage = page || 1;
 
-        const allItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            // 전체 개수 조회
+            const countSnap = await window.firebaseDb
+                .collection('sales').doc('orders').collection('items').get();
+            this.totalCount = countSnap.size;
 
-        // Phase 3-3: 모든 항목을 주문관리로 표시 (orderId 필터링 제거)
-        // 이전: orderId가 있는 항목만 = 주문관리
-        // 현재: 모든 항목에 주문관리 필드 포함
-        this.items = allItems;
+            // 페이지 데이터 조회
+            const offset = (this.currentPage - 1) * this.pageSize;
+            const snap = await window.firebaseDb
+                .collection('sales').doc('orders').collection('items')
+                .orderBy('createdAt', 'desc')
+                .limit(this.pageSize)
+                .offset(offset)
+                .get();
 
-        this.renderTable();
+            const allItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+            this.items = allItems;
+
+            this.renderTable();
+            this.renderPagination();
+        } catch (error) {
+            console.error('[OrderManagement] load 실패:', error);
+            window.Utils.showNotification('주문관리 로드 실패', 'error');
+        }
     },
 
     _statusBadge(checked) {
@@ -189,6 +207,75 @@ window.OrderManagementModule = {
             }
 
         }
+    },
+
+    renderPagination() {
+        const paginationContainer = document.getElementById('orderManagementPagination');
+        if (!paginationContainer) return;
+
+        const totalPages = Math.ceil(this.totalCount / this.pageSize);
+        const maxPageButtons = 5;
+
+        let startPage = Math.max(1, this.currentPage - Math.floor(maxPageButtons / 2));
+        let endPage = Math.min(totalPages, startPage + maxPageButtons - 1);
+
+        if (endPage - startPage + 1 < maxPageButtons) {
+            startPage = Math.max(1, endPage - maxPageButtons + 1);
+        }
+
+        let html = `
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 16px; background: #f9fafb; border-radius: 6px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <label for="orderMgmtPageSizeSelect" style="margin: 0;">페이지당 행:</label>
+                    <select id="orderMgmtPageSizeSelect" style="padding: 6px 12px; border: 1px solid #d1d5db; border-radius: 4px;">
+                        <option value="10" ${this.pageSize === 10 ? 'selected' : ''}>10개</option>
+                        <option value="50" ${this.pageSize === 50 ? 'selected' : ''}>50개</option>
+                        <option value="100" ${this.pageSize === 100 ? 'selected' : ''}>100개</option>
+                        <option value="200" ${this.pageSize === 200 ? 'selected' : ''}>200개</option>
+                    </select>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <button class="btn btn-sm" id="orderMgmtPrevPageBtn" ${this.currentPage === 1 ? 'disabled' : ''}>이전</button>`;
+
+        for (let i = startPage; i <= endPage; i++) {
+            const isActive = i === this.currentPage;
+            html += `<button class="btn btn-sm orderMgmt-page-btn" data-page="${i}" style="min-width: 36px; ${isActive ? 'background: #3b82f6; color: white;' : ''}">${i}</button>`;
+        }
+
+        html += `
+                    <button class="btn btn-sm" id="orderMgmtNextPageBtn" ${this.currentPage === totalPages ? 'disabled' : ''}>다음</button>
+                </div>
+
+                <div style="color: #6b7280; font-size: 0.875rem;">
+                    ${(this.currentPage - 1) * this.pageSize + 1} - ${Math.min(this.currentPage * this.pageSize, this.totalCount)} / 총 ${this.totalCount}개
+                </div>
+            </div>`;
+
+        paginationContainer.innerHTML = html;
+
+        // 이벤트 리스너
+        document.getElementById('orderMgmtPageSizeSelect')?.addEventListener('change', (e) => {
+            this.pageSize = parseInt(e.target.value);
+            this.currentPage = 1;
+            this.load(1);
+        });
+
+        document.getElementById('orderMgmtPrevPageBtn')?.addEventListener('click', () => {
+            if (this.currentPage > 1) this.load(this.currentPage - 1);
+        });
+
+        document.getElementById('orderMgmtNextPageBtn')?.addEventListener('click', () => {
+            const totalPages = Math.ceil(this.totalCount / this.pageSize);
+            if (this.currentPage < totalPages) this.load(this.currentPage + 1);
+        });
+
+        document.querySelectorAll('.orderMgmt-page-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const page = parseInt(btn.dataset.page);
+                this.load(page);
+            });
+        });
     },
 
     showForm(itemId = null) {
