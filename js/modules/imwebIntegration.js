@@ -10,7 +10,20 @@ window.ImwebIntegrationModule = {
         try {
             window.Utils.showNotification('아임웹에서 주문을 조회 중입니다...', 'info');
 
-            const response = await fetch('/api/imweb/orders');
+            // Firebase 인증 토큰 가져오기
+            const user = firebase.auth().currentUser;
+            if (!user) {
+                throw new Error('로그인이 필요합니다.');
+            }
+
+            const token = await user.getIdToken();
+
+            const response = await fetch('/api/imweb/orders', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
             if (!response.ok) {
                 throw new Error('아임웹 주문 조회 실패');
             }
