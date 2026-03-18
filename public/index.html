@@ -441,19 +441,19 @@
                         <div class="button-group">
                             <button id="newNoteBtn" class="btn btn-primary">+ 새 노트</button>
                         </div>
-                        <div id="notesContainer" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; margin-top: 20px;"></div>
+                        <div id="notesContainer" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 16px; margin-top: 20px;"></div>
                     </section>
 
                     <!-- 노트 상세 모달 -->
                     <div id="noteModal" class="modal hidden">
-                        <div class="modal-content" style="width: 90%; max-width: 800px; height: 90%;">
+                        <div class="modal-content" style="width: 95%; max-width: 1200px; height: 95%; display: flex; flex-direction: column;">
                             <div class="modal-header">
                                 <h3>노트</h3>
                                 <button class="close-modal" data-modal="noteModal">&times;</button>
                             </div>
-                            <div class="modal-body" style="display: flex; flex-direction: column; height: calc(100% - 120px); padding: 20px;">
+                            <div class="modal-body" style="display: flex; flex-direction: column; flex: 1; padding: 20px; overflow: hidden;">
                                 <input type="text" id="noteTitle" placeholder="노트 제목" style="margin-bottom: 10px; padding: 8px; font-size: 14px; border: 1px solid #ddd; border-radius: 4px;">
-                                <textarea id="noteContent" placeholder="노트 내용을 입력하세요..." style="flex: 1; padding: 10px; font-family: 'Monaco', 'Menlo', monospace; font-size: 13px; border: 1px solid #ddd; border-radius: 4px; resize: none;"></textarea>
+                                <textarea id="noteContent" placeholder="노트 내용을 입력하세요..." style="flex: 1; padding: 10px; font-family: 'Monaco', 'Menlo', monospace; font-size: 13px; border: 1px solid #ddd; border-radius: 4px; resize: none; overflow-y: auto;"></textarea>
                             </div>
                             <div class="modal-footer" style="display: flex; gap: 10px; justify-content: flex-end; padding: 15px 20px; border-top: 1px solid #ddd;">
                                 <button id="deleteNoteBtn" class="btn btn-danger">🗑️ 삭제</button>
