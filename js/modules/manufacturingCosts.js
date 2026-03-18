@@ -18,7 +18,7 @@ window.ManufacturingCostsModule = {
         { key: 'stoneCostRef',    label: '나석가격(참고)',  type: 'number', calc: true },
         { key: 'otherCost',       label: '기타비용',       type: 'number' },
         { key: 'manufacturingCost',label: '제조가격',      type: 'number', calc: true },
-        { key: 'productionMonth', label: '제작월(YYYY-MM)', type: 'text' },
+        { key: 'inputCompleted',  label: '입력 완료',      type: 'checkbox' },
         { key: 'salesProfit',     label: '매출이익',       type: 'number', calc: true },
         { key: 'salesProfitRate', label: '매출이익률(%)',   type: 'number', calc: true },
     ],
@@ -145,8 +145,8 @@ window.ManufacturingCostsModule = {
                 return;
             }
 
-        // 기본 표시 필드
-        const defaultDisplayFields = ['orderNumber', 'customerName', 'productName', 'productionMonth', 'goldValue', 'stoneCostManual', 'manufacturingCost', 'salesProfitRate'];
+        // 기본 표시 필드 (orderDate를 첫 번째로, productionMonth 제거)
+        const defaultDisplayFields = ['orderDate', 'orderNumber', 'customerName', 'productName', 'goldValue', 'stoneCostManual', 'manufacturingCost', 'inputCompleted', 'salesProfit', 'salesProfitRate'];
         const allFields = [...this.BASE_FIELDS, ...this.STONE_FIELDS];
 
         // 동적 필드 추가 (orderNumber, customerName, productName, orderDate)
@@ -174,6 +174,17 @@ window.ManufacturingCostsModule = {
             const cells = displayFieldKeys.map(key => {
                 const field = fieldMap[key];
                 let val = c[key];
+
+                // 입력 완료 체크박스 처리
+                if (key === 'inputCompleted') {
+                    const checked = c.inputCompleted ? 'checked' : '';
+                    return `<td style="text-align:center;"><input type="checkbox" class="input-completed-checkbox" data-id="${c.id}" ${checked}></td>`;
+                }
+
+                // 입력 완료가 체크되지 않으면 매출이익/율을 "미입력"으로 표시
+                if (!c.inputCompleted && (key === 'salesProfit' || key === 'salesProfitRate')) {
+                    return `<td style="color:#9ca3af;">미입력</td>`;
+                }
 
                 // 특수 처리
                 if (key === 'stoneCostManual' && (!val || val === 0)) {
@@ -243,6 +254,42 @@ window.ManufacturingCostsModule = {
                     this.updateBulkDeleteBtn();
                 });
             }
+
+            // "입력 완료" 체크박스 이벤트
+            const completedCheckboxes = table.querySelectorAll('tbody .input-completed-checkbox');
+            completedCheckboxes.forEach(checkbox => {
+                checkbox.addEventListener('change', async (e) => {
+                    const costId = e.target.dataset.id;
+                    const cost = this.costs.find(c => c.id === costId);
+                    if (cost) {
+                        cost.inputCompleted = e.target.checked;
+                        // 체크 상태가 변경되면, 매출이익/율을 0으로 초기화하거나 계산
+                        if (!e.target.checked) {
+                            cost.salesProfit = 0;
+                            cost.salesProfitRate = 0;
+                        } else {
+                            const calc = this.calculate(cost);
+                            cost.salesProfit = calc.salesProfit;
+                            cost.salesProfitRate = calc.salesProfitRate;
+                        }
+                        // Firebase에 저장
+                        try {
+                            await window.firebaseDb.collection('sales').doc('orders')
+                                .collection('items').doc(costId)
+                                .update({
+                                    inputCompleted: cost.inputCompleted,
+                                    salesProfit: cost.salesProfit,
+                                    salesProfitRate: cost.salesProfitRate,
+                                    updatedAt: new Date()
+                                });
+                            this.renderTable();
+                        } catch (error) {
+                            console.error('Failed to update inputCompleted:', error);
+                            window.Utils.showNotification('저장 실패', 'error');
+                        }
+                    }
+                });
+            });
 
             // 각 행의 체크박스 이벤트
             const checkboxes = table.querySelectorAll('tbody .row-checkbox');
@@ -376,7 +423,7 @@ window.ManufacturingCostsModule = {
         }
 
         const cost = costId ? this.costs.find(c => c.id === costId) : null;
-        // 제작월(productionMonth) 필드 제외
+        // productionMonth 필드 제외
         const allFields = [...this.BASE_FIELDS.filter(f => f.key !== 'productionMonth')];
 
         // 매출금액 참고 필드 추가
@@ -388,6 +435,19 @@ window.ManufacturingCostsModule = {
             const val = cost?.[f.key] ?? '';
             // 주문번호(orderId)와 매출금액(salesAmount)은 수정 불가
             const isReadOnly = f.key === 'orderId' || f.key === 'salesAmount' || f.calc;
+
+            // "입력 완료" 체크박스 특별 처리
+            if (f.type === 'checkbox') {
+                const checked = cost?.[f.key] ? 'checked' : '';
+                return `
+                    <div class="form-group">
+                        <label style="display:flex; align-items:center; gap:8px;">
+                            <input type="checkbox" name="${f.key}" ${checked}>
+                            <span>${f.label}</span>
+                        </label>
+                    </div>`;
+            }
+
             return `
                 <div class="form-group">
                     <label>${f.label}${f.calc ? ' <span style="color:#9ca3af;font-size:0.75rem">(자동)</span>' : ''}</label>
@@ -426,7 +486,10 @@ window.ManufacturingCostsModule = {
             '제조원가 수정', body,
             async (data, w) => {
                 Object.keys(data).forEach(k => {
-                    if (k !== 'orderId' && k !== 'productionMonth') {
+                    if (k === 'inputCompleted') {
+                        // 체크박스 값 boolean으로 변환
+                        data[k] = data[k] === 'on' || data[k] === true;
+                    } else if (k !== 'orderId' && k !== 'productionMonth') {
                         data[k] = parseFloat(data[k]) || 0;
                     }
                 });
@@ -447,12 +510,22 @@ window.ManufacturingCostsModule = {
                 // 1. 이미 수정된 나석 정보가 있으면 사용
                 let existingStones = cost?.stones || [];
 
-                // 2. 없으면 제품단가표에서 기본 나석 정보 로드
-                if (existingStones.length === 0 && cost?.productCode) {
-                    const product = this.productRates.find(p => p.productCode === cost.productCode);
-                    if (product && product.stones && product.stones.length > 0) {
-                        // 제품의 나석 정보를 복사 (독립적으로 수정 가능하도록)
-                        existingStones = JSON.parse(JSON.stringify(product.stones));
+                // 2. 없으면 제품단가표에서 기본 나석 정보 로드 (상품명 우선, 다음 productCode)
+                if (existingStones.length === 0) {
+                    // 상품명으로 먼저 검색
+                    if (cost?.productName) {
+                        const product = this.productRates.find(p => p.productName === cost.productName);
+                        if (product && product.stones && product.stones.length > 0) {
+                            existingStones = JSON.parse(JSON.stringify(product.stones));
+                        }
+                    }
+
+                    // 상품명으로 못 찾으면 productCode로 검색
+                    if (existingStones.length === 0 && cost?.productCode) {
+                        const product = this.productRates.find(p => p.productCode === cost.productCode);
+                        if (product && product.stones && product.stones.length > 0) {
+                            existingStones = JSON.parse(JSON.stringify(product.stones));
+                        }
                     }
                 }
 
