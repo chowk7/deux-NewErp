@@ -983,17 +983,11 @@ window.SalesManagementModule = {
         window.Utils.openRequiredFieldsModal('orders', this.ORDER_FIELDS);
     },
 
-    async printOrders() {
-        // html2canvas 라이브러리 로드 확인 및 대기
-        let retries = 0;
-        while (typeof html2canvas === 'undefined' && retries < 30) {
-            await new Promise(resolve => setTimeout(resolve, 100));
-            retries++;
-        }
-
-        if (typeof html2canvas === 'undefined') {
-            window.Utils.showNotification('html2canvas 라이브러리 로드 실패. 페이지를 새로고침해주세요.', 'error');
-            console.error('html2canvas failed to load after 3 seconds');
+    printOrders() {
+        // SheetJS 라이브러리 확인
+        if (typeof XLSX === 'undefined') {
+            window.Utils.showNotification('라이브러리를 로드하는 중입니다. 잠시 후 다시 시도해주세요.', 'warning');
+            console.error('XLSX is not loaded');
             return;
         }
 
@@ -1016,71 +1010,45 @@ window.SalesManagementModule = {
                 const qty = order[`stoneQty${i}`];
                 if (qty) totalQty += parseInt(qty) || 0;
             }
-            return totalQty || '-';
+            return totalQty || '';
         };
 
-        // HTML 테이블 생성
-        const tableHtml = `
-            <div style="font-family: Arial, sans-serif; padding: 20px; background: white;">
-                <table style="width: 100%; border-collapse: collapse; border: 2px solid #333;">
-                    <thead>
-                        <tr style="background-color: #f0f0f0;">
-                            <th style="border: 1px solid #333; padding: 10px; text-align: center; width: 12%;">주문일</th>
-                            <th style="border: 1px solid #333; padding: 10px; text-align: center; width: 13%;">고객명</th>
-                            <th style="border: 1px solid #333; padding: 10px; text-align: center; width: 15%;">제품명</th>
-                            <th style="border: 1px solid #333; padding: 10px; text-align: center; width: 15%;">옵션명</th>
-                            <th style="border: 1px solid #333; padding: 10px; text-align: center; width: 10%;">나석갯수</th>
-                            <th style="border: 1px solid #333; padding: 10px; text-align: center; width: 20%;">기타</th>
-                            <th style="border: 1px solid #333; padding: 10px; text-align: center; width: 15%;">보증서</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${selectedOrders.map(order => {
-                            const orderDate = order.orderDate?.toDate
-                                ? new Date(order.orderDate.toDate()).toLocaleDateString('ko-KR')
-                                : (order.orderDate || '-');
-                            const customerName = order.customerName || '-';
-                            const productName = order.productName || '-';
-                            const optionName = order.optionName || '-';
-                            const stoneQty = getStoneQuantity(order);
-                            const remark = order.remark || '-';
-                            const warranty = order.warranty || '-';
+        // 엑셀용 데이터 변환
+        const excelData = selectedOrders.map(order => {
+            const orderDate = order.orderDate?.toDate
+                ? new Date(order.orderDate.toDate()).toLocaleDateString('ko-KR')
+                : (order.orderDate || '');
 
-                            return `
-                                <tr style="height: 40px;">
-                                    <td style="border: 1px solid #333; padding: 8px; text-align: center;">${orderDate}</td>
-                                    <td style="border: 1px solid #333; padding: 8px; text-align: center;">${customerName}</td>
-                                    <td style="border: 1px solid #333; padding: 8px; text-align: left;">${productName}</td>
-                                    <td style="border: 1px solid #333; padding: 8px; text-align: left;">${optionName}</td>
-                                    <td style="border: 1px solid #333; padding: 8px; text-align: center;">${stoneQty}</td>
-                                    <td style="border: 1px solid #333; padding: 8px; text-align: left;">${remark}</td>
-                                    <td style="border: 1px solid #333; padding: 8px; text-align: center;">${warranty}</td>
-                                </tr>
-                            `;
-                        }).join('')}
-                    </tbody>
-                </table>
-            </div>
-        `;
-
-        // 임시 DOM 요소 생성
-        const printContainer = document.createElement('div');
-        printContainer.innerHTML = tableHtml;
-        printContainer.style.position = 'fixed';
-        printContainer.style.left = '-9999px';
-        printContainer.style.top = '-9999px';
-        document.body.appendChild(printContainer);
+            return {
+                '주문일': orderDate,
+                '고객명': order.customerName || '',
+                '제품명': order.productName || '',
+                '옵션명': order.optionName || '',
+                '나석갯수': getStoneQuantity(order),
+                '기타': order.remark || '',
+                '보증서': order.warranty || ''
+            };
+        });
 
         try {
-            // html2canvas를 사용하여 이미지 생성
-            const canvas = await html2canvas(printContainer.querySelector('table'), {
-                scale: 2,
-                useCORS: true,
-                logging: false,
-                backgroundColor: '#ffffff'
-            });
+            // 워크북 및 워크시트 생성
+            const workbook = XLSX.utils.book_new();
+            const worksheet = XLSX.utils.json_to_sheet(excelData);
 
-            // 현재 시간으로 파일명 생성
+            // 컬럼 너비 설정
+            worksheet['!cols'] = [
+                { wch: 15 },  // 주문일
+                { wch: 15 },  // 고객명
+                { wch: 15 },  // 제품명
+                { wch: 15 },  // 옵션명
+                { wch: 12 },  // 나석갯수
+                { wch: 20 },  // 기타
+                { wch: 15 }   // 보증서
+            ];
+
+            XLSX.utils.book_append_sheet(workbook, worksheet, '주문서');
+
+            // 파일명 생성
             const now = new Date();
             const timeString = now.getFullYear() +
                 String(now.getMonth() + 1).padStart(2, '0') +
@@ -1089,25 +1057,11 @@ window.SalesManagementModule = {
                 String(now.getMinutes()).padStart(2, '0') +
                 String(now.getSeconds()).padStart(2, '0');
 
-            // JPG로 변환 및 다운로드
-            canvas.toBlob((blob) => {
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `주문서_${timeString}.jpg`;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                URL.revokeObjectURL(url);
-
-                // 임시 컨테이너 제거
-                document.body.removeChild(printContainer);
-
-                window.Utils.showNotification(`${checkedIds.length}개 주문서가 다운로드되었습니다.`, 'success');
-            }, 'image/jpeg', 0.95);
+            // 엑셀 파일 다운로드
+            XLSX.writeFile(workbook, `주문서_${timeString}.xlsx`);
+            window.Utils.showNotification(`${checkedIds.length}개 주문서가 다운로드되었습니다.`, 'success');
         } catch (error) {
-            console.error('Failed to generate order print:', error);
-            document.body.removeChild(printContainer);
+            console.error('Failed to generate Excel file:', error);
             window.Utils.showNotification('주문서 출력에 실패했습니다.', 'error');
         }
     },
