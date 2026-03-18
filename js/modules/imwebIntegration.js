@@ -8,7 +8,7 @@ window.ImwebIntegrationModule = {
     // 아임웹 주문 가져오기
     async fetchImwebOrders() {
         try {
-            window.Utils.showLoading(true);
+            window.Utils.showNotification('아임웹에서 주문을 조회 중입니다...', 'info');
 
             const response = await fetch('/api/imweb/orders');
             if (!response.ok) {
@@ -27,8 +27,6 @@ window.ImwebIntegrationModule = {
         } catch (error) {
             console.error('Imweb fetch error:', error);
             window.Utils.showNotification(error.message || '아임웹 주문 조회 중 오류가 발생했습니다.', 'error');
-        } finally {
-            window.Utils.showLoading(false);
         }
     },
 
@@ -193,7 +191,7 @@ window.ImwebIntegrationModule = {
         if (!(await window.Utils.confirm(`${this.selectedOrders.length}개의 주문을 추가하시겠습니까?`))) return;
 
         try {
-            window.Utils.showLoading(true);
+            window.Utils.showNotification('주문을 추가 중입니다...', 'info');
 
             // 선택한 주문을 Firestore에 추가
             const batch = window.firebaseDb.batch();
@@ -235,8 +233,6 @@ window.ImwebIntegrationModule = {
         } catch (error) {
             console.error('Import error:', error);
             window.Utils.showNotification('주문 추가 중 오류가 발생했습니다.', 'error');
-        } finally {
-            window.Utils.showLoading(false);
         }
     }
 };
