@@ -132,6 +132,10 @@ window.SalesManagementModule = {
         // 주문서 출력 버튼
         document.getElementById('printOrderBtn')
             ?.addEventListener('click', () => this.printOrders());
+
+        // 발렉스 양식 출력 버튼
+        document.getElementById('printValexFormBtn')
+            ?.addEventListener('click', () => this.printValexForm());
     },
 
     openOrderDisplaySettings() {
@@ -1178,6 +1182,108 @@ window.SalesManagementModule = {
         } catch (error) {
             console.error('Failed to generate Excel file:', error);
             window.Utils.showNotification('주문서 출력에 실패했습니다.', 'error');
+        }
+    },
+
+    printValexForm() {
+        if (typeof XLSX === 'undefined') {
+            window.Utils.showNotification('라이브러리를 로드하는 중입니다. 잠시 후 다시 시도해주세요.', 'warning');
+            return;
+        }
+
+        const table = document.querySelector('#ordersTable');
+        const checkedIds = Array.from(table.querySelectorAll('tbody .row-checkbox:checked'))
+            .map(cb => cb.dataset.id);
+
+        if (checkedIds.length === 0) {
+            window.Utils.showNotification('선택된 주문이 없습니다.', 'warning');
+            return;
+        }
+
+        const selectedOrders = this.orders.filter(o => checkedIds.includes(o.id));
+
+        // 오늘 날짜 (YYYY-MM-DD)
+        const today = new Date();
+        const todayStr = today.getFullYear() + '-' +
+            String(today.getMonth() + 1).padStart(2, '0') + '-' +
+            String(today.getDate()).padStart(2, '0');
+
+        const headers = [
+            '*NO(삭제금지)',
+            '*고객사주문번호',
+            '*주문형태',
+            '*주문일',
+            '*고객명',
+            '*연락처',
+            '우편번호',
+            '*주소',
+            '상세주소',
+            '*상품명',
+            '주문수량',
+            '*상품무게(kg)',
+            '상자크기',
+            '*상품가격(원)',
+            '고객 메모',
+            '고객사 메모'
+        ];
+
+        const rows = selectedOrders.map((order, idx) => ({
+            '*NO(삭제금지)': idx + 1,
+            '*고객사주문번호': order.orderNumber || '',
+            '*주문형태': '배송',
+            '*주문일': todayStr,
+            '*고객명': order.customerName || '',
+            '*연락처': order.phone || '',
+            '우편번호': order.postalCode || '',
+            '*주소': order.address || '',
+            '상세주소': order.addressDetail || '',
+            '*상품명': order.productName || '',
+            '주문수량': 1,
+            '*상품무게(kg)': 0.2,
+            '상자크기': 20,
+            '*상품가격(원)': 999000,
+            '고객 메모': '안전한 배송 부탁드립니다.',
+            '고객사 메모': ''
+        }));
+
+        try {
+            const workbook = XLSX.utils.book_new();
+            const worksheet = XLSX.utils.json_to_sheet(rows, { header: headers });
+
+            worksheet['!cols'] = [
+                { wch: 12 },  // NO
+                { wch: 20 },  // 고객사주문번호
+                { wch: 10 },  // 주문형태
+                { wch: 12 },  // 주문일
+                { wch: 12 },  // 고객명
+                { wch: 15 },  // 연락처
+                { wch: 10 },  // 우편번호
+                { wch: 30 },  // 주소
+                { wch: 20 },  // 상세주소
+                { wch: 20 },  // 상품명
+                { wch: 10 },  // 주문수량
+                { wch: 14 },  // 상품무게
+                { wch: 10 },  // 상자크기
+                { wch: 14 },  // 상품가격
+                { wch: 25 },  // 고객 메모
+                { wch: 15 }   // 고객사 메모
+            ];
+
+            XLSX.utils.book_append_sheet(workbook, worksheet, '발렉스양식');
+
+            const now = new Date();
+            const timeString = now.getFullYear() +
+                String(now.getMonth() + 1).padStart(2, '0') +
+                String(now.getDate()).padStart(2, '0') + '_' +
+                String(now.getHours()).padStart(2, '0') +
+                String(now.getMinutes()).padStart(2, '0') +
+                String(now.getSeconds()).padStart(2, '0');
+
+            XLSX.writeFile(workbook, `발렉스양식_${timeString}.xlsx`);
+            window.Utils.showNotification(`${checkedIds.length}건 발렉스 양식이 다운로드되었습니다.`, 'success');
+        } catch (error) {
+            console.error('Failed to generate Valex Excel file:', error);
+            window.Utils.showNotification('발렉스 양식 출력에 실패했습니다.', 'error');
         }
     },
 };
