@@ -77,60 +77,73 @@ window.ManufacturingCostsModule = {
     },
 
     async load() {
-        const snap = await window.firebaseDb
-            .collection('sales').doc('orders').collection('items')
-            .orderBy('createdAt', 'desc').get();
+        try {
+            const snap = await window.firebaseDb
+                .collection('sales').doc('orders').collection('items')
+                .orderBy('createdAt', 'desc').get();
 
-        let allItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            let allItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-        // ✅ 기존 데이터 중 계산 필드가 비어있으면 자동 계산하여 저장
-        const needsUpdate = [];
-        allItems = allItems.map(item => {
-            // 계산 필드 확인
-            const needsCalc = !item.goldValue || !item.manufacturingCost ||
-                            item.salesProfit === undefined || item.salesProfitRate === undefined;
+            // ✅ 기존 데이터 중 계산 필드가 비어있으면 자동 계산하여 저장
+            const needsUpdate = [];
+            allItems = allItems.map(item => {
+                // 계산 필드 확인
+                const needsCalc = !item.goldValue || !item.manufacturingCost ||
+                                item.salesProfit === undefined || item.salesProfitRate === undefined;
 
-            if (needsCalc) {
-                // 자동 계산
-                const calculated = this.calculate(item);
-                needsUpdate.push({ id: item.id, data: calculated });
-                return calculated;
+                if (needsCalc) {
+                    // 자동 계산
+                    const calculated = this.calculate(item);
+                    needsUpdate.push({ id: item.id, data: calculated });
+                    return calculated;
+                }
+                return item;
+            });
+
+            // 계산이 필요한 항목들을 batch로 업데이트
+            if (needsUpdate.length > 0) {
+                const batch = window.firebaseDb.batch();
+                const collection = window.firebaseDb.collection('sales').doc('orders').collection('items');
+
+                for (const { id, data } of needsUpdate) {
+                    batch.update(collection.doc(id), {
+                        ...data,
+                        updatedAt: new Date()
+                    });
+                }
+
+                try {
+                    await batch.commit();
+                    console.log(`[ManufacturingCosts] 자동 계산 업데이트: ${needsUpdate.length}개 항목`);
+                } catch (error) {
+                    console.error('Failed to update calculated fields:', error);
+                }
             }
-            return item;
-        });
 
-        // 계산이 필요한 항목들을 batch로 업데이트
-        if (needsUpdate.length > 0) {
-            const batch = window.firebaseDb.batch();
-            const collection = window.firebaseDb.collection('sales').doc('orders').collection('items');
+            // Phase 3-3: 모든 항목을 제조원가로 표시 (orderId 필터링 제거)
+            // 이전: orderId가 있는 항목만 = 제조원가
+            // 현재: 모든 항목에 제조원가 필드 포함
+            this.costs = allItems;
 
-            for (const { id, data } of needsUpdate) {
-                batch.update(collection.doc(id), {
-                    ...data,
-                    updatedAt: new Date()
-                });
-            }
+            this.renderTable();
+        } catch (error) {
+            console.error('[ManufacturingCosts] 데이터 로드 실패:', error);
+            window.Utils.showNotification(`제조원가표 로드 실패: ${error.message}`, 'error');
 
-            try {
-                await batch.commit();
-                console.log(`[ManufacturingCosts] 자동 계산 업데이트: ${needsUpdate.length}개 항목`);
-            } catch (error) {
-                console.error('Failed to update calculated fields:', error);
-            }
+            // 오류 발생해도 테이블 헤더는 표시
+            this.costs = [];
+            this.renderTable();
         }
-
-        // Phase 3-3: 모든 항목을 제조원가로 표시 (orderId 필터링 제거)
-        // 이전: orderId가 있는 항목만 = 제조원가
-        // 현재: 모든 항목에 제조원가 필드 포함
-        this.costs = allItems;
-
-        this.renderTable();
     },
 
     renderTable() {
-        const table = document.querySelector('#manufacturingCostsTable');
-        const tbody = table?.querySelector('tbody');
-        if (!tbody) return;
+        try {
+            const table = document.querySelector('#manufacturingCostsTable');
+            const tbody = table?.querySelector('tbody');
+            if (!tbody) {
+                console.warn('[ManufacturingCosts] Table tbody element not found');
+                return;
+            }
 
         // 기본 표시 필드
         const defaultDisplayFields = ['orderNumber', 'customerName', 'productName', 'productionMonth', 'goldValue', 'stoneCostManual', 'manufacturingCost', 'salesProfitRate'];
@@ -233,6 +246,9 @@ window.ManufacturingCostsModule = {
 
             // 각 행의 체크박스 이벤트
             const checkboxes = table.querySelectorAll('tbody .row-checkbox');
+        }
+        } catch (error) {
+            console.error('[ManufacturingCosts] renderTable 오류:', error);
         }
     },
 

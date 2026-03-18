@@ -81,7 +81,7 @@ class DiamonJewelryApp {
      * 메뉴 클릭 처리
      * @param {string} menuId - 메뉴 항목 ID
      */
-    handleMenuClick(menuId) {
+    async handleMenuClick(menuId) {
         // 모든 콘텐츠 섹션 숨기기
         document.querySelectorAll('.content-section').forEach(section => {
             section.classList.add('hidden');
@@ -122,24 +122,29 @@ class DiamonJewelryApp {
                 section.classList.remove('hidden');
 
                 // 해당 모듈 로드
-                if (window.PriceManagementModule && (menuId === 'diamond-rates' || menuId === 'option-charges' || menuId === 'price-settings')) {
-                    window.PriceManagementModule.loadData(menuId);
-                } else if (window.SalesManagementModule && menuId === 'orders') {
-                    window.SalesManagementModule.loadOrders();
-                } else if (window.ProductRatesModule && menuId === 'product-rates') {
-                    window.ProductRatesModule.load();
-                } else if (window.CustomerManagementModule && menuId === 'customers') {
-                    window.CustomerManagementModule.loadCustomers();
-                } else if (window.ManufacturingCostsModule && menuId === 'manufacturing-costs') {
-                    window.ManufacturingCostsModule.load();
-                } else if (window.OrderManagementModule && menuId === 'order-management') {
-                    window.OrderManagementModule.load();
-                } else if (window.AdminExpensesModule && menuId === 'admin-expenses') {
-                    window.AdminExpensesModule.load();
-                } else if (window.ProfitLossModule && menuId === 'profit-loss') {
-                    window.ProfitLossModule.load();
-                } else if (menuId === 'notes') {
-                    notes.loadNotes().then(() => notes.renderNotes());
+                try {
+                    if (window.PriceManagementModule && (menuId === 'diamond-rates' || menuId === 'option-charges' || menuId === 'price-settings')) {
+                        window.PriceManagementModule.loadData(menuId);
+                    } else if (window.SalesManagementModule && menuId === 'orders') {
+                        await window.SalesManagementModule.loadOrders();
+                    } else if (window.ProductRatesModule && menuId === 'product-rates') {
+                        await window.ProductRatesModule.load();
+                    } else if (window.CustomerManagementModule && menuId === 'customers') {
+                        await window.CustomerManagementModule.loadCustomers();
+                    } else if (window.ManufacturingCostsModule && menuId === 'manufacturing-costs') {
+                        await window.ManufacturingCostsModule.load();
+                    } else if (window.OrderManagementModule && menuId === 'order-management') {
+                        await window.OrderManagementModule.load();
+                    } else if (window.AdminExpensesModule && menuId === 'admin-expenses') {
+                        await window.AdminExpensesModule.load();
+                    } else if (window.ProfitLossModule && menuId === 'profit-loss') {
+                        await window.ProfitLossModule.load();
+                    } else if (menuId === 'notes') {
+                        notes.loadNotes().then(() => notes.renderNotes());
+                    }
+                } catch (error) {
+                    console.error(`[App] 메뉴 로드 실패 (${menuId}):`, error);
+                    window.Utils.showNotification(`데이터 로드 실패: ${error.message}`, 'error');
                 }
             }
         }
