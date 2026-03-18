@@ -56,17 +56,21 @@ window.SalesManagementModule = {
             // 매출 필드
             ...this.ORDER_FIELDS,
             { key: 'separator1', label: '--- 제조원가 ---', type: 'text' },
-            // 제조원가 필드 (calc 필드 제외)
+            // 제조원가 필드 (calc 필드 제외, 단 goldValue, manufacturingCost는 입력용으로 포함)
             { key: 'productWeight',   label: '제품중량(참고g)', type: 'number' },
             { key: 'stoneWeight',     label: '나석중량(참고ct)',type: 'number' },
             { key: 'goldWeight14k',   label: '금중량14K(g)',    type: 'number' },
             { key: 'goldWeightPure',  label: '금중량순금해리(g)',type: 'number' },
             { key: 'goldMarketPrice', label: '금시세(순금1g)',  type: 'number' },
-            { key: 'settingCost',     label: '물림비',         type: 'number' },
-            { key: 'laborCost',       label: '공임',           type: 'number' },
-            { key: 'platingCost',     label: '도금/각인',      type: 'number' },
+            { key: 'goldValue',       label: '금값',            type: 'number' },
+            { key: 'settingCost',     label: '물림비',          type: 'number' },
+            { key: 'laborCost',       label: '공임',            type: 'number' },
+            { key: 'platingCost',     label: '도금/각인',       type: 'number' },
             { key: 'stoneCostManual', label: '나석가격(수동입력)',type: 'number' },
-            { key: 'otherCost',       label: '기타비용',       type: 'number' },
+            { key: 'stoneCostRef',    label: '나석가격(참고)',   type: 'number' },
+            { key: 'otherCost',       label: '기타비용',        type: 'number' },
+            { key: 'manufacturingCost',label: '제조가격',       type: 'number' },
+            { key: 'inputCompleted',  label: '입력 완료(Y/N)',  type: 'text' },
             { key: 'productionMonth', label: '제작월(YYYY-MM)', type: 'text' },
             // 나석 10개 필드
             ...Array.from({length: 10}, (_, i) => [
@@ -1018,6 +1022,12 @@ window.SalesManagementModule = {
                     row[k] = row[k].toDate().toLocaleDateString('ko-KR');
                 }
             });
+            // 입력 완료 포맷팅 (boolean → Y/N)
+            if (row['inputCompleted'] === true) {
+                row['inputCompleted'] = 'Y';
+            } else {
+                row['inputCompleted'] = 'N';
+            }
             return row;
         });
         window.Utils.downloadCsvData(fields, rows, '통합.csv');
@@ -1042,8 +1052,8 @@ window.SalesManagementModule = {
 
                 // 숫자 변환
                 ['orderAmount','salesAmount','commissionRate','productWeight','stoneWeight',
-                 'goldWeight14k','goldWeightPure','goldMarketPrice','settingCost','laborCost',
-                 'platingCost','stoneCostManual','otherCost'].forEach(k => {
+                 'goldWeight14k','goldWeightPure','goldMarketPrice','goldValue','settingCost','laborCost',
+                 'platingCost','stoneCostManual','stoneCostRef','otherCost','manufacturingCost'].forEach(k => {
                     if (row[k] !== undefined) row[k] = parseFloat(row[k]) || 0;
                 });
 
@@ -1061,6 +1071,18 @@ window.SalesManagementModule = {
                         row[k] = false;
                     }
                 });
+
+                // 입력 완료 변환 (Y/N → boolean)
+                if (row['inputCompleted']) {
+                    if (row['inputCompleted'] === 'Y' || row['inputCompleted'] === 'y' ||
+                        row['inputCompleted'] === 'true' || row['inputCompleted'] === true) {
+                        row['inputCompleted'] = true;
+                    } else {
+                        row['inputCompleted'] = false;
+                    }
+                } else {
+                    row['inputCompleted'] = false;
+                }
 
                 batch.set(ref, { ...row, createdAt: new Date(), updatedAt: new Date() });
             });

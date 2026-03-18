@@ -292,7 +292,14 @@ window.ManufacturingCostsModule = {
                                     salesProfitRate: cost.salesProfitRate,
                                     updatedAt: new Date()
                                 });
-                            this.renderTable();
+                            // renderTable() 호출 제거 - allCosts의 데이터가 이미 업데이트됨
+                            // 대신 allCosts의 해당 항목도 업데이트
+                            const allCostItem = this.allCosts.find(c => c.id === costId);
+                            if (allCostItem) {
+                                allCostItem.inputCompleted = cost.inputCompleted;
+                                allCostItem.salesProfit = cost.salesProfit;
+                                allCostItem.salesProfitRate = cost.salesProfitRate;
+                            }
                         } catch (error) {
                             console.error('Failed to update inputCompleted:', error);
                             window.Utils.showNotification('저장 실패', 'error');
