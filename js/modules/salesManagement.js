@@ -996,7 +996,7 @@ window.SalesManagementModule = {
                     row.orderDate = isNaN(d) ? null : firebase.firestore.Timestamp.fromDate(d);
                 }
                 ['orderAmount','salesAmount','commissionRate'].forEach(k => {
-                    if (row[k] !== undefined) row[k] = parseFloat(row[k]) || 0;
+                    if (row[k] !== undefined) row[k] = parseFloat(String(row[k]).replace(/,/g, '')) || 0;
                 });
                 batch.set(ref, { ...row, createdAt: new Date(), updatedAt: new Date() });
             });
@@ -1056,13 +1056,13 @@ window.SalesManagementModule = {
                 ['orderAmount','salesAmount','commissionRate','productWeight','stoneWeight',
                  'goldWeight14k','goldWeightPure','goldMarketPrice','goldValue','settingCost','laborCost',
                  'platingCost','stoneCostManual','stoneCostRef','otherCost','manufacturingCost'].forEach(k => {
-                    if (row[k] !== undefined) row[k] = parseFloat(row[k]) || 0;
+                    if (row[k] !== undefined) row[k] = parseFloat(String(row[k]).replace(/,/g, '')) || 0;
                 });
 
                 // 나석 숫자 필드 변환
                 for (let i = 1; i <= 10; i++) {
-                    if (row[`stoneQty${i}`]) row[`stoneQty${i}`] = parseFloat(row[`stoneQty${i}`]) || 0;
-                    if (row[`stonePrice${i}`]) row[`stonePrice${i}`] = parseFloat(row[`stonePrice${i}`]) || 0;
+                    if (row[`stoneQty${i}`]) row[`stoneQty${i}`] = parseFloat(String(row[`stoneQty${i}`]).replace(/,/g, '')) || 0;
+                    if (row[`stonePrice${i}`]) row[`stonePrice${i}`] = parseFloat(String(row[`stonePrice${i}`]).replace(/,/g, '')) || 0;
                 }
 
                 // 체크박스 변환
