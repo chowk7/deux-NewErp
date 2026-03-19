@@ -382,8 +382,6 @@ window.SalesManagementModule = {
                             data-action="showOrderForm" data-id="${o.id}">수정</button>
                         <button class="btn btn-sm btn-outline"
                             data-action="openStatusForm" data-id="${o.id}">상태</button>
-                        <button class="btn btn-sm btn-danger"
-                            data-action="deleteOrder" data-id="${o.id}" disabled style="opacity:0.4;cursor:not-allowed;">삭제</button>
                     </td>
                 </tr>`;
         }).join('');

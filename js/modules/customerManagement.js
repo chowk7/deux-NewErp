@@ -169,8 +169,6 @@ window.CustomerManagementModule = {
                     <td>
                         <button class="btn btn-sm btn-primary"
                             data-action="showForm" data-id="${c.id}">수정</button>
-                        <button class="btn btn-sm btn-danger"
-                            data-action="delete" data-id="${c.id}">삭제</button>
                     </td>
                 </tr>`;
         }).join('');

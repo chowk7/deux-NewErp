@@ -254,8 +254,6 @@ window.ProductRatesModule = {
                 <td>
                     <button class="btn btn-sm btn-primary"
                         data-action="showForm" data-id="${p.id}">수정</button>
-                    <button class="btn btn-sm btn-danger"
-                        data-action="delete" data-id="${p.id}" disabled style="opacity:0.4;cursor:not-allowed;">삭제</button>
                 </td>
             </tr>`).join('');
 
