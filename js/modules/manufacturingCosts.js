@@ -741,9 +741,8 @@ window.ManufacturingCostsModule = {
                     const docRef = collection.doc(docId);
                     batch.set(docRef, {
                         ...calculatedRow,
-                        createdAt: new Date(),
                         updatedAt: new Date()
-                    });
+                    }, { merge: true }); // 기존 필드(salesAmount 등) 보존
                 }
 
                 await batch.commit();
