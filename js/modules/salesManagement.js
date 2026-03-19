@@ -1068,65 +1068,123 @@ window.SalesManagementModule = {
 
     openIntegratedCsvUpload() {
         const fields = this.INTEGRATED_CSV_FIELDS.filter(f => !f.key.startsWith('separator'));
-        window.Utils.openCsvUploadModal(fields, async (rows) => {
-            const batch = window.firebaseDb.batch();
-            rows.forEach(row => {
-                const ref = window.firebaseDb
-                    .collection('sales').doc('orders').collection('items').doc();
 
-                // 날짜 변환
-                ['orderDate', 'stoneRequestDate', 'stoneCertificationDate', 'workshopRequestDate',
-                 'workshopDeliveryDate', 'completionDate', 'shippingReadyDate'].forEach(k => {
-                    if (row[k]) {
-                        const d = new Date(row[k]);
-                        row[k] = isNaN(d) ? null : firebase.firestore.Timestamp.fromDate(d);
+        // 추가/교체 선택 다이얼로그
+        const choiceWrapper = document.createElement('div');
+        choiceWrapper.setAttribute('data-modal', '');
+        choiceWrapper.innerHTML = `
+            <div class="modal-overlay" style="z-index:10000;">
+                <div class="modal-content" style="max-width:420px;">
+                    <div class="modal-header">
+                        <h3>통합 CSV 업로드 방식 선택</h3>
+                    </div>
+                    <div style="padding:20px 24px;">
+                        <p style="margin-bottom:16px;color:#374151;">기존 데이터를 어떻게 처리할까요?</p>
+                        <div style="display:flex;flex-direction:column;gap:12px;">
+                            <button id="csvModeAppend" class="btn btn-primary" style="padding:14px;font-size:1rem;">
+                                ➕ 추가 — 기존 데이터 유지 후 새 항목 추가
+                            </button>
+                            <button id="csvModeReplace" class="btn btn-danger" style="padding:14px;font-size:1rem;">
+                                🔄 교체 — 기존 데이터 전체 삭제 후 새 항목으로 교체
+                            </button>
+                            <button id="csvModeCancel" class="btn btn-secondary" style="padding:10px;">취소</button>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        document.body.appendChild(choiceWrapper);
+
+        const cleanup = () => choiceWrapper.remove();
+
+        choiceWrapper.querySelector('#csvModeCancel').addEventListener('click', cleanup);
+        choiceWrapper.querySelector('.modal-overlay').addEventListener('click', e => {
+            if (e.target.classList.contains('modal-overlay')) cleanup();
+        });
+
+        const startUpload = (replaceMode) => {
+            cleanup();
+            window.Utils.openCsvUploadModal(fields, async (rows) => {
+                try {
+                    const col = window.firebaseDb.collection('sales').doc('orders').collection('items');
+
+                    // 교체 모드: 기존 전체 삭제
+                    if (replaceMode) {
+                        const existing = await col.get();
+                        const delBatches = [];
+                        let delBatch = window.firebaseDb.batch();
+                        let count = 0;
+                        existing.docs.forEach(doc => {
+                            delBatch.delete(doc.ref);
+                            count++;
+                            if (count % 500 === 0) {
+                                delBatches.push(delBatch.commit());
+                                delBatch = window.firebaseDb.batch();
+                            }
+                        });
+                        if (count % 500 !== 0) delBatches.push(delBatch.commit());
+                        await Promise.all(delBatches);
                     }
-                });
 
-                // 숫자 변환
-                ['orderAmount','salesAmount','commissionRate','productWeight','stoneWeight',
-                 'goldWeight14k','goldWeightPure','goldMarketPrice','goldValue','settingCost','laborCost',
-                 'platingCost','stoneCostManual','stoneCostRef','otherCost','manufacturingCost'].forEach(k => {
-                    if (row[k] !== undefined) row[k] = parseFloat(String(row[k]).replace(/,/g, '')) || 0;
-                });
+                    // 새 데이터 저장 (500개씩 배치 분할)
+                    const addBatches = [];
+                    let addBatch = window.firebaseDb.batch();
+                    rows.forEach((row, idx) => {
+                        const ref = col.doc();
 
-                // 나석 숫자 필드 변환
-                for (let i = 1; i <= 10; i++) {
-                    if (row[`stoneQty${i}`]) row[`stoneQty${i}`] = parseFloat(String(row[`stoneQty${i}`]).replace(/,/g, '')) || 0;
-                    if (row[`stonePrice${i}`]) row[`stonePrice${i}`] = parseFloat(String(row[`stonePrice${i}`]).replace(/,/g, '')) || 0;
+                        ['orderDate', 'stoneRequestDate', 'stoneCertificationDate', 'workshopRequestDate',
+                         'workshopDeliveryDate', 'completionDate', 'shippingReadyDate'].forEach(k => {
+                            if (row[k]) {
+                                const d = new Date(row[k]);
+                                row[k] = isNaN(d) ? null : firebase.firestore.Timestamp.fromDate(d);
+                            }
+                        });
+
+                        ['orderAmount','salesAmount','commissionRate','productWeight','stoneWeight',
+                         'goldWeight14k','goldWeightPure','goldMarketPrice','goldValue','settingCost','laborCost',
+                         'platingCost','stoneCostManual','stoneCostRef','otherCost','manufacturingCost'].forEach(k => {
+                            if (row[k] !== undefined) row[k] = parseFloat(String(row[k]).replace(/,/g, '')) || 0;
+                        });
+
+                        for (let i = 1; i <= 10; i++) {
+                            if (row[`stoneQty${i}`]) row[`stoneQty${i}`] = parseFloat(String(row[`stoneQty${i}`]).replace(/,/g, '')) || 0;
+                            if (row[`stonePrice${i}`]) row[`stonePrice${i}`] = parseFloat(String(row[`stonePrice${i}`]).replace(/,/g, '')) || 0;
+                        }
+
+                        ['stoneRequested','workshopRequested','productionComplete','shippingReady','delivered'].forEach(k => {
+                            row[k] = (row[k] === 'true' || row[k] === true || row[k] === '1' || row[k] === 1);
+                        });
+
+                        const ic = row['inputCompleted'];
+                        row['inputCompleted'] = (ic === 'Y' || ic === 'y' || ic === 'true' || ic === true);
+
+                        addBatch.set(ref, { ...row, createdAt: new Date(), updatedAt: new Date() });
+                        if ((idx + 1) % 500 === 0) {
+                            addBatches.push(addBatch.commit());
+                            addBatch = window.firebaseDb.batch();
+                        }
+                    });
+                    if (rows.length % 500 !== 0) addBatches.push(addBatch.commit());
+                    await Promise.all(addBatches);
+
+                    const modeLabel = replaceMode ? '교체' : '추가';
+                    window.Utils.showNotification(`${rows.length}개 항목 ${modeLabel} 완료(매출+제조원가+주문관리)`, 'success');
+                    this.allOrders = [];
+                    if (window.ManufacturingCostsModule) window.ManufacturingCostsModule.allCosts = [];
+                    this.loadOrders();
+                } catch (err) {
+                    console.error('[IntegratedCSV] 업로드 실패:', err);
+                    window.Utils.showNotification(`업로드 실패: ${err.message}`, 'error');
                 }
-
-                // 체크박스 변환
-                ['stoneRequested','workshopRequested','productionComplete','shippingReady','delivered'].forEach(k => {
-                    if (row[k] === 'true' || row[k] === true || row[k] === '1' || row[k] === 1) {
-                        row[k] = true;
-                    } else {
-                        row[k] = false;
-                    }
-                });
-
-                // 입력 완료 변환 (Y/N → boolean)
-                if (row['inputCompleted']) {
-                    if (row['inputCompleted'] === 'Y' || row['inputCompleted'] === 'y' ||
-                        row['inputCompleted'] === 'true' || row['inputCompleted'] === true) {
-                        row['inputCompleted'] = true;
-                    } else {
-                        row['inputCompleted'] = false;
-                    }
-                } else {
-                    row['inputCompleted'] = false;
-                }
-
-                batch.set(ref, { ...row, createdAt: new Date(), updatedAt: new Date() });
             });
-            await batch.commit();
-            window.Utils.showNotification(`${rows.length}개 항목(매출+제조원가+주문관리)이 저장되었습니다.`, 'success');
-            // 두 모듈 캐시 초기화 후 재로드
-            this.allOrders = [];
-            if (window.ManufacturingCostsModule) window.ManufacturingCostsModule.allCosts = [];
-            this.loadOrders();
+        };
+
+        choiceWrapper.querySelector('#csvModeAppend').addEventListener('click', () => startUpload(false));
+        choiceWrapper.querySelector('#csvModeReplace').addEventListener('click', async () => {
+            const ok = await window.Utils.confirm('기존 데이터를 모두 삭제하고 CSV 파일로 교체합니다. 계속하시겠습니까?');
+            if (ok) startUpload(true);
         });
     },
+
 
     openOrderRequiredSettings() {
         window.Utils.openRequiredFieldsModal('orders', this.ORDER_FIELDS);
