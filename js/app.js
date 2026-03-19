@@ -111,6 +111,7 @@ class DiamonJewelryApp {
             'order-management': 'orderManagementContent',
             'admin-expenses': 'adminExpensesContent',
             'profit-loss': 'profitLossContent',
+            'gold-inventory': 'goldInventoryContent',
             'notes': 'notesContent',
             'images': 'imagesContent'
         };
@@ -139,6 +140,8 @@ class DiamonJewelryApp {
                         await window.AdminExpensesModule.load();
                     } else if (window.ProfitLossModule && menuId === 'profit-loss') {
                         await window.ProfitLossModule.load();
+                    } else if (window.GoldInventoryModule && menuId === 'gold-inventory') {
+                        await window.GoldInventoryModule.load();
                     } else if (menuId === 'notes') {
                         notes.loadNotes().then(() => notes.renderNotes());
                     }
@@ -234,6 +237,7 @@ class DiamonJewelryApp {
         if (window.OrderManagementModule) window.OrderManagementModule.init();
         if (window.AdminExpensesModule) window.AdminExpensesModule.init();
         if (window.ProfitLossModule) window.ProfitLossModule.init();
+        if (window.GoldInventoryModule) window.GoldInventoryModule.init();
         if (window.notes) window.notes.init();
     }
 

@@ -145,6 +145,7 @@
                             <li class="nav-section">매출관리</li>
                             <li><a href="#" data-menu="orders" class="nav-link">📋 매출표</a></li>
                             <li><a href="#" data-menu="manufacturing-costs" class="nav-link">🏭 제조원가표</a></li>
+                            <li><a href="#" data-menu="gold-inventory" class="nav-link">🥇 금재고</a></li>
                             <li><a href="#" data-menu="order-management" class="nav-link">📦 주문관리</a></li>
                             <li><a href="#" data-menu="admin-expenses" class="nav-link">💼 판관비</a></li>
                             <li><a href="#" data-menu="profit-loss" class="nav-link">📈 P&L표</a></li>
@@ -349,6 +350,29 @@
                         <div id="manufacturingCostsPagination"></div>
                     </section>
 
+                    <!-- 금재고 섹션 -->
+                    <section id="goldInventoryContent" class="content-section hidden">
+                        <h2>금재고</h2>
+                        <div class="button-group">
+                            <button id="addGoldInventoryBtn" class="btn btn-primary">+ 구매 입력</button>
+                        </div>
+                        <table id="goldInventoryTable" class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>구매일</th>
+                                    <th>구매중량(g)</th>
+                                    <th>구매중량(돈)</th>
+                                    <th>구매금액(총)</th>
+                                    <th>구매단가(g)</th>
+                                    <th>평단가(g)</th>
+                                    <th>재고(g)</th>
+                                    <th>관리</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </section>
+
                     <!-- 주문관리 섹션 -->
                     <section id="orderManagementContent" class="content-section hidden">
                         <h2>주문관리</h2>
@@ -500,6 +524,7 @@
     <script src="/js/modules/adminExpenses.js"></script>
     <script src="/js/modules/profitLoss.js"></script>
     <script src="/js/modules/notes.js"></script>
+    <script src="/js/modules/goldInventory.js"></script>
     <script src="/js/modules/imwebIntegration.js"></script>
     <script src="/js/app.js"></script>
 </body>
