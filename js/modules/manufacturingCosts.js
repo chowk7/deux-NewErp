@@ -33,10 +33,13 @@ window.ManufacturingCostsModule = {
 
     costs: [],
     allCosts: [], // 필터링 전 전체 데이터
+    filteredCosts: [], // 연도+검색 필터 적용 데이터
     diamondRates: [],
     productRates: [],
     pageSize: 50,
     currentPage: 1,
+    selectedYear: 'all',
+    searchQuery: '',
     mfgSortState: { column: null, direction: 'asc' },
 
     async init() {
@@ -80,6 +83,98 @@ window.ManufacturingCostsModule = {
             () => this.load());
     },
 
+    getMfgYears() {
+        const years = new Set();
+        this.allCosts.forEach(o => {
+            const raw = o.orderDate;
+            const date = raw?.toDate ? raw.toDate() : (raw ? new Date(raw) : null);
+            if (date && !isNaN(date.getTime())) years.add(String(date.getFullYear()));
+        });
+        return Array.from(years).sort((a, b) => b - a);
+    },
+
+    applyMfgFilters() {
+        let data = this.allCosts;
+        if (this.selectedYear !== 'all') {
+            data = data.filter(o => {
+                const raw = o.orderDate;
+                const date = raw?.toDate ? raw.toDate() : (raw ? new Date(raw) : null);
+                return date && String(date.getFullYear()) === this.selectedYear;
+            });
+        }
+        if (this.searchQuery) {
+            const q = this.searchQuery.toLowerCase();
+            data = data.filter(o =>
+                (o.customerName || '').toLowerCase().includes(q) ||
+                (o.productName || '').toLowerCase().includes(q)
+            );
+        }
+        this.filteredCosts = data;
+    },
+
+    renderMfgFilterBar() {
+        const container = document.getElementById('mfgFilterBar');
+        if (!container) return;
+
+        const years = this.getMfgYears();
+        const yearBtns = ['all', ...years].map(y =>
+            `<button class="btn btn-sm mfg-year-btn ${this.selectedYear === y ? 'btn-primary' : 'btn-outline'}" data-year="${y}">${y === 'all' ? '전체' : y + '년'}</button>`
+        ).join('');
+
+        const hasFilter = this.searchQuery || this.selectedYear !== 'all';
+        container.innerHTML = `
+            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:10px 0 12px;">
+                <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+                    <span style="font-size:0.85rem;color:#6b7280;white-space:nowrap;">연도</span>
+                    ${yearBtns}
+                </div>
+                <div style="display:flex;gap:6px;align-items:center;margin-left:auto;flex-wrap:wrap;">
+                    <input type="text" id="mfgSearchInput" placeholder="고객명 또는 상품명"
+                        value="${this.searchQuery.replace(/"/g, '&quot;')}"
+                        style="padding:6px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:0.875rem;width:200px;">
+                    <button class="btn btn-sm btn-primary" id="mfgSearchBtn">검색</button>
+                    ${hasFilter ? '<button class="btn btn-sm btn-outline" id="mfgClearBtn">초기화</button>' : ''}
+                </div>
+            </div>`;
+
+        container.querySelectorAll('.mfg-year-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.selectedYear = btn.dataset.year;
+                this.currentPage = 1;
+                this.applyMfgFilters();
+                this.costs = this.filteredCosts.slice(0, this.pageSize);
+                this.renderTable();
+                this.renderPagination();
+                this.renderMfgFilterBar();
+            });
+        });
+
+        document.getElementById('mfgSearchBtn')?.addEventListener('click', () => {
+            this.searchQuery = document.getElementById('mfgSearchInput')?.value?.trim() || '';
+            this.currentPage = 1;
+            this.applyMfgFilters();
+            this.costs = this.filteredCosts.slice(0, this.pageSize);
+            this.renderTable();
+            this.renderPagination();
+            this.renderMfgFilterBar();
+        });
+
+        document.getElementById('mfgSearchInput')?.addEventListener('keydown', e => {
+            if (e.key === 'Enter') document.getElementById('mfgSearchBtn')?.click();
+        });
+
+        document.getElementById('mfgClearBtn')?.addEventListener('click', () => {
+            this.selectedYear = 'all';
+            this.searchQuery = '';
+            this.currentPage = 1;
+            this.applyMfgFilters();
+            this.costs = this.filteredCosts.slice(0, this.pageSize);
+            this.renderTable();
+            this.renderPagination();
+            this.renderMfgFilterBar();
+        });
+    },
+
     async load(page = 1) {
         try {
             this.currentPage = page || 1;
@@ -93,10 +188,12 @@ window.ManufacturingCostsModule = {
                 this.allCosts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             }
 
+            this.applyMfgFilters();
+
             // 페이지에 맞는 데이터만 추출
             const startIdx = (this.currentPage - 1) * this.pageSize;
             const endIdx = startIdx + this.pageSize;
-            let allItems = this.allCosts.slice(startIdx, endIdx);
+            let allItems = this.filteredCosts.slice(startIdx, endIdx);
 
             // ✅ 기존 데이터 중 계산 필드가 비어있으면 자동 계산하여 저장
             const needsUpdate = [];
@@ -138,6 +235,7 @@ window.ManufacturingCostsModule = {
 
             this.renderTable();
             this.renderPagination();
+            this.renderMfgFilterBar();
         } catch (error) {
             console.error('[ManufacturingCosts] 데이터 로드 실패:', error);
             window.Utils.showNotification(`제조원가표 로드 실패: ${error.message}`, 'error');
@@ -361,7 +459,7 @@ window.ManufacturingCostsModule = {
         const paginationContainer = document.getElementById('manufacturingCostsPagination');
         if (!paginationContainer) return;
 
-        const totalCount = this.allCosts.length;
+        const totalCount = this.filteredCosts.length;
         const totalPages = Math.ceil(totalCount / this.pageSize);
         const maxPageButtons = 5;
 
@@ -415,7 +513,7 @@ window.ManufacturingCostsModule = {
         });
 
         document.getElementById('mfgNextPageBtn')?.addEventListener('click', () => {
-            const totalCount = this.allCosts.length;
+            const totalCount = this.filteredCosts.length;
             const totalPages = Math.ceil(totalCount / this.pageSize);
             if (this.currentPage < totalPages) this.load(this.currentPage + 1);
         });

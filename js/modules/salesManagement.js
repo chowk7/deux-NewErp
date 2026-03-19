@@ -50,9 +50,12 @@ window.SalesManagementModule = {
 
     orders: [],
     allOrders: [], // 필터링 전 전체 데이터
+    filteredOrders: [], // 연도+검색 필터 적용 데이터
     orderRequired: [],
     pageSize: 50,
     currentPage: 1,
+    selectedYear: 'all',
+    searchQuery: '',
     orderSortState: { column: null, direction: 'asc' },
 
     async init() {
@@ -145,6 +148,98 @@ window.SalesManagementModule = {
 
     // ===== 매출표 =====
 
+    getOrderYears() {
+        const years = new Set();
+        this.allOrders.forEach(o => {
+            const raw = o.orderDate;
+            const date = raw?.toDate ? raw.toDate() : (raw ? new Date(raw) : null);
+            if (date && !isNaN(date.getTime())) years.add(String(date.getFullYear()));
+        });
+        return Array.from(years).sort((a, b) => b - a);
+    },
+
+    applyOrderFilters() {
+        let data = this.allOrders;
+        if (this.selectedYear !== 'all') {
+            data = data.filter(o => {
+                const raw = o.orderDate;
+                const date = raw?.toDate ? raw.toDate() : (raw ? new Date(raw) : null);
+                return date && String(date.getFullYear()) === this.selectedYear;
+            });
+        }
+        if (this.searchQuery) {
+            const q = this.searchQuery.toLowerCase();
+            data = data.filter(o =>
+                (o.customerName || '').toLowerCase().includes(q) ||
+                (o.productName || '').toLowerCase().includes(q)
+            );
+        }
+        this.filteredOrders = data;
+    },
+
+    renderOrderFilterBar() {
+        const container = document.getElementById('ordersFilterBar');
+        if (!container) return;
+
+        const years = this.getOrderYears();
+        const yearBtns = ['all', ...years].map(y =>
+            `<button class="btn btn-sm orders-year-btn ${this.selectedYear === y ? 'btn-primary' : 'btn-outline'}" data-year="${y}">${y === 'all' ? '전체' : y + '년'}</button>`
+        ).join('');
+
+        const hasFilter = this.searchQuery || this.selectedYear !== 'all';
+        container.innerHTML = `
+            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:10px 0 12px;">
+                <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+                    <span style="font-size:0.85rem;color:#6b7280;white-space:nowrap;">연도</span>
+                    ${yearBtns}
+                </div>
+                <div style="display:flex;gap:6px;align-items:center;margin-left:auto;flex-wrap:wrap;">
+                    <input type="text" id="ordersSearchInput" placeholder="고객명 또는 상품명"
+                        value="${this.searchQuery.replace(/"/g, '&quot;')}"
+                        style="padding:6px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:0.875rem;width:200px;">
+                    <button class="btn btn-sm btn-primary" id="ordersSearchBtn">검색</button>
+                    ${hasFilter ? '<button class="btn btn-sm btn-outline" id="ordersClearBtn">초기화</button>' : ''}
+                </div>
+            </div>`;
+
+        container.querySelectorAll('.orders-year-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.selectedYear = btn.dataset.year;
+                this.currentPage = 1;
+                this.applyOrderFilters();
+                this.orders = this.filteredOrders.slice(0, this.pageSize);
+                this.renderOrdersTable();
+                this.renderPagination();
+                this.renderOrderFilterBar();
+            });
+        });
+
+        document.getElementById('ordersSearchBtn')?.addEventListener('click', () => {
+            this.searchQuery = document.getElementById('ordersSearchInput')?.value?.trim() || '';
+            this.currentPage = 1;
+            this.applyOrderFilters();
+            this.orders = this.filteredOrders.slice(0, this.pageSize);
+            this.renderOrdersTable();
+            this.renderPagination();
+            this.renderOrderFilterBar();
+        });
+
+        document.getElementById('ordersSearchInput')?.addEventListener('keydown', e => {
+            if (e.key === 'Enter') document.getElementById('ordersSearchBtn')?.click();
+        });
+
+        document.getElementById('ordersClearBtn')?.addEventListener('click', () => {
+            this.selectedYear = 'all';
+            this.searchQuery = '';
+            this.currentPage = 1;
+            this.applyOrderFilters();
+            this.orders = this.filteredOrders.slice(0, this.pageSize);
+            this.renderOrdersTable();
+            this.renderPagination();
+            this.renderOrderFilterBar();
+        });
+    },
+
     async loadOrders(page = 1) {
         try {
             this.orderRequired = await window.Utils.getRequiredFields('orders');
@@ -159,13 +254,16 @@ window.SalesManagementModule = {
                 this.allOrders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             }
 
+            this.applyOrderFilters();
+
             // 페이지에 맞는 데이터만 추출
             const startIdx = (this.currentPage - 1) * this.pageSize;
             const endIdx = startIdx + this.pageSize;
-            this.orders = this.allOrders.slice(startIdx, endIdx);
+            this.orders = this.filteredOrders.slice(startIdx, endIdx);
             this.orderSortState = { column: null, direction: 'asc' };
             this.renderOrdersTable();
             this.renderPagination();
+            this.renderOrderFilterBar();
         } catch (error) {
             console.error('[SalesManagement] loadOrders 실패:', error);
             window.Utils.showNotification('매출표 로드 실패', 'error');
@@ -372,7 +470,7 @@ window.SalesManagementModule = {
         const paginationContainer = document.getElementById('ordersPagination');
         if (!paginationContainer) return;
 
-        const totalCount = this.allOrders.length;
+        const totalCount = this.filteredOrders.length;
         const totalPages = Math.ceil(totalCount / this.pageSize);
         const maxPageButtons = 5;
 
@@ -426,7 +524,7 @@ window.SalesManagementModule = {
         });
 
         document.getElementById('nextPageBtn')?.addEventListener('click', () => {
-            const totalPages = Math.ceil(this.totalCount / this.pageSize);
+            const totalPages = Math.ceil(this.filteredOrders.length / this.pageSize);
             if (this.currentPage < totalPages) this.loadOrders(this.currentPage + 1);
         });
 
