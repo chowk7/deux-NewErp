@@ -197,15 +197,19 @@
                             <button id="diamondRequiredSettingsBtn" class="btn btn-outline">⚙️ 필수항목 설정</button>
                             <button id="diamondDisplaySettingsBtn" class="btn btn-outline">📋 표시항목 설정</button>
                         </div>
+                        <div style="margin:12px 0;">
+                            <input id="diamondSearchInput" type="text" placeholder="나석 이름으로 검색..."
+                                style="padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;max-width:360px;font-size:0.9rem;width:100%;">
+                        </div>
                         <table id="diamondRatesTable" class="data-table">
                             <thead>
                                 <tr>
-                                    <th>다이아 종류</th>
-                                    <th>원가 (VAT 미포함)</th>
-                                    <th>VAT 포함가</th>
-                                    <th>VS 보증서 추가금</th>
-                                    <th>VVS 보증서 추가금</th>
-                                    <th>기타</th>
+                                    <th data-sort-key="diamondType" style="cursor:pointer;user-select:none;">다이아 종류 <span class="sort-icon">↕</span></th>
+                                    <th data-sort-key="costWithoutVat" style="cursor:pointer;user-select:none;">원가 (VAT 미포함) <span class="sort-icon">↕</span></th>
+                                    <th data-sort-key="costWithVat" style="cursor:pointer;user-select:none;">VAT 포함가 <span class="sort-icon">↕</span></th>
+                                    <th data-sort-key="vsWarrantyFee" style="cursor:pointer;user-select:none;">VS 보증서 추가금 <span class="sort-icon">↕</span></th>
+                                    <th data-sort-key="vvsWarrantyFee" style="cursor:pointer;user-select:none;">VVS 보증서 추가금 <span class="sort-icon">↕</span></th>
+                                    <th data-sort-key="remark" style="cursor:pointer;user-select:none;">기타 <span class="sort-icon">↕</span></th>
                                     <th>관리</th>
                                 </tr>
                             </thead>

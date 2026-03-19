@@ -24,6 +24,8 @@ window.PriceManagementModule = {
     optionCharges: [],
     diamondRequired: [],
     optionRequired: [],
+    diamondSortState: { key: null, dir: 'asc' },
+    diamondSearchQuery: '',
 
     // ===== 초기화 =====
 
@@ -32,6 +34,13 @@ window.PriceManagementModule = {
     },
 
     setupEventListeners() {
+        // 나석단가표 검색
+        document.getElementById('diamondSearchInput')
+            ?.addEventListener('input', (e) => {
+                this.diamondSearchQuery = e.target.value.trim().toLowerCase();
+                this.renderDiamondRatesTable();
+            });
+
         document.getElementById('addDiamondRateBtn')
             ?.addEventListener('click', () => this.showDiamondRateForm());
         document.getElementById('addOptionChargeBtn')
@@ -102,11 +111,42 @@ window.PriceManagementModule = {
         const tbody = document.querySelector('#diamondRatesTable tbody');
         if (!tbody) return;
 
-        if (this.diamondRates.length === 0) {
+        // 검색 필터
+        let rows = this.diamondRates.filter(r => {
+            if (!this.diamondSearchQuery) return true;
+            return (r.diamondType || '').toLowerCase().includes(this.diamondSearchQuery);
+        });
+
+        // 정렬
+        const { key, dir } = this.diamondSortState;
+        if (key) {
+            rows = [...rows].sort((a, b) => {
+                const av = a[key] ?? '';
+                const bv = b[key] ?? '';
+                const cmp = typeof av === 'number' && typeof bv === 'number'
+                    ? av - bv
+                    : String(av).localeCompare(String(bv), 'ko');
+                return dir === 'asc' ? cmp : -cmp;
+            });
+        }
+
+        // 헤더 정렬 아이콘 업데이트
+        const table = document.querySelector('#diamondRatesTable');
+        table?.querySelectorAll('thead th[data-sort-key]').forEach(th => {
+            const icon = th.querySelector('.sort-icon');
+            if (!icon) return;
+            if (th.dataset.sortKey === key) {
+                icon.textContent = dir === 'asc' ? '▲' : '▼';
+            } else {
+                icon.textContent = '↕';
+            }
+        });
+
+        if (rows.length === 0) {
             tbody.innerHTML = '<tr><td colspan="8" style="text-align:center">데이터가 없습니다.</td></tr>';
             return;
         }
-        tbody.innerHTML = this.diamondRates.map(r => `
+        tbody.innerHTML = rows.map(r => `
             <tr data-id="${r.id}">
                 <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${r.id}"></td>
                 <td>${r.diamondType || '-'}</td>
@@ -138,10 +178,23 @@ window.PriceManagementModule = {
             thead.insertBefore(checkboxTh, thead.firstChild);
         }
 
-        // Event delegation for action buttons
+        // Event delegation for action buttons + 헤더 정렬
         if (table) {
             table.removeEventListener('click', this._diamondTableHandler);
             this._diamondTableHandler = (e) => {
+                // 헤더 정렬 클릭
+                const th = e.target.closest('thead th[data-sort-key]');
+                if (th) {
+                    const sortKey = th.dataset.sortKey;
+                    if (this.diamondSortState.key === sortKey) {
+                        this.diamondSortState.dir = this.diamondSortState.dir === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        this.diamondSortState = { key: sortKey, dir: 'asc' };
+                    }
+                    this.renderDiamondRatesTable();
+                    return;
+                }
+                // 행 버튼 클릭
                 const btn = e.target.closest('[data-action]');
                 if (!btn) return;
                 const action = btn.dataset.action;
