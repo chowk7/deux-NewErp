@@ -39,13 +39,6 @@ window.Utils = {
             </div>
         `;
 
-        // 배경 클릭 닫기 (modal-overlay만 클릭했을 때)
-        wrapper.querySelector('.modal-overlay').addEventListener('click', (e) => {
-            if (e.target.classList.contains('modal-overlay')) {
-                wrapper.remove();
-            }
-        });
-
         // 닫기 버튼
         wrapper.querySelector('.modal-close-btn').addEventListener('click', () => wrapper.remove());
 
@@ -87,11 +80,6 @@ window.Utils = {
             `;
             wrapper.querySelector('#confirmYes').addEventListener('click', () => { wrapper.remove(); resolve(true); });
             wrapper.querySelector('#confirmNo').addEventListener('click', () => { wrapper.remove(); resolve(false); });
-            wrapper.querySelector('.modal-overlay').addEventListener('click', (e) => {
-                if (e.target.classList.contains('modal-overlay')) {
-                    wrapper.remove(); resolve(false);
-                }
-            });
             document.body.appendChild(wrapper);
         });
     },
@@ -231,11 +219,6 @@ window.Utils = {
 
         wrapper.querySelector('.modal-close-btn').addEventListener('click', () => wrapper.remove());
         wrapper.querySelector('.modal-cancel-btn').addEventListener('click', () => wrapper.remove());
-        wrapper.querySelector('.modal-overlay').addEventListener('click', (e) => {
-            if (e.target.classList.contains('modal-overlay')) {
-                wrapper.remove();
-            }
-        });
 
         // CSV 양식 다운로드
         wrapper.querySelector('#csvTemplateBtn').addEventListener('click', () => {
