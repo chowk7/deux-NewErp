@@ -8,7 +8,7 @@ window.ProductRatesModule = {
         { key: 'ownCode',         label: '자체상품코드',    type: 'text',   calc: false },
         { key: 'productCode',     label: '상품코드',        type: 'text',   calc: false },
         { key: 'category',        label: '종류',            type: 'select', calc: false,
-          options: ['반지','목걸이','팔찌','귀걸이','브로치','기타'] },
+          options: ['R(반지)','N(목걸이)','B(팔찌)','E(귀걸이)','기타'] },
         { key: 'productName',     label: '상품명',          type: 'text',   calc: false },
         { key: 'size',            label: '사이즈',          type: 'text',   calc: false },
         { key: 'sizeAddFee',      label: '사이즈추가금',    type: 'number', calc: false },
@@ -529,6 +529,22 @@ window.ProductRatesModule = {
                 this.load();
             }
         );
+
+        // 상품코드 입력 시 종류(카테고리) 자동 추출
+        const productCodeInput = wrapper.querySelector('[name="productCode"]');
+        const categorySelect = wrapper.querySelector('[name="category"]');
+        if (productCodeInput && categorySelect) {
+            const autoFillCategory = () => {
+                const codeChars = productCodeInput.value.match(/[A-Za-z]/g);
+                if (codeChars && codeChars.length >= 3) {
+                    const categoryChar = codeChars[2].toUpperCase();
+                    const categoryMap = { 'R': 'R(반지)', 'N': 'N(목걸이)', 'B': 'B(팔찌)', 'E': 'E(귀걸이)' };
+                    categorySelect.value = categoryMap[categoryChar] || '기타';
+                }
+            };
+            productCodeInput.addEventListener('input', autoFillCategory);
+            productCodeInput.addEventListener('change', autoFillCategory);
+        }
 
         // 나석 종류 검색 드롭다운 설정 헬퍼 함수
         const setupStoneTypeSearchable = (container) => {

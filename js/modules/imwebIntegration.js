@@ -206,6 +206,26 @@ window.ImwebIntegrationModule = {
         try {
             window.Utils.showNotification('주문을 추가 중입니다...', 'info');
 
+            // 제품단가표에서 상품명→코드 매핑 로드
+            const productSnap = await window.firebaseDb.collection('prices').doc('productRates').collection('items').get();
+            const productMap = {};
+            productSnap.docs.forEach(d => {
+                const { productName, productCode } = d.data();
+                if (productName && productCode) productMap[productName] = productCode;
+            });
+
+            // 종류(category) 추출 헬퍼: 상품코드의 세번째 영문자 기준
+            const extractCategory = (productName) => {
+                const code = productMap[productName] || '';
+                const codeChars = code.match(/[A-Za-z]/g);
+                if (codeChars && codeChars.length >= 3) {
+                    const categoryChar = codeChars[2].toUpperCase();
+                    const categoryMap = { 'R': 'R(반지)', 'N': 'N(목걸이)', 'B': 'B(팔찌)', 'E': 'E(귀걸이)' };
+                    return categoryMap[categoryChar] || '기타';
+                }
+                return '';
+            };
+
             // 선택한 주문을 Firestore에 추가
             const batch = window.firebaseDb.batch();
             const collection = window.firebaseDb.collection('sales').doc('orders').collection('items');
@@ -223,7 +243,7 @@ window.ImwebIntegrationModule = {
                     address: order.address,
                     phone: order.phone,
                     memo: order.memo,
-                    category: '', // 분류는 사용자가 설정
+                    category: extractCategory(order.productName),
                     finalPrice: order.price,
                     salesAmount: order.price,
                     createdAt: new Date(),

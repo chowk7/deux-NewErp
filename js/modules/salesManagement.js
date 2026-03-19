@@ -13,7 +13,7 @@ window.SalesManagementModule = {
         { key: 'optionName',      label: '옵션명',        type: 'text',   defaultRequired: false },
         { key: 'remark',          label: '기타',          type: 'text',   defaultRequired: false },
         { key: 'category',        label: '종류',          type: 'select', defaultRequired: false,
-          options: ['R(반지)','N(목걸이)','B(팔찌)','E(귀걸이)'] },
+          options: ['R(반지)','N(목걸이)','B(팔찌)','E(귀걸이)','기타'] },
         { key: 'productCode',     label: '상품코드',      type: 'text',   defaultRequired: false },
         { key: 'length',          label: '길이(cm)',      type: 'number', defaultRequired: false },
         { key: 'color',           label: '색상',          type: 'select', defaultRequired: false,
@@ -604,9 +604,9 @@ window.SalesManagementModule = {
                     if (data.productCode) {
                         const codeChars = data.productCode.match(/[A-Za-z]/g);
                         if (codeChars && codeChars.length >= 3) {
-                            const categoryChar = codeChars[2];
+                            const categoryChar = codeChars[2].toUpperCase();
                             const categoryMap = { 'E': 'E(귀걸이)', 'R': 'R(반지)', 'N': 'N(목걸이)', 'B': 'B(팔찌)' };
-                            data.category = categoryMap[categoryChar] || '';
+                            data.category = categoryMap[categoryChar] || '기타';
                         }
                     }
                 }
@@ -814,9 +814,9 @@ window.SalesManagementModule = {
                         // 종류 자동 추출
                         const codeChars = product.code.match(/[A-Za-z]/g);
                         if (codeChars && codeChars.length >= 3) {
-                            const categoryChar = codeChars[2];
+                            const categoryChar = codeChars[2].toUpperCase();
                             const categoryMap = { 'E': 'E(귀걸이)', 'R': 'R(반지)', 'N': 'N(목걸이)', 'B': 'B(팔찌)' };
-                            const category = categoryMap[categoryChar] || '';
+                            const category = categoryMap[categoryChar] || '기타';
                             const categorySelect = wrapper.querySelector('[name="category"]');
                             if (categorySelect) categorySelect.value = category;
 
