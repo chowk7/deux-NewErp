@@ -1121,6 +1121,9 @@ window.SalesManagementModule = {
             });
             await batch.commit();
             window.Utils.showNotification(`${rows.length}개 항목(매출+제조원가+주문관리)이 저장되었습니다.`, 'success');
+            // 두 모듈 캐시 초기화 후 재로드
+            this.allOrders = [];
+            if (window.ManufacturingCostsModule) window.ManufacturingCostsModule.allCosts = [];
             this.loadOrders();
         });
     },

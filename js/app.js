@@ -134,6 +134,7 @@ class DiamonJewelryApp {
                     } else if (window.CustomerManagementModule && menuId === 'customers') {
                         await window.CustomerManagementModule.loadCustomers();
                     } else if (window.ManufacturingCostsModule && menuId === 'manufacturing-costs') {
+                        window.ManufacturingCostsModule.allCosts = [];
                         await window.ManufacturingCostsModule.load();
                     } else if (window.AdminExpensesModule && menuId === 'admin-expenses') {
                         await window.AdminExpensesModule.load();
