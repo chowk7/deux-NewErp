@@ -276,8 +276,8 @@ window.OrderManagementModule = {
         });
     },
 
-    showForm(itemId = null) {
-        const item = itemId ? this.items.find(i => i.id === itemId) : null;
+    showForm(itemId = null, itemData = null, onComplete = null) {
+        const item = itemData || (itemId ? this.items.find(i => i.id === itemId) : null);
 
         const statusInputs = this.STATUS_FIELDS.map(f => {
             const val = item?.[f.key] ?? '';
@@ -373,7 +373,12 @@ window.OrderManagementModule = {
                         .collection('items').add({ ...docData, createdAt: new Date() });
                 }
                 w.remove();
-                this.load();
+                if (onComplete) {
+                    onComplete();
+                } else {
+                    this.allItems = [];
+                    this.load();
+                }
             }
         );
 

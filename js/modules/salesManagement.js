@@ -38,6 +38,11 @@ window.SalesManagementModule = {
         { key: 'phone',           label: '연락처',        type: 'text',   defaultRequired: false },
         { key: 'address',         label: '주소',          type: 'text',   defaultRequired: false },
         { key: 'addressDetail',   label: '주소상세',      type: 'text',   defaultRequired: false },
+        { key: 'stoneRequested',     label: '나석신청', type: 'status', defaultRequired: false },
+        { key: 'workshopRequested',  label: '공방신청', type: 'status', defaultRequired: false },
+        { key: 'productionComplete', label: '제작완료', type: 'status', defaultRequired: false },
+        { key: 'shippingReady',      label: '배송준비', type: 'status', defaultRequired: false },
+        { key: 'delivered',          label: '배송완료', type: 'status', defaultRequired: false },
     ],
 
     // 통합 CSV 필드 (매출 + 제조원가 + 주문관리)
@@ -246,6 +251,14 @@ window.SalesManagementModule = {
 
                 let val = o[key];
 
+                // 상태(체크박스) 타입
+                if (field.type === 'status') {
+                    const badge = val
+                        ? `<span style="color:#10b981;font-weight:600;">✓</span>`
+                        : `<span style="color:#d1d5db;">○</span>`;
+                    return `<td style="text-align:center;">${badge}</td>`;
+                }
+
                 // 날짜 포맷
                 if (field.type === 'date' && val) {
                     val = val.toDate ? new Date(val.toDate()).toLocaleDateString('ko-KR') : '-';
@@ -258,13 +271,27 @@ window.SalesManagementModule = {
                 return `<td>${val}</td>`;
             }).join('');
 
+            // 이미지 링크 (주문관리 IMAGE_TYPES 참조)
+            const imageTypes = window.OrderManagementModule?.IMAGE_TYPES || [];
+            const imageCell = imageTypes.length > 0
+                ? imageTypes.map(t =>
+                    o.images?.[t.key]
+                        ? `<a href="#" style="font-size:0.75rem;margin-right:4px;"
+                            data-action="viewOrderImage" data-id="${o.id}" data-type="${t.key}">📎${t.label}</a>`
+                        : `<span style="color:#d1d5db;font-size:0.75rem;margin-right:4px;">${t.label}</span>`
+                  ).join('')
+                : '';
+
             return `
                 <tr data-id="${o.id}">
                     <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${o.id}"></td>
                     ${cells}
+                    <td style="font-size:0.8rem;">${imageCell}</td>
                     <td>
                         <button class="btn btn-sm btn-primary"
                             data-action="showOrderForm" data-id="${o.id}">수정</button>
+                        <button class="btn btn-sm btn-outline"
+                            data-action="openStatusForm" data-id="${o.id}">상태</button>
                         <button class="btn btn-sm btn-danger"
                             data-action="deleteOrder" data-id="${o.id}">삭제</button>
                     </td>
@@ -301,6 +328,11 @@ window.SalesManagementModule = {
                 });
                 thead.appendChild(th);
             });
+
+            // 첨부이미지 헤더
+            const imageTh = document.createElement('th');
+            imageTh.textContent = '첨부이미지';
+            thead.appendChild(imageTh);
 
             // 관리 헤더 생성
             const manageTh = document.createElement('th');
@@ -1100,6 +1132,29 @@ window.SalesManagementModule = {
 
     openOrderRequiredSettings() {
         window.Utils.openRequiredFieldsModal('orders', this.ORDER_FIELDS);
+    },
+
+    openStatusForm(orderId) {
+        const order = this.orders.find(o => o.id === orderId);
+        if (!order) return;
+        if (window.OrderManagementModule) {
+            window.OrderManagementModule.showForm(orderId, order, () => {
+                this.allOrders = [];
+                this.loadOrders();
+            });
+        }
+    },
+
+    async viewOrderImage(orderId, imageType) {
+        const order = this.orders.find(o => o.id === orderId);
+        const path = order?.images?.[imageType];
+        if (!path) return;
+        try {
+            const url = await window.firebaseStorage.ref(path).getDownloadURL();
+            window.open(url, '_blank');
+        } catch (e) {
+            window.Utils.showNotification('이미지를 불러올 수 없습니다.', 'error');
+        }
     },
 
     printOrders() {

@@ -146,7 +146,6 @@
                             <li><a href="#" data-menu="orders" class="nav-link">📋 매출표</a></li>
                             <li><a href="#" data-menu="manufacturing-costs" class="nav-link">🏭 제조원가표</a></li>
                             <li><a href="#" data-menu="gold-inventory" class="nav-link">🥇 금재고</a></li>
-                            <li><a href="#" data-menu="order-management" class="nav-link">📦 주문관리</a></li>
                             <li><a href="#" data-menu="admin-expenses" class="nav-link">💼 판관비</a></li>
                             <li><a href="#" data-menu="profit-loss" class="nav-link">📈 P&L표</a></li>
                             <li class="nav-section">기타</li>
@@ -160,7 +159,29 @@
                     <!-- 대시보드 섹션 -->
                     <section id="dashboardContent" class="content-section">
                         <h2>대시보드</h2>
-                        <p>준비 중입니다...</p>
+                        <p style="color:#6b7280;font-size:0.875rem;margin-bottom:12px;">
+                            배송완료되지 않은 주문 현황 — 주문일로부터 2주 초과 건은
+                            <span style="color:#ef4444;">빨간색</span> 으로 표시됩니다.
+                        </p>
+                        <div id="dashboardLoading" style="color:#6b7280;padding:12px;">불러오는 중...</div>
+                        <div style="overflow-x:auto;">
+                            <table id="dashboardTable" class="data-table" style="display:none;">
+                                <thead>
+                                    <tr>
+                                        <th>주문일</th>
+                                        <th>고객명</th>
+                                        <th>상품명</th>
+                                        <th>옵션명</th>
+                                        <th style="text-align:center;">나석신청</th>
+                                        <th style="text-align:center;">공방신청</th>
+                                        <th style="text-align:center;">제작완료</th>
+                                        <th style="text-align:center;">배송준비</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                        <div id="dashboardEmpty" style="display:none;color:#6b7280;padding:12px;">배송완료되지 않은 주문이 없습니다.</div>
                     </section>
 
                     <!-- 나석단가표 섹션 -->
