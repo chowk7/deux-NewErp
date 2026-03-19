@@ -70,7 +70,7 @@ window.Utils = {
     /**
      * 확인 모달
      */
-    confirm(message) {
+    confirm(message, confirmLabel = '삭제') {
         return new Promise((resolve) => {
             const wrapper = document.createElement('div');
             wrapper.setAttribute('data-modal', '');
@@ -79,7 +79,7 @@ window.Utils = {
                     <div class="modal-content" style="max-width:400px;">
                         <p style="margin-bottom:20px;">${message}</p>
                         <div class="modal-footer">
-                            <button type="button" class="btn btn-danger" id="confirmYes">삭제</button>
+                            <button type="button" class="btn btn-danger" id="confirmYes">${confirmLabel}</button>
                             <button type="button" class="btn btn-secondary" id="confirmNo">취소</button>
                         </div>
                     </div>

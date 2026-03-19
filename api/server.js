@@ -423,13 +423,14 @@ app.get('/api/imweb/orders', verifyToken, async (req, res) => {
 
         for (const order of recentOrders) {
             const orderNo = order.order_no;
-            const buyer   = order.billing?.name || order.orderer?.name || '미상';
-            const phone   = order.billing?.phone || order.billing?.tel
-                          || order.orderer?.phone || order.orderer?.tel || '';
-            const address = [
-                order.billing?.address  || order.delivery?.address  || '',
-                order.billing?.address_detail || order.delivery?.address_detail || ''
-            ].filter(Boolean).join(' ');
+            const buyer         = order.billing?.name || order.orderer?.name || '미상';
+            const recipient     = order.delivery?.name || order.billing?.name || order.orderer?.name || '';
+            const phone         = order.delivery?.phone || order.delivery?.tel
+                                || order.billing?.phone || order.billing?.tel
+                                || order.orderer?.phone || order.orderer?.tel || '';
+            const postalCode    = order.delivery?.zip_code || order.billing?.zip_code || '';
+            const address       = order.delivery?.address  || order.billing?.address  || '';
+            const addressDetail = order.delivery?.address_detail || order.billing?.address_detail || '';
 
             const prodOrders = await getImwebProdOrders(accessToken, orderNo);
 
@@ -473,8 +474,11 @@ app.get('/api/imweb/orders', verifyToken, async (req, res) => {
                         orderNumber:  orderNo,
                         orderDate:    order.order_time * 1000,   // ms timestamp
                         customerName: buyer,
+                        recipient,
                         phone,
+                        postalCode,
                         address,
+                        addressDetail,
                         productName:  item.prod_name || '',
                         productCode:  String(item.prod_custom_code || item.prod_sku_no || item.prod_no || ''),
                         quantity:     itemCount,

@@ -46,7 +46,7 @@ window.ImwebIntegrationModule = {
         modal.id = 'imwebModal';
         modal.className = 'modal hidden';
         modal.innerHTML = `
-            <div class="modal-content" style="width:98%;max-width:1400px;height:95%;display:flex;flex-direction:column;">
+            <div class="modal-content" style="width:98%;max-width:1600px;height:95%;display:flex;flex-direction:column;">
                 <div class="modal-header">
                     <h3>아임웹 주문 가져오기</h3>
                     <button class="close-modal" data-modal="imwebModal">&times;</button>
@@ -66,8 +66,11 @@ window.ImwebIntegrationModule = {
                                     <th style="padding:8px;">주문일</th>
                                     <th style="padding:8px;">주문번호</th>
                                     <th style="padding:8px;">고객명</th>
+                                    <th style="padding:8px;">수령인</th>
                                     <th style="padding:8px;">연락처</th>
+                                    <th style="padding:8px;">우편번호</th>
                                     <th style="padding:8px;">주소</th>
+                                    <th style="padding:8px;">주소상세</th>
                                     <th style="padding:8px;">제품명</th>
                                     <th style="padding:8px;">상품코드</th>
                                     <th style="padding:8px;">옵션</th>
@@ -115,8 +118,11 @@ window.ImwebIntegrationModule = {
                 <td style="padding:8px;">${new Date(order.orderDate).toLocaleDateString('ko-KR')}</td>
                 <td style="padding:8px;">${order.orderNumber}</td>
                 <td style="padding:8px;">${order.customerName}</td>
+                <td style="padding:8px;">${order.recipient || ''}</td>
                 <td style="padding:8px;">${order.phone}</td>
-                <td style="padding:8px;font-size:12px;max-width:200px;">${order.address}</td>
+                <td style="padding:8px;">${order.postalCode || ''}</td>
+                <td style="padding:8px;font-size:12px;max-width:150px;">${order.address}</td>
+                <td style="padding:8px;font-size:12px;max-width:150px;">${order.addressDetail || ''}</td>
                 <td style="padding:8px;">${order.productName}</td>
                 <td style="padding:8px;">${order.productCode || ''}</td>
                 <td style="padding:8px;font-size:12px;max-width:150px;">${order.optionName || ''}</td>
@@ -168,13 +174,45 @@ window.ImwebIntegrationModule = {
         document.getElementById('imwebSelectedCount').textContent = this.selectedOrders.length;
     },
 
+    // 옵션명 파싱: "색상:14k 화이트골드 / 사이즈:11" → { color: '14K화이트', size: '11' }
+    _parseOption(optionName) {
+        const result = { color: '', size: '' };
+        if (!optionName) return result;
+
+        optionName.split('/').forEach(part => {
+            const [key, val] = part.split(':').map(s => s.trim());
+            if (!key || !val) return;
+
+            const keyLower = key.toLowerCase();
+            if (keyLower === '색상' || keyLower === 'color') {
+                result.color = this._normalizeColor(val);
+            } else if (keyLower === '사이즈' || keyLower === 'size' || keyLower === '반지사이즈') {
+                result.size = val;
+            }
+        });
+        return result;
+    },
+
+    // 색상 문자열 정규화
+    _normalizeColor(raw) {
+        const s = (raw || '').toLowerCase().replace(/\s/g, '');
+        const is18k = s.includes('18k') || s.includes('18케이');
+        const is14k = s.includes('14k') || s.includes('14케이') || !is18k;
+        const prefix = is18k ? '18K' : '14K';
+
+        if (s.includes('화이트') || s.includes('white') || s.includes('wg')) return prefix + '화이트';
+        if (s.includes('로즈') || s.includes('rose') || s.includes('rg') || s.includes('핑크')) return prefix + '로즈';
+        // 옐로우(골드) 기본
+        return prefix + '옐로우';
+    },
+
     // 선택한 주문 추가
     async importSelectedOrders() {
         if (this.selectedOrders.length === 0) {
             window.Utils.showNotification('선택한 주문이 없습니다.', 'warning');
             return;
         }
-        if (!(await window.Utils.confirm(`${this.selectedOrders.length}개의 주문을 추가하시겠습니까?`))) return;
+        if (!(await window.Utils.confirm(`${this.selectedOrders.length}개의 주문을 추가하시겠습니까?`, '추가'))) return;
 
         try {
             window.Utils.showNotification('주문을 추가 중입니다...', 'info');
@@ -198,22 +236,41 @@ window.ImwebIntegrationModule = {
                 return '';
             };
 
+            // 기존 고객목록 로드 (이름 기준 중복 체크)
+            const customerSnap = await window.firebaseDb
+                .collection('sales').doc('customers').collection('items').get();
+            const existingCustomerNames = new Set(
+                customerSnap.docs.map(d => (d.data().customerName || '').trim())
+            );
+
             const batch      = window.firebaseDb.batch();
             const collection = window.firebaseDb.collection('sales').doc('orders').collection('items');
+            const customersCollection = window.firebaseDb.collection('sales').doc('customers').collection('items');
+
+            // 신규 고객 추적 (같은 배치 내 중복 방지)
+            const newCustomerNames = new Set();
 
             this.selectedOrders.forEach(order => {
+                // 옵션명 파싱 → 색상/사이즈 자동 기입
+                const { color, size } = this._parseOption(order.optionName);
+
                 const docRef = collection.doc();
                 batch.set(docRef, {
                     orderDate:    firebase.firestore.Timestamp.fromDate(new Date(order.orderDate)),
                     orderNumber:  order.orderNumber,
                     customerName: order.customerName,
+                    recipient:    order.recipient    || '',
+                    phone:        order.phone        || '',
+                    postalCode:   order.postalCode   || '',
+                    address:      order.address      || '',
+                    addressDetail:order.addressDetail || '',
                     productName:  order.productName,
                     productCode:  order.productCode || productMap[order.productName] || '',
                     optionName:   order.optionName  || '',
+                    color:        color,
+                    size:         size,
                     orderAmount:  order.orderAmount  || 0,
                     salesAmount:  order.orderAmount  || 0,
-                    phone:        order.phone        || '',
-                    address:      order.address      || '',
                     remark:       order.memo         || '',
                     category:     extractCategory(order.productName),
                     stoneRequested:     false,
@@ -225,16 +282,41 @@ window.ImwebIntegrationModule = {
                     updatedAt:    new Date(),
                     source:       'imweb'
                 });
+
+                // 신규 고객이면 고객목록에 추가
+                const name = (order.customerName || '').trim();
+                if (name && !existingCustomerNames.has(name) && !newCustomerNames.has(name)) {
+                    newCustomerNames.add(name);
+                    const custRef = customersCollection.doc();
+                    batch.set(custRef, {
+                        customerName:  name,
+                        phone:         order.phone        || '',
+                        postalCode:    order.postalCode   || '',
+                        address:       order.address      || '',
+                        addressDetail: order.addressDetail || '',
+                        email:         '',
+                        ownMallSignup: false,
+                        createdAt:     new Date(),
+                        updatedAt:     new Date(),
+                        source:        'imweb'
+                    });
+                }
             });
 
             await batch.commit();
 
-            window.Utils.showNotification(`${this.selectedOrders.length}개의 주문이 추가되었습니다.`, 'success');
+            const newCustCount = newCustomerNames.size;
+            let msg = `${this.selectedOrders.length}개의 주문이 추가되었습니다.`;
+            if (newCustCount > 0) msg += ` (신규 고객 ${newCustCount}명 자동 등록)`;
+            window.Utils.showNotification(msg, 'success');
             document.getElementById('imwebModal').classList.add('hidden');
 
             if (window.SalesManagementModule) {
                 window.SalesManagementModule.allOrders = [];
                 window.SalesManagementModule.loadOrders();
+            }
+            if (window.CustomerManagementModule && newCustCount > 0) {
+                window.CustomerManagementModule.loadCustomers();
             }
         } catch (error) {
             console.error('[Imweb] Import error:', error);
