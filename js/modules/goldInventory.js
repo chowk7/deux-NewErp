@@ -17,6 +17,12 @@ window.GoldInventoryModule = {
             ?.addEventListener('click', () => this.showForm());
         document.getElementById('csvUploadGoldBtn')
             ?.addEventListener('click', () => this.openCsvUpload());
+        document.getElementById('goldHeaderCheckbox')
+            ?.addEventListener('change', (e) => {
+                document.querySelectorAll('#goldInventoryTable tbody .row-checkbox')
+                    .forEach(cb => cb.checked = e.target.checked);
+                this._updateBulkDeleteBtn();
+            });
     },
 
     // ── Firebase 로드 ─────────────────────────────────────────────
@@ -93,6 +99,7 @@ window.GoldInventoryModule = {
 
             return `
             <tr data-id="${item.id}">
+                <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${item.id}"></td>
                 <td>${dateStr}</td>
                 <td style="text-align:right;">${fmt4(item.weightG)}</td>
                 <td style="text-align:right;">${fmt4(item.weightDon)}</td>
@@ -102,7 +109,6 @@ window.GoldInventoryModule = {
                 <td style="text-align:right;">${fmt4(item.stockG)}</td>
                 <td style="text-align:center;">
                     <button class="btn btn-sm btn-primary" data-action="showForm" data-id="${item.id}">수정</button>
-                    <button class="btn btn-sm btn-danger"  data-action="deleteItem" data-id="${item.id}">삭제</button>
                 </td>
             </tr>`;
         }).join('');
@@ -118,7 +124,55 @@ window.GoldInventoryModule = {
                 if (typeof this[action] === 'function') this[action](id);
             };
             table.addEventListener('click', this._tableHandler);
+
+            // 행 체크박스 이벤트
+            table.querySelectorAll('tbody .row-checkbox').forEach(cb => {
+                cb.addEventListener('change', () => this._updateBulkDeleteBtn());
+            });
         }
+
+        // 헤더 체크박스 초기화
+        const headerCb = document.getElementById('goldHeaderCheckbox');
+        if (headerCb) headerCb.checked = false;
+
+        this._updateBulkDeleteBtn();
+    },
+
+    _updateBulkDeleteBtn() {
+        const checked = document.querySelectorAll('#goldInventoryTable tbody .row-checkbox:checked');
+        let btn = document.getElementById('goldBulkDeleteBtn');
+
+        if (checked.length > 0) {
+            if (!btn) {
+                btn = document.createElement('button');
+                btn.id = 'goldBulkDeleteBtn';
+                btn.className = 'btn btn-danger';
+                btn.style.marginLeft = '8px';
+                const group = document.querySelector('#goldInventoryContent .button-group');
+                if (group) group.appendChild(btn);
+            }
+            btn.textContent = `🗑️ ${checked.length}개 삭제`;
+            btn.onclick = () => this._bulkDelete();
+        } else if (btn) {
+            btn.remove();
+        }
+    },
+
+    async _bulkDelete() {
+        const checked = Array.from(
+            document.querySelectorAll('#goldInventoryTable tbody .row-checkbox:checked')
+        ).map(cb => cb.dataset.id);
+
+        if (checked.length === 0) return;
+        if (!(await window.Utils.confirm(`${checked.length}개 항목을 삭제하시겠습니까?`))) return;
+
+        const col = window.firebaseDb.collection('inventory').doc('gold').collection('items');
+        const batch = window.firebaseDb.batch();
+        checked.forEach(id => batch.delete(col.doc(id)));
+        await batch.commit();
+
+        await this.load();
+        window.Utils.showNotification(`${checked.length}개 항목이 삭제되었습니다.`, 'success');
     },
 
     // ── 입력 폼 모달 ──────────────────────────────────────────────
