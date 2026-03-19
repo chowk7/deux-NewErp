@@ -304,7 +304,7 @@ class DiamonJewelryApp {
             console.error('[Dashboard] 로드 실패:', err);
             if (loading) loading.textContent = '데이터 로드 실패: ' + err.message;
         }
-    },
+    }
 
     /**
      * 로딩 표시
