@@ -138,14 +138,14 @@
                             <li><a href="#" data-menu="dashboard" class="nav-link active">📊 대시보드</a></li>
                             <li class="nav-section">가격관리</li>
                             <li><a href="#" data-menu="diamond-rates" class="nav-link">💎 나석단가표</a></li>
-                            <li><a href="#" data-menu="product-rates" class="nav-link">📿 제품단가표</a></li>
+                            <li><a href="#" data-menu="product-rates" class="nav-link">📿 제품가격표</a></li>
+                            <li><a href="#" data-menu="gold-inventory" class="nav-link">🥇 금재고</a></li>
                             <li><a href="#" data-menu="customers" class="nav-link">👥 고객목록표</a></li>
                             <li><a href="#" data-menu="option-charges" class="nav-link">➕ 각줄추가금액</a></li>
                             <li><a href="#" data-menu="price-settings" class="nav-link">⚙️ 가격옵션</a></li>
                             <li class="nav-section">매출관리</li>
                             <li><a href="#" data-menu="orders" class="nav-link">📋 매출표</a></li>
                             <li><a href="#" data-menu="manufacturing-costs" class="nav-link">🏭 제조원가표</a></li>
-                            <li><a href="#" data-menu="gold-inventory" class="nav-link">🥇 금재고</a></li>
                             <li><a href="#" data-menu="admin-expenses" class="nav-link">💼 판관비</a></li>
                             <li><a href="#" data-menu="profit-loss" class="nav-link">📈 P&L표</a></li>
                             <li class="nav-section">기타</li>
@@ -214,9 +214,9 @@
                         </table>
                     </section>
 
-                    <!-- 제품단가표 섹션 -->
+                    <!-- 제품가격표 섹션 -->
                     <section id="productRatesContent" class="content-section hidden">
-                        <h2>제품단가표</h2>
+                        <h2>제품가격표</h2>
                         <div class="button-group">
                             <button id="addProductRateBtn" class="btn btn-primary">+ 새 항목 추가</button>
                             <button id="csvUploadProductBtn" class="btn btn-secondary">📤 CSV 업로드</button>
@@ -226,6 +226,12 @@
                             </div>
                             <button id="productRequiredSettingsBtn" class="btn btn-outline">⚙️ 필수항목 설정</button>
                             <button id="productDisplaySettingsBtn" class="btn btn-outline">📋 표시항목 설정</button>
+                        </div>
+                        <!-- 검색 + 탭 필터 -->
+                        <div id="productRatesFilters" style="margin:12px 0;display:flex;flex-direction:column;gap:10px;">
+                            <input id="productSearchInput" type="text" placeholder="상품명 또는 상품코드로 검색..."
+                                style="padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;max-width:360px;font-size:0.9rem;">
+                            <div id="productCategoryTabs" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
                         </div>
                         <div style="overflow-x:auto;">
                         <table id="productRatesTable" class="data-table">

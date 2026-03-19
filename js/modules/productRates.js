@@ -49,6 +49,8 @@ window.ProductRatesModule = {
     settings: {},
     diamondRates: [],
     sortState: { column: null, direction: 'asc' },
+    activeCategory: '전체',
+    searchQuery: '',
 
     async init() {
         // 나석단가표 로드 및 드롭다운 옵션 설정
@@ -78,6 +80,13 @@ window.ProductRatesModule = {
         // 표시항목 설정
         document.getElementById('productDisplaySettingsBtn')
             ?.addEventListener('click', () => this.openDisplaySettings());
+
+        // 검색 입력
+        document.getElementById('productSearchInput')
+            ?.addEventListener('input', (e) => {
+                this.searchQuery = e.target.value.trim().toLowerCase();
+                this.renderTable();
+            });
     },
 
     openDisplaySettings() {
@@ -106,6 +115,11 @@ window.ProductRatesModule = {
             .orderBy('createdAt', 'desc').get();
         this.products = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         this.sortState = { column: null, direction: 'asc' };
+        this.activeCategory = '전체';
+        this.searchQuery = '';
+        const searchInput = document.getElementById('productSearchInput');
+        if (searchInput) searchInput.value = '';
+        this.renderCategoryTabs();
         this.renderTable();
     },
 
@@ -155,14 +169,67 @@ window.ProductRatesModule = {
         this.renderTable();
     },
 
+    // 카테고리 탭 렌더링
+    renderCategoryTabs() {
+        const tabsEl = document.getElementById('productCategoryTabs');
+        if (!tabsEl) return;
+
+        const categories = ['전체', ...this.FIELDS.find(f => f.key === 'category')?.options || []];
+        const counts = {};
+        categories.forEach(c => counts[c] = 0);
+        this.products.forEach(p => {
+            counts['전체']++;
+            if (p.category && counts[p.category] !== undefined) counts[p.category]++;
+            else if (p.category) counts[p.category] = 1;
+        });
+
+        tabsEl.innerHTML = categories.map(cat => {
+            const active = this.activeCategory === cat;
+            const cnt = counts[cat] || 0;
+            return `<button data-cat="${cat}"
+                style="padding:6px 14px;border-radius:20px;border:1px solid ${active ? '#3b82f6' : '#d1d5db'};
+                       background:${active ? '#3b82f6' : '#fff'};color:${active ? '#fff' : '#374151'};
+                       cursor:pointer;font-size:0.85rem;white-space:nowrap;">
+                ${cat} (${cnt})
+            </button>`;
+        }).join('');
+
+        tabsEl.querySelectorAll('button[data-cat]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.activeCategory = btn.dataset.cat;
+                this.renderCategoryTabs();
+                this.renderTable();
+            });
+        });
+    },
+
+    // 현재 필터/검색 조건 적용 후 표시할 제품 목록
+    _filteredProducts() {
+        return this.products.filter(p => {
+            const catMatch = this.activeCategory === '전체' || p.category === this.activeCategory;
+            if (!catMatch) return false;
+            if (!this.searchQuery) return true;
+            const nameMatch = (p.productName || '').toLowerCase().includes(this.searchQuery);
+            const codeMatch = (p.productCode || '').toLowerCase().includes(this.searchQuery);
+            return nameMatch || codeMatch;
+        });
+    },
+
     renderTable() {
         const tbody = document.querySelector('#productRatesTable tbody');
         if (!tbody) return;
+
+        const filtered = this._filteredProducts();
+
         if (this.products.length === 0) {
             tbody.innerHTML = `<tr><td colspan="9" style="text-align:center">데이터가 없습니다.</td></tr>`;
             return;
         }
-        tbody.innerHTML = this.products.map((p, idx) => `
+        if (filtered.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#9ca3af;">검색 결과가 없습니다.</td></tr>`;
+            return;
+        }
+        tbody.innerHTML = filtered.map((p, idx) => `
             <tr data-id="${p.id}">
                 <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${p.id}"></td>
                 <td>${p.ownCode || '-'}</td>
@@ -431,7 +498,7 @@ window.ProductRatesModule = {
         const stoneOptions = (this.diamondRates || []).map(d => d.diamondType);
 
         const wrapper = window.Utils.openModal(
-            productId ? '제품단가 수정' : '제품단가 추가', body,
+            productId ? '제품가격 수정' : '제품가격 추가', body,
             async (data, w) => {
                 // stones 배열 구성
                 const stonesContainer = w.querySelector('#stonesContainer');
