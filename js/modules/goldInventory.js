@@ -6,9 +6,17 @@ window.GoldInventoryModule = {
 
     items: [], // 구매일 오름차순 정렬된 전체 목록
 
+    FIELDS: [
+        { key: 'purchaseDate', label: '구매일',     type: 'text'   },
+        { key: 'weightG',      label: '구매중량(g)', type: 'number' },
+        { key: 'totalAmount',  label: '구매금액',   type: 'number' },
+    ],
+
     async init() {
         document.getElementById('addGoldInventoryBtn')
             ?.addEventListener('click', () => this.showForm());
+        document.getElementById('csvUploadGoldBtn')
+            ?.addEventListener('click', () => this.openCsvUpload());
     },
 
     // ── Firebase 로드 ─────────────────────────────────────────────
@@ -270,6 +278,34 @@ window.GoldInventoryModule = {
             console.error('[GoldInventory] 저장 실패:', error);
             window.Utils.showNotification(`저장 실패: ${error.message}`, 'error');
         }
+    },
+
+    // ── CSV 일괄 업로드 ───────────────────────────────────────────
+    openCsvUpload() {
+        window.Utils.openCsvUploadModal(this.FIELDS, async (rows) => {
+            const col = window.firebaseDb
+                .collection('inventory').doc('gold').collection('items');
+            const batch = window.firebaseDb.batch();
+            let count = 0;
+            for (const row of rows) {
+                const purchaseDateRaw = row.purchaseDate?.trim();
+                const weightG = parseFloat(row.weightG);
+                const totalAmount = parseFloat(row.totalAmount);
+                if (!purchaseDateRaw || !weightG || !totalAmount) continue;
+                const docRef = col.doc();
+                batch.set(docRef, {
+                    purchaseDate: new Date(purchaseDateRaw),
+                    weightG,
+                    totalAmount,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                });
+                count++;
+            }
+            await batch.commit();
+            await this.load();
+            window.Utils.showNotification(`${count}건의 금재고 데이터가 업로드되었습니다.`, 'success');
+        });
     },
 
     // ── 삭제 ──────────────────────────────────────────────────────

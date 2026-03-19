@@ -3,6 +3,14 @@
  */
 window.ManufacturingCostsModule = {
 
+    // 주문 기본정보 필드 (표시항목 설정에서 제일 앞에 배치)
+    HEADER_FIELDS: [
+        { key: 'orderDate',    label: '주문일',  type: 'date' },
+        { key: 'customerName', label: '고객명',  type: 'text' },
+        { key: 'productName',  label: '상품명',  type: 'text' },
+        { key: 'optionName',   label: '옵션명',  type: 'text' },
+    ],
+
     BASE_FIELDS: [
         { key: 'orderId',         label: '주문번호(연결)',  type: 'text' },
         { key: 'productWeight',   label: '제품중량(참고g)', type: 'number' },
@@ -79,7 +87,7 @@ window.ManufacturingCostsModule = {
 
     openDisplaySettings() {
         window.Utils.openDisplayFieldsModal('manufacturingCosts',
-            [...this.BASE_FIELDS, ...this.STONE_FIELDS],
+            [...this.HEADER_FIELDS, ...this.BASE_FIELDS, ...this.STONE_FIELDS],
             () => this.load());
     },
 
@@ -246,181 +254,144 @@ window.ManufacturingCostsModule = {
     },
 
     renderTable() {
-        try {
-            const table = document.querySelector('#manufacturingCostsTable');
-            const tbody = table?.querySelector('tbody');
-            if (!tbody) {
-                console.warn('[ManufacturingCosts] Table tbody element not found');
-                return;
-            }
-
-        // 기본 표시 필드 (orderDate를 첫 번째로, productionMonth 제거)
-        const defaultDisplayFields = ['orderDate', 'orderNumber', 'customerName', 'productName', 'goldValue', 'stoneCostManual', 'manufacturingCost', 'inputCompleted', 'salesProfit', 'salesProfitRate'];
-        const allFields = [...this.BASE_FIELDS, ...this.STONE_FIELDS];
-
-        // 동적 필드 추가 (orderNumber, customerName, productName, orderDate)
-        const dynamicFields = [
-            { key: 'orderNumber',    label: '주문번호',    type: 'text' },
-            { key: 'customerName',   label: '고객명',      type: 'text' },
-            { key: 'productName',    label: '상품명',      type: 'text' },
-            { key: 'orderDate',      label: '주문일',      type: 'date' }
-        ];
-        const displayFields = [...allFields, ...dynamicFields];
-
-        // sessionStorage에서 선택된 필드 로드
-        const displayFieldKeys = window.Utils.getDisplayFields('manufacturingCosts', defaultDisplayFields);
-
-        // 필드 객체 매핑
-        const fieldMap = {};
-        displayFields.forEach(f => fieldMap[f.key] = f);
-
-        if (this.costs.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="${displayFieldKeys.length + 2}" style="text-align:center">데이터가 없습니다.</td></tr>`;
+        const mfgTable = document.querySelector('#manufacturingCostsTable');
+        const tbody = mfgTable?.querySelector('tbody');
+        if (!tbody) {
+            console.warn('[ManufacturingCosts] Table tbody element not found');
             return;
         }
 
-        tbody.innerHTML = this.costs.map(c => {
-            const cells = displayFieldKeys.map(key => {
-                const field = fieldMap[key];
-                let val = c[key];
+        try {
+            const defaultDisplayFields = ['orderDate', 'customerName', 'productName', 'optionName', 'goldValue', 'stoneCostManual', 'manufacturingCost', 'inputCompleted', 'salesProfit', 'salesProfitRate'];
+            const allFields = [...this.HEADER_FIELDS, ...this.BASE_FIELDS, ...this.STONE_FIELDS];
+            const displayFieldKeys = window.Utils.getDisplayFields('manufacturingCosts', defaultDisplayFields);
+            const fieldMap = {};
+            allFields.forEach(f => fieldMap[f.key] = f);
 
-                // 입력 완료 체크박스 처리
-                if (key === 'inputCompleted') {
-                    const checked = c.inputCompleted ? 'checked' : '';
-                    return `<td style="text-align:center;"><input type="checkbox" class="input-completed-checkbox" data-id="${c.id}" ${checked}></td>`;
-                }
+            if (this.costs.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="${displayFieldKeys.length + 2}" style="text-align:center">데이터가 없습니다.</td></tr>`;
+                return;
+            }
 
-                // 입력 완료가 체크되지 않으면 매출이익/율을 "미입력"으로 표시
-                if (!c.inputCompleted && (key === 'salesProfit' || key === 'salesProfitRate')) {
-                    return `<td style="color:#9ca3af;">미입력</td>`;
-                }
+            tbody.innerHTML = this.costs.map(c => {
+                const cells = displayFieldKeys.map(key => {
+                    const field = fieldMap[key];
+                    let val = c[key];
 
-                // 특수 처리
-                if (key === 'stoneCostManual' && (!val || val === 0)) {
-                    val = c.stoneCostRef || 0;
-                }
+                    if (key === 'inputCompleted') {
+                        const checked = c.inputCompleted ? 'checked' : '';
+                        return `<td style="text-align:center;"><input type="checkbox" class="input-completed-checkbox" data-id="${c.id}" ${checked}></td>`;
+                    }
 
-                // 포맷팅
-                if (key === 'orderDate' && val) {
-                    val = val.toDate ? new Date(val.toDate()).toLocaleDateString('ko-KR') : '-';
-                } else if (key === 'salesProfitRate' && val !== undefined && val !== null && val !== '') {
-                    val = val.toFixed(1) + '%';
-                } else if (field?.calc && field?.type === 'number' && val !== undefined && val !== null && val !== '') {
-                    val = window.Utils.formatNumber(Math.round(val));
-                } else if (field?.type === 'number' && val !== undefined && val !== null && val !== '') {
-                    val = window.Utils.formatNumber(val);
-                } else if (val === undefined || val === null || val === '') {
-                    val = '-';
-                }
+                    if (!c.inputCompleted && (key === 'salesProfit' || key === 'salesProfitRate')) {
+                        return `<td style="color:#9ca3af;">미입력</td>`;
+                    }
 
-                return `<td>${val}</td>`;
+                    if (key === 'stoneCostManual' && (!val || val === 0)) {
+                        val = c.stoneCostRef || 0;
+                    }
+
+                    if (key === 'orderDate' && val) {
+                        val = val.toDate ? new Date(val.toDate()).toLocaleDateString('ko-KR') : '-';
+                    } else if (key === 'salesProfitRate' && val !== undefined && val !== null && val !== '') {
+                        val = val.toFixed(1) + '%';
+                    } else if (field?.calc && field?.type === 'number' && val !== undefined && val !== null && val !== '') {
+                        val = window.Utils.formatNumber(Math.round(val));
+                    } else if (field?.type === 'number' && val !== undefined && val !== null && val !== '') {
+                        val = window.Utils.formatNumber(val);
+                    } else if (val === undefined || val === null || val === '') {
+                        val = '-';
+                    }
+
+                    return `<td>${val}</td>`;
+                }).join('');
+
+                return `
+                    <tr data-id="${c.id}">
+                        <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${c.id}"></td>
+                        ${cells}
+                        <td>
+                            <button class="btn btn-sm btn-primary"
+                                data-action="showForm" data-id="${c.id}">수정</button>
+                        </td>
+                    </tr>`;
             }).join('');
 
-            return `
-                <tr data-id="${c.id}">
-                    <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${c.id}"></td>
-                    ${cells}
-                    <td>
-                        <button class="btn btn-sm btn-primary"
-                            data-action="showForm" data-id="${c.id}">수정</button>
-                    </td>
-                </tr>`;
-        }).join('');
+            // 테이블 헤더 업데이트
+            const thead = mfgTable.querySelector('thead tr');
+            if (thead) {
+                const checkboxTh = document.createElement('th');
+                checkboxTh.style.textAlign = 'center';
+                checkboxTh.className = 'header-checkbox-th';
+                checkboxTh.innerHTML = '<input type="checkbox" class="header-checkbox">';
 
-        // 테이블 헤더 업데이트
-        const thead = table?.querySelector('thead tr');
-        if (thead) {
-            const checkboxTh = document.createElement('th');
-            checkboxTh.style.textAlign = 'center';
-            checkboxTh.className = 'header-checkbox-th';
-            checkboxTh.innerHTML = '<input type="checkbox" class="header-checkbox">';
+                thead.innerHTML = displayFieldKeys.map(key => {
+                    const field = fieldMap[key];
+                    const label = field ? field.label : key;
+                    const isSorted = this.mfgSortState.column === key;
+                    const indicator = isSorted ? (this.mfgSortState.direction === 'asc' ? ' ▲' : ' ▼') : '';
+                    return `<th data-column="${key}" style="cursor:pointer;user-select:none;">${label}${indicator}</th>`;
+                }).join('') + '<th>관리</th>';
+                thead.insertBefore(checkboxTh, thead.firstChild);
 
-            thead.innerHTML = displayFieldKeys.map(key => {
-                const field = fieldMap[key];
-                const label = field ? field.label : key;
-                const isSorted = this.mfgSortState.column === key;
-                const indicator = isSorted ? (this.mfgSortState.direction === 'asc' ? ' ▲' : ' ▼') : '';
-                return `<th data-column="${key}" style="cursor:pointer;user-select:none;">${label}${indicator}</th>`;
-            }).join('') + '<th>관리</th>';
-            thead.insertBefore(checkboxTh, thead.firstChild);
+                thead.querySelectorAll('th[data-column]').forEach(th => {
+                    th.addEventListener('click', () => this.sortMfgCosts(th.dataset.column));
+                });
+            }
 
-            // 헤더 정렬 클릭 이벤트
-            thead.querySelectorAll('th[data-column]').forEach(th => {
-                th.addEventListener('click', () => this.sortMfgCosts(th.dataset.column));
-            });
-        }
-
-        // Event delegation for action buttons
-        if (table) {
-            table.removeEventListener('click', this._tableHandler);
+            // 이벤트 위임
+            mfgTable.removeEventListener('click', this._tableHandler);
             this._tableHandler = (e) => {
                 const btn = e.target.closest('[data-action]');
                 if (!btn) return;
                 const action = btn.dataset.action;
                 const id = btn.dataset.id;
-                if (typeof this[action] === 'function') {
-                    this[action](id);
-                }
+                if (typeof this[action] === 'function') this[action](id);
             };
-            table.addEventListener('click', this._tableHandler);
+            mfgTable.addEventListener('click', this._tableHandler);
 
             // 헤더 체크박스 이벤트
-            const headerCheckbox = table.querySelector('thead .header-checkbox');
+            const headerCheckbox = mfgTable.querySelector('thead .header-checkbox');
             if (headerCheckbox) {
                 headerCheckbox.addEventListener('change', (e) => {
-                    const allCheckboxes = table.querySelectorAll('tbody .row-checkbox');
-                    allCheckboxes.forEach(cb => cb.checked = e.target.checked);
+                    mfgTable.querySelectorAll('tbody .row-checkbox').forEach(cb => cb.checked = e.target.checked);
                     this.updateBulkDeleteBtn();
                 });
             }
 
-            // "입력 완료" 체크박스 이벤트
-            const completedCheckboxes = table.querySelectorAll('tbody .input-completed-checkbox');
-            completedCheckboxes.forEach(checkbox => {
+            // 입력완료 체크박스 이벤트
+            mfgTable.querySelectorAll('tbody .input-completed-checkbox').forEach(checkbox => {
                 checkbox.addEventListener('change', async (e) => {
                     const costId = e.target.dataset.id;
                     const cost = this.costs.find(c => c.id === costId);
-                    if (cost) {
-                        cost.inputCompleted = e.target.checked;
-                        // 체크 상태가 변경되면, 매출이익/율을 0으로 초기화하거나 계산
-                        if (!e.target.checked) {
-                            cost.salesProfit = 0;
-                            cost.salesProfitRate = 0;
-                        } else {
-                            const calc = this.calculate(cost);
-                            cost.salesProfit = calc.salesProfit;
-                            cost.salesProfitRate = calc.salesProfitRate;
+                    if (!cost) return;
+                    cost.inputCompleted = e.target.checked;
+                    if (!e.target.checked) {
+                        cost.salesProfit = 0;
+                        cost.salesProfitRate = 0;
+                    } else {
+                        const calc = this.calculate(cost);
+                        cost.salesProfit = calc.salesProfit;
+                        cost.salesProfitRate = calc.salesProfitRate;
+                    }
+                    try {
+                        await window.firebaseDb.collection('sales').doc('orders')
+                            .collection('items').doc(costId)
+                            .update({ inputCompleted: cost.inputCompleted, salesProfit: cost.salesProfit, salesProfitRate: cost.salesProfitRate, updatedAt: new Date() });
+                        const allCostItem = this.allCosts.find(c => c.id === costId);
+                        if (allCostItem) {
+                            allCostItem.inputCompleted = cost.inputCompleted;
+                            allCostItem.salesProfit = cost.salesProfit;
+                            allCostItem.salesProfitRate = cost.salesProfitRate;
                         }
-                        // Firebase에 저장
-                        try {
-                            await window.firebaseDb.collection('sales').doc('orders')
-                                .collection('items').doc(costId)
-                                .update({
-                                    inputCompleted: cost.inputCompleted,
-                                    salesProfit: cost.salesProfit,
-                                    salesProfitRate: cost.salesProfitRate,
-                                    updatedAt: new Date()
-                                });
-                            // allCosts의 해당 항목도 업데이트
-                            const allCostItem = this.allCosts.find(c => c.id === costId);
-                            if (allCostItem) {
-                                allCostItem.inputCompleted = cost.inputCompleted;
-                                allCostItem.salesProfit = cost.salesProfit;
-                                allCostItem.salesProfitRate = cost.salesProfitRate;
-                            }
-                            // UI 실시간 반영
-                            this.renderTable();
-                        } catch (error) {
-                            console.error('Failed to update inputCompleted:', error);
-                            window.Utils.showNotification('저장 실패', 'error');
-                        }
+                        this.renderTable();
+                    } catch (err) {
+                        console.error('Failed to update inputCompleted:', err);
+                        window.Utils.showNotification('저장 실패', 'error');
                     }
                 });
             });
 
-            // 각 행의 체크박스 이벤트
-            const checkboxes = table.querySelectorAll('tbody .row-checkbox');
-        }
         } catch (error) {
             console.error('[ManufacturingCosts] renderTable 오류:', error);
         }
