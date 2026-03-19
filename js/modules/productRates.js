@@ -169,6 +169,17 @@ window.ProductRatesModule = {
         this.renderTable();
     },
 
+    // 종류 값을 정규화: 'R', '반지' → 'R(반지)' 등
+    _normalizeCategory(cat) {
+        const map = {
+            'R': 'R(반지)', 'R(반지)': 'R(반지)', '반지': 'R(반지)',
+            'N': 'N(목걸이)', 'N(목걸이)': 'N(목걸이)', '목걸이': 'N(목걸이)',
+            'B': 'B(팔찌)', 'B(팔찌)': 'B(팔찌)', '팔찌': 'B(팔찌)',
+            'E': 'E(귀걸이)', 'E(귀걸이)': 'E(귀걸이)', '귀걸이': 'E(귀걸이)',
+        };
+        return (cat && map[cat]) ? map[cat] : '기타';
+    },
+
     // 카테고리 탭 렌더링
     renderCategoryTabs() {
         const tabsEl = document.getElementById('productCategoryTabs');
@@ -179,8 +190,9 @@ window.ProductRatesModule = {
         categories.forEach(c => counts[c] = 0);
         this.products.forEach(p => {
             counts['전체']++;
-            if (p.category && counts[p.category] !== undefined) counts[p.category]++;
-            else if (p.category) counts[p.category] = 1;
+            const normalized = this._normalizeCategory(p.category);
+            if (counts[normalized] !== undefined) counts[normalized]++;
+            else counts[normalized] = 1;
         });
 
         tabsEl.innerHTML = categories.map(cat => {
@@ -206,7 +218,7 @@ window.ProductRatesModule = {
     // 현재 필터/검색 조건 적용 후 표시할 제품 목록
     _filteredProducts() {
         return this.products.filter(p => {
-            const catMatch = this.activeCategory === '전체' || p.category === this.activeCategory;
+            const catMatch = this.activeCategory === '전체' || this._normalizeCategory(p.category) === this.activeCategory;
             if (!catMatch) return false;
             if (!this.searchQuery) return true;
             const nameMatch = (p.productName || '').toLowerCase().includes(this.searchQuery);
