@@ -56,6 +56,7 @@ window.SalesManagementModule = {
     currentPage: 1,
     selectedYear: 'all',
     searchQuery: '',
+    showUndeliveredOnly: false,
     orderSortState: { column: null, direction: 'asc' },
 
     async init() {
@@ -167,6 +168,9 @@ window.SalesManagementModule = {
                 return date && String(date.getFullYear()) === this.selectedYear;
             });
         }
+        if (this.showUndeliveredOnly) {
+            data = data.filter(o => !o.delivered);
+        }
         if (this.searchQuery) {
             const q = this.searchQuery.toLowerCase();
             data = data.filter(o =>
@@ -186,12 +190,17 @@ window.SalesManagementModule = {
             `<button class="btn btn-sm orders-year-btn ${this.selectedYear === y ? 'btn-primary' : 'btn-outline'}" data-year="${y}">${y === 'all' ? '전체' : y + '년'}</button>`
         ).join('');
 
-        const hasFilter = this.searchQuery || this.selectedYear !== 'all';
+        const hasFilter = this.searchQuery || this.selectedYear !== 'all' || this.showUndeliveredOnly;
         container.innerHTML = `
             <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:10px 0 12px;">
                 <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
                     <span style="font-size:0.85rem;color:#6b7280;white-space:nowrap;">연도</span>
                     ${yearBtns}
+                </div>
+                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                    <button class="btn btn-sm ${this.showUndeliveredOnly ? 'btn-primary' : 'btn-outline'}" id="undeliveredFilterBtn">
+                        🚚 배송완료 전만 보기
+                    </button>
                 </div>
                 <div style="display:flex;gap:6px;align-items:center;margin-left:auto;flex-wrap:wrap;">
                     <input type="text" id="ordersSearchInput" placeholder="고객명 또는 상품명"
@@ -228,9 +237,20 @@ window.SalesManagementModule = {
             if (e.key === 'Enter') document.getElementById('ordersSearchBtn')?.click();
         });
 
+        document.getElementById('undeliveredFilterBtn')?.addEventListener('click', () => {
+            this.showUndeliveredOnly = !this.showUndeliveredOnly;
+            this.currentPage = 1;
+            this.applyOrderFilters();
+            this.orders = this.filteredOrders.slice(0, this.pageSize);
+            this.renderOrdersTable();
+            this.renderPagination();
+            this.renderOrderFilterBar();
+        });
+
         document.getElementById('ordersClearBtn')?.addEventListener('click', () => {
             this.selectedYear = 'all';
             this.searchQuery = '';
+            this.showUndeliveredOnly = false;
             this.currentPage = 1;
             this.applyOrderFilters();
             this.orders = this.filteredOrders.slice(0, this.pageSize);

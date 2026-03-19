@@ -248,9 +248,9 @@ window.ProductRatesModule = {
                 <td>${p.productCode || '-'}</td>
                 <td>${p.productName || '-'}</td>
                 <td>${p.category || '-'}</td>
-                <td>${window.Utils.formatNumber(p.productCost)}</td>
-                <td>${window.Utils.formatNumber(p.finalPrice)}</td>
-                <td>${p.ownMallProfitRate ? p.ownMallProfitRate.toFixed(1) + '%' : '-'}</td>
+                <td>${window.Utils.formatNumber(Math.round(p.productCost || 0))}</td>
+                <td>${window.Utils.formatNumber(Math.round(p.finalPrice || 0))}</td>
+                <td>${p.ownMallProfitRate != null ? p.ownMallProfitRate.toFixed(1) + '%' : '-'}</td>
                 <td>
                     <button class="btn btn-sm btn-primary"
                         data-action="showForm" data-id="${p.id}">수정</button>
@@ -830,12 +830,14 @@ window.ProductRatesModule = {
                 .filter(s => s.type && s.qty > 0);
             data.stones = newStones;
 
+            const RATE_KEYS = new Set(['ownMallProfitRate','deptProfitRate','ownMallProfitRate18k','deptProfitRate18k']);
             const calc = this.calculate(data);
             this.FIELDS.filter(f => f.calc).forEach(f => {
                 const el = wrapper.querySelector(`[name="${f.key}"]`);
-                if (el) el.value = Number.isInteger(calc[f.key])
-                    ? calc[f.key]
-                    : parseFloat(calc[f.key] || 0).toFixed(2);
+                if (!el) return;
+                el.value = RATE_KEYS.has(f.key)
+                    ? parseFloat(calc[f.key] || 0).toFixed(1)
+                    : Math.round(calc[f.key] || 0);
             });
         };
 

@@ -305,6 +305,8 @@ window.ManufacturingCostsModule = {
                     val = val.toDate ? new Date(val.toDate()).toLocaleDateString('ko-KR') : '-';
                 } else if (key === 'salesProfitRate' && val !== undefined && val !== null && val !== '') {
                     val = val.toFixed(1) + '%';
+                } else if (field?.calc && field?.type === 'number' && val !== undefined && val !== null && val !== '') {
+                    val = window.Utils.formatNumber(Math.round(val));
                 } else if (field?.type === 'number' && val !== undefined && val !== null && val !== '') {
                     val = window.Utils.formatNumber(val);
                 } else if (val === undefined || val === null || val === '') {
@@ -566,7 +568,9 @@ window.ManufacturingCostsModule = {
         calcFields.forEach(k => {
             const el = wrapper.querySelector(`[name="${k}"]`);
             if (el) {
-                el.value = parseFloat(calc[k] || 0).toFixed(2);
+                el.value = k === 'salesProfitRate'
+                    ? parseFloat(calc[k] || 0).toFixed(1)
+                    : Math.round(calc[k] || 0);
             }
         });
 
@@ -774,7 +778,9 @@ window.ManufacturingCostsModule = {
             const calc = this.calculate(data);
             ['goldValue','stoneCostRef','manufacturingCost','salesProfit','salesProfitRate'].forEach(k => {
                 const el = wrapper.querySelector(`[name="${k}"]`);
-                if (el) el.value = parseFloat(calc[k] || 0).toFixed(2);
+                if (el) el.value = k === 'salesProfitRate'
+                    ? parseFloat(calc[k] || 0).toFixed(1)
+                    : Math.round(calc[k] || 0);
             });
         };
         wrapper.querySelector('#modalForm').addEventListener('input', updateCalculatedFields);
