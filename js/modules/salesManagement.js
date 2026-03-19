@@ -122,11 +122,7 @@ window.SalesManagementModule = {
         document.getElementById('downloadIntegratedCsvDataBtn')
             ?.addEventListener('click', () => this.downloadIntegratedCsvData());
         document.getElementById('csvUploadIntegratedBtn')
-            ?.addEventListener('click', () => {
-                const downloadDiv = document.getElementById('integratedDownloadBtns');
-                if (downloadDiv) downloadDiv.style.display = downloadDiv.style.display === 'none' ? 'inline-block' : 'none';
-                this.openIntegratedCsvUpload();
-            });
+            ?.addEventListener('click', () => this.openIntegratedCsvUpload());
         document.getElementById('ordersRequiredSettingsBtn')
             ?.addEventListener('click', () => this.openOrderRequiredSettings());
 
@@ -1060,12 +1056,10 @@ window.SalesManagementModule = {
                     row[k] = row[k].toDate().toLocaleDateString('ko-KR');
                 }
             });
-            // 입력 완료 포맷팅 (boolean → Y/N)
-            if (row['inputCompleted'] === true) {
-                row['inputCompleted'] = 'Y';
-            } else {
-                row['inputCompleted'] = 'N';
-            }
+            // boolean → Y/N 변환 (inputCompleted + 상태 체크박스 필드)
+            ['inputCompleted','stoneRequested','workshopRequested','productionComplete','shippingReady','delivered'].forEach(k => {
+                row[k] = row[k] === true ? 'Y' : 'N';
+            });
             return row;
         });
         window.Utils.downloadCsvData(fields, rows, '통합.csv');
@@ -1101,26 +1095,11 @@ window.SalesManagementModule = {
                     if (row[`stonePrice${i}`]) row[`stonePrice${i}`] = parseFloat(String(row[`stonePrice${i}`]).replace(/,/g, '')) || 0;
                 }
 
-                // 체크박스 변환
-                ['stoneRequested','workshopRequested','productionComplete','shippingReady','delivered'].forEach(k => {
-                    if (row[k] === 'true' || row[k] === true || row[k] === '1' || row[k] === 1) {
-                        row[k] = true;
-                    } else {
-                        row[k] = false;
-                    }
+                // 체크박스 변환 (Y/N, true/false, 1/0 모두 지원)
+                ['stoneRequested','workshopRequested','productionComplete','shippingReady','delivered','inputCompleted'].forEach(k => {
+                    const v = row[k];
+                    row[k] = (v === true || v === 'true' || v === '1' || v === 1 || v === 'Y' || v === 'y');
                 });
-
-                // 입력 완료 변환 (Y/N → boolean)
-                if (row['inputCompleted']) {
-                    if (row['inputCompleted'] === 'Y' || row['inputCompleted'] === 'y' ||
-                        row['inputCompleted'] === 'true' || row['inputCompleted'] === true) {
-                        row['inputCompleted'] = true;
-                    } else {
-                        row['inputCompleted'] = false;
-                    }
-                } else {
-                    row['inputCompleted'] = false;
-                }
 
                 batch.set(ref, { ...row, createdAt: new Date(), updatedAt: new Date() });
             });
