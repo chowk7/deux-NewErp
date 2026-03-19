@@ -346,10 +346,7 @@ window.SalesManagementModule = {
 
                 // 상태(체크박스) 타입
                 if (field.type === 'status') {
-                    const badge = val
-                        ? `<span style="color:#10b981;font-weight:600;">✓</span>`
-                        : `<span style="color:#d1d5db;">○</span>`;
-                    return `<td style="text-align:center;">${badge}</td>`;
+                    return `<td style="text-align:center;"><input type="checkbox" class="status-checkbox" data-id="${o.id}" data-field="${key}" ${val ? 'checked' : ''}></td>`;
                 }
 
                 // 날짜 포맷
@@ -460,6 +457,27 @@ window.SalesManagementModule = {
             const checkboxes = table.querySelectorAll('tbody .row-checkbox');
             checkboxes.forEach(cb => {
                 cb.addEventListener('change', () => this.updateOrderBulkDeleteBtn());
+            });
+
+            // 상태 체크박스 이벤트 (즉시 저장)
+            table.querySelectorAll('tbody .status-checkbox').forEach(cb => {
+                cb.addEventListener('change', async () => {
+                    const id = cb.dataset.id;
+                    const field = cb.dataset.field;
+                    const newVal = cb.checked;
+                    try {
+                        await window.firebaseDb.collection('sales').doc('orders')
+                            .collection('items').doc(id)
+                            .update({ [field]: newVal, updatedAt: new Date() });
+                        const inAll = this.allOrders.find(o => o.id === id);
+                        if (inAll) inAll[field] = newVal;
+                        const inCurr = this.orders.find(o => o.id === id);
+                        if (inCurr) inCurr[field] = newVal;
+                    } catch (err) {
+                        window.Utils.showNotification('상태 업데이트 실패', 'error');
+                        cb.checked = !newVal;
+                    }
+                });
             });
         }
 
@@ -1153,12 +1171,10 @@ window.SalesManagementModule = {
                     row[k] = row[k].toDate().toLocaleDateString('ko-KR');
                 }
             });
-            // 입력 완료 포맷팅 (boolean → Y/N)
-            if (row['inputCompleted'] === true) {
-                row['inputCompleted'] = 'Y';
-            } else {
-                row['inputCompleted'] = 'N';
-            }
+            // boolean → Y/N 변환 (입력완료 + 상태 필드)
+            ['inputCompleted', 'stoneRequested', 'workshopRequested', 'productionComplete', 'shippingReady', 'delivered'].forEach(k => {
+                row[k] = row[k] === true ? 'Y' : 'N';
+            });
             return row;
         });
         window.Utils.downloadCsvData(fields, rows, '통합.csv');
@@ -1249,7 +1265,7 @@ window.SalesManagementModule = {
                         }
 
                         ['stoneRequested','workshopRequested','productionComplete','shippingReady','delivered'].forEach(k => {
-                            row[k] = (row[k] === 'true' || row[k] === true || row[k] === '1' || row[k] === 1);
+                            row[k] = (row[k] === 'Y' || row[k] === 'y' || row[k] === true || row[k] === 'true');
                         });
 
                         const ic = row['inputCompleted'];
