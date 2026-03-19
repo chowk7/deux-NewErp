@@ -44,8 +44,10 @@ window.CustomerManagementModule = {
     },
 
     openDisplaySettings() {
+        const defaultKeys = ['id', 'customerName', 'email', 'phone', 'address', 'addressDetail', 'ownMallSignup'];
         window.Utils.openDisplayFieldsModal('customers', this.FIELDS,
-            () => this.loadCustomers());
+            () => this.loadCustomers(),
+            defaultKeys);
     },
 
     async loadCustomers() {

@@ -86,9 +86,11 @@ window.ManufacturingCostsModule = {
     },
 
     openDisplaySettings() {
+        const defaultKeys = ['orderDate', 'customerName', 'productName', 'optionName', 'goldValue', 'stoneCostManual', 'manufacturingCost', 'inputCompleted', 'salesProfit', 'salesProfitRate'];
         window.Utils.openDisplayFieldsModal('manufacturingCosts',
             [...this.HEADER_FIELDS, ...this.BASE_FIELDS, ...this.STONE_FIELDS],
-            () => this.load());
+            () => this.load(),
+            defaultKeys);
     },
 
     getMfgYears() {

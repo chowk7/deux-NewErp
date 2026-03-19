@@ -39,9 +39,11 @@ window.OrderManagementModule = {
     },
 
     openDisplaySettings() {
+        const defaultKeys = ['orderNumber', 'customerName', 'productName', 'stoneRequested', 'workshopRequested', 'productionComplete', 'shippingReady', 'delivered'];
         window.Utils.openDisplayFieldsModal('orderManagement',
             [...this.STATUS_FIELDS],
-            () => this.load());
+            () => this.load(),
+            defaultKeys);
     },
 
     async load(page = 1) {

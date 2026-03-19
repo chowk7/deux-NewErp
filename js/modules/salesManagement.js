@@ -143,8 +143,10 @@ window.SalesManagementModule = {
     },
 
     openOrderDisplaySettings() {
+        const defaultKeys = ['orderDate', 'orderNumber', 'customerName', 'productName', 'orderAmount', 'salesAmount'];
         window.Utils.openDisplayFieldsModal('orders', this.ORDER_FIELDS,
-            () => this.loadOrders());
+            () => this.loadOrders(),
+            defaultKeys);
     },
 
     // ===== 매출표 =====

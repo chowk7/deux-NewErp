@@ -398,6 +398,20 @@ async function getImwebProdOrders(accessToken, orderNo) {
 }
 
 /**
+ * Imweb API 응답에서 안전하게 문자열 추출
+ * address 등이 {road, jibun} 객체로 올 수 있음
+ */
+function safeStr(v) {
+    if (!v) return '';
+    if (typeof v === 'string') return v.trim();
+    if (typeof v === 'object') {
+        return v.road_address || v.road || v.jibun_address || v.address ||
+               v.basic || Object.values(v).filter(x => typeof x === 'string' && x.trim()).join(' ').trim() || '';
+    }
+    return String(v).trim();
+}
+
+/**
  * 아임웹 주문 조회 API
  */
 app.get('/api/imweb/orders', verifyToken, async (req, res) => {
@@ -424,18 +438,20 @@ app.get('/api/imweb/orders', verifyToken, async (req, res) => {
         for (const order of recentOrders) {
             const orderNo = order.order_no;
             const buyer         = order.billing?.name || order.orderer?.name || '미상';
-            const recipient     = order.delivery?.name || order.billing?.name || order.orderer?.name || '';
-            const phone         = order.delivery?.phone || order.delivery?.tel
-                                || order.billing?.phone || order.billing?.tel
-                                || order.orderer?.phone || order.orderer?.tel || '';
-            const postalCode    = order.delivery?.zip_code || order.billing?.zip_code || '';
-            const address       = order.delivery?.address  || order.billing?.address  || '';
-            const addressDetail = order.delivery?.address_detail || order.billing?.address_detail || '';
 
             const prodOrders = await getImwebProdOrders(accessToken, orderNo);
 
             for (const pGroup of prodOrders) {
                 const status = pGroup.status || order.status || '';
+
+                // delivery 정보: prod-order > order.delivery > order.billing 순으로 우선
+                const dlv = pGroup.delivery || order.delivery || order.billing || {};
+                const recipient     = safeStr(dlv.name  || buyer);
+                const phone         = safeStr(dlv.phone || dlv.tel
+                                    || order.orderer?.phone || order.orderer?.tel || '');
+                const postalCode    = safeStr(dlv.zip_code || dlv.zipcode || '');
+                const address       = safeStr(dlv.address       || '');
+                const addressDetail = safeStr(dlv.address_detail || dlv.addressDetail || '');
 
                 // 배송완료·구매확정·취소·반품 제외
                 if (

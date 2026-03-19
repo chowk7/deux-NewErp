@@ -380,10 +380,11 @@ window.Utils = {
      * @param {Array} fields - 전체 필드 배열
      * @param {Function} onSave - 저장 콜백 (selectedFieldKeys) => void
      */
-    openDisplayFieldsModal(tableKey, fields, onSave) {
-        // 저장된 표시 필드 로드 (없으면 기본값: 모두 표시)
+    openDisplayFieldsModal(tableKey, fields, onSave, defaultKeys = null) {
+        // 저장된 표시 필드 로드 (없으면 defaultKeys, 그것도 없으면 전체)
         const savedFields = JSON.parse(sessionStorage.getItem(`${tableKey}_displayFields`) || '[]');
-        const displayFieldKeys = savedFields.length > 0 ? savedFields : fields.map(f => f.key);
+        const fallback = defaultKeys || fields.map(f => f.key);
+        const displayFieldKeys = savedFields.length > 0 ? savedFields : fallback;
 
         const bodyHtml = `
             <div style="max-height:400px;overflow-y:auto;padding:12px;">
