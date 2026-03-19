@@ -65,11 +65,11 @@ window.StoneInputModalModule = {
                             </select>
                         </div>
 
-                        <!-- 단가 (읽기전용) -->
+                        <!-- 단가 (자동입력 후 수동 수정 가능) -->
                         <div class="form-group">
-                            <label style="display:block; margin-bottom:6px; font-weight:500; font-size:0.9rem;">단가</label>
-                            <input type="text" id="stonePriceDisplay" readonly placeholder="₩0"
-                                style="width:100%; padding:8px; background:#e5e7eb; border:1px solid #d1d5db; border-radius:4px; color:#6b7280; font-size:0.9rem;">
+                            <label style="display:block; margin-bottom:6px; font-weight:500; font-size:0.9rem;">단가 <span style="color:#9ca3af;font-size:0.75rem">(자동입력·수정가능)</span></label>
+                            <input type="number" id="stonePriceDisplay" placeholder="0"
+                                style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px; font-size:0.9rem;">
                         </div>
                     </div>
 
@@ -135,10 +135,9 @@ window.StoneInputModalModule = {
             stoneTypeContainer.replaceWith(searchableSelect);
         }
 
-        // 이벤트 리스너 등록
+        // 이벤트 리스너 등록 및 초기 목록 렌더링
         this.attachEventListeners(wrapper);
-        this.renderStoneList();
-        this.updateSummary();
+        this.renderStoneList(wrapper); // 내부에서 attachStoneItemListeners + updateSummary 자동 호출
     },
 
     // 이벤트 리스너 등록
@@ -172,11 +171,10 @@ window.StoneInputModalModule = {
         const diamond = this.diamondRates.find(d => d.diamondType === diamondType);
 
         if (diamond) {
-            // 단가 표시
             const price = diamond.costWithVat || 0;
             const display = wrapper.querySelector('#stonePriceDisplay');
             if (display) {
-                display.value = `₩${window.Utils.formatNumber(price)}`;
+                display.value = price;
             }
         }
     },
@@ -221,7 +219,9 @@ window.StoneInputModalModule = {
             return;
         }
 
-        const stonePrice = diamond.costWithVat || 0;
+        // 단가: 사용자가 수동 입력한 값 우선 사용
+        const priceDisplay = wrapper.querySelector('#stonePriceDisplay');
+        const stonePrice = parseFloat(priceDisplay?.value) || diamond.costWithVat || 0;
         const totalPrice = stonePrice * qty;
         const warrantyFee = this.getWarrantyFee(diamond, cert);
 
@@ -248,15 +248,13 @@ window.StoneInputModalModule = {
         }
 
         // 폼 초기화
-        stoneTypeSelect.value = '';
+        stoneTypeInput.value = '';
         stoneQtyInput.value = '';
         stoneCertSelect.value = '';
-        wrapper.querySelector('#stonePriceDisplay').value = '₩0';
+        if (priceDisplay) priceDisplay.value = '';
 
-        // 목록 렌더링
+        // 목록 렌더링 (내부에서 attachStoneItemListeners + updateSummary 자동 호출)
         this.renderStoneList(wrapper);
-        this.updateSummary(wrapper);
-        this.attachStoneItemListeners(wrapper);
     },
 
     // 나석 목록 렌더링
@@ -269,6 +267,7 @@ window.StoneInputModalModule = {
         if (this.stoneInputArray.length === 0) {
             stoneList.innerHTML = '';
             if (emptyList) emptyList.style.display = 'block';
+            this.updateSummary(wrapper);
             return;
         }
 
@@ -299,6 +298,10 @@ window.StoneInputModalModule = {
                 </div>
             </div>
         `).join('');
+
+        // 렌더링 후 버튼 이벤트 재등록
+        this.attachStoneItemListeners(wrapper);
+        this.updateSummary(wrapper);
     },
 
     // 나석 아이템 리스너 등록
@@ -328,23 +331,22 @@ window.StoneInputModalModule = {
 
         this.currentEditId = stoneId;
 
-        // 폼에 데이터 채우기
-        const stoneTypeSelect = wrapper?.querySelector('#stoneTypeSelect') || document.querySelector('#stoneTypeSelect');
+        // 폼에 데이터 채우기 (searchable select는 [name="stoneType"] input 사용)
+        const stoneTypeInput = wrapper?.querySelector('[name="stoneType"]') || document.querySelector('[name="stoneType"]');
         const stoneQtyInput = wrapper?.querySelector('#stoneQtyInput') || document.querySelector('#stoneQtyInput');
         const stoneCertSelect = wrapper?.querySelector('#stoneCertSelect') || document.querySelector('#stoneCertSelect');
         const stonePriceDisplay = wrapper?.querySelector('#stonePriceDisplay') || document.querySelector('#stonePriceDisplay');
 
-        stoneTypeSelect.value = stone.stoneType;
-        stoneQtyInput.value = stone.stoneQty;
-        stoneCertSelect.value = stone.stoneCert;
-        stonePriceDisplay.value = `₩${window.Utils.formatNumber(stone.stonePrice)}`;
+        if (stoneTypeInput) stoneTypeInput.value = stone.stoneType;
+        if (stoneQtyInput) stoneQtyInput.value = stone.stoneQty;
+        if (stoneCertSelect) stoneCertSelect.value = stone.stoneCert;
+        if (stonePriceDisplay) stonePriceDisplay.value = stone.stonePrice;
     },
 
     // 나석 삭제
     onDeleteStoneClick(stoneId, wrapper) {
         this.stoneInputArray = this.stoneInputArray.filter(s => s.id !== stoneId);
-        this.renderStoneList(wrapper);
-        this.updateSummary(wrapper);
+        this.renderStoneList(wrapper); // 내부에서 attachStoneItemListeners + updateSummary 자동 호출
     },
 
     // 요약 정보 업데이트
