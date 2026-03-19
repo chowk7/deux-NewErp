@@ -90,8 +90,9 @@ window.ProductRatesModule = {
     },
 
     openDisplaySettings() {
+        const defaultKeys = ['ownCode', 'productCode', 'productName', 'category', 'productCost', 'finalPrice', 'ownMallProfitRate'];
         window.Utils.openDisplayFieldsModal('productRates', this.FIELDS,
-            () => this.load());
+            () => this.load(), defaultKeys);
     },
 
     async loadDiamondRates() {

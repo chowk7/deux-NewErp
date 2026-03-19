@@ -48,10 +48,14 @@ window.GoldInventoryModule = {
             const totalAmount = parseFloat(item.totalAmount) || 0;
             const unitPriceG  = weightG > 0 ? totalAmount / weightG : 0;
 
-            const newStock  = prevStock + weightG;
-            const avgPriceG = newStock > 0
+            let newStock  = prevStock + weightG;
+            let avgPriceG = newStock > 0
                 ? (prevAvgPrice * prevStock + unitPriceG * weightG) / newStock
                 : 0;
+
+            // 수동 오버라이드가 있으면 적용
+            if (item.avgPriceOverride > 0) avgPriceG = item.avgPriceOverride;
+            if (item.stockOverride > 0)    newStock  = item.stockOverride;
 
             prevStock    = newStock;
             prevAvgPrice = avgPriceG;
@@ -158,14 +162,14 @@ window.GoldInventoryModule = {
                     style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:4px;background:#f3f4f6;">
             </div>
             <div class="form-group">
-                <label>평단가(g) <span style="color:#9ca3af;font-size:0.75rem">(자동)</span></label>
-                <input type="text" id="gi_avgPriceG" readonly
-                    style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:4px;background:#f3f4f6;">
+                <label>평단가(g) <span style="color:#9ca3af;font-size:0.75rem">(자동·수정가능)</span></label>
+                <input type="number" id="gi_avgPriceG" name="avgPriceG" step="1" min="0"
+                    style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:4px;">
             </div>
             <div class="form-group" style="grid-column:1/-1;">
-                <label>재고(g) <span style="color:#9ca3af;font-size:0.75rem">(자동)</span></label>
-                <input type="text" id="gi_stockG" readonly
-                    style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:4px;background:#f3f4f6;">
+                <label>재고(g) <span style="color:#9ca3af;font-size:0.75rem">(자동·수정가능)</span></label>
+                <input type="number" id="gi_stockG" name="stockG" step="0.0001" min="0"
+                    style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:4px;">
             </div>
         </div>`;
 
@@ -230,7 +234,7 @@ window.GoldInventoryModule = {
 
         const fmt = v => v > 0 ? window.Utils.formatNumber(Math.round(v)) : '';
         wrapper.querySelector('#gi_unitPriceG').value = fmt(unitPriceG);
-        wrapper.querySelector('#gi_avgPriceG').value  = fmt(avgPriceG);
+        wrapper.querySelector('#gi_avgPriceG').value  = avgPriceG > 0 ? Math.round(avgPriceG) : '';
         wrapper.querySelector('#gi_stockG').value     = newStock > 0 ? parseFloat(newStock.toFixed(4)) : '';
     },
 
@@ -259,6 +263,12 @@ window.GoldInventoryModule = {
             totalAmount,
             updatedAt: new Date()
         };
+
+        // 수동 입력된 평단가/재고가 있으면 저장
+        const manualAvg   = parseFloat(data.avgPriceG);
+        const manualStock = parseFloat(data.stockG);
+        if (!isNaN(manualAvg) && manualAvg > 0)   saveData.avgPriceOverride = manualAvg;
+        if (!isNaN(manualStock) && manualStock > 0) saveData.stockOverride    = manualStock;
 
         try {
             const col = window.firebaseDb
