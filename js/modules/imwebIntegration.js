@@ -4,6 +4,7 @@
 window.ImwebIntegrationModule = {
     orders: [],
     selectedOrders: [],
+    recentCustomerNames: new Set(),
 
     // 아임웹 주문 가져오기
     async fetchImwebOrders() {
@@ -14,15 +15,22 @@ window.ImwebIntegrationModule = {
             if (!user) throw new Error('로그인이 필요합니다.');
 
             const token = await user.getIdToken();
-            const response = await fetch('/api/imweb/orders', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            const [response, recentSnap] = await Promise.all([
+                fetch('/api/imweb/orders', { headers: { 'Authorization': `Bearer ${token}` } }),
+                window.firebaseDb.collection('sales').doc('orders').collection('items')
+                    .where('orderDate', '>=', firebase.firestore.Timestamp.fromDate(
+                        new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+                    )).get()
+            ]);
 
             const data = await response.json();
             if (!response.ok || !data.success) {
                 throw new Error(data.error || '주문 조회 실패');
             }
 
+            this.recentCustomerNames = new Set(
+                recentSnap.docs.map(d => (d.data().customerName || '').trim()).filter(Boolean)
+            );
             this.orders = data.orders || [];
             this.selectedOrders = [];
             this.showImwebModal();
@@ -116,24 +124,26 @@ window.ImwebIntegrationModule = {
             const isSelected = this.selectedOrders.some(
                 o => o.orderNumber === order.orderNumber && o.productName === order.productName
             );
+            const isDuplicate = this.recentCustomerNames.has((order.customerName || '').trim());
+            const color = isDuplicate ? 'color:#aaa;' : 'color:#000;';
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td style="padding:8px;text-align:center;">
                     <input type="checkbox" class="imweb-order-checkbox" data-index="${index}" ${isSelected ? 'checked' : ''}>
                 </td>
-                <td style="padding:8px;">${new Date(order.orderDate).toLocaleDateString('ko-KR')}</td>
-                <td style="padding:8px;">${order.orderNumber}</td>
-                <td style="padding:8px;">${order.customerName}</td>
-                <td style="padding:8px;">${order.recipient || ''}</td>
-                <td style="padding:8px;">${order.phone}</td>
-                <td style="padding:8px;">${order.postalCode || ''}</td>
-                <td style="padding:8px;font-size:12px;max-width:150px;">${order.address}</td>
-                <td style="padding:8px;font-size:12px;max-width:150px;">${order.addressDetail || ''}</td>
-                <td style="padding:8px;">${order.productName}</td>
-                <td style="padding:8px;">${order.productCode || ''}</td>
-                <td style="padding:8px;font-size:12px;max-width:150px;">${order.optionName || ''}</td>
-                <td style="padding:8px;text-align:center;">${order.quantity}</td>
-                <td style="padding:8px;text-align:right;">${(order.orderAmount || 0).toLocaleString()}</td>`;
+                <td style="padding:8px;${color}">${new Date(order.orderDate).toLocaleDateString('ko-KR')}</td>
+                <td style="padding:8px;${color}">${order.orderNumber}</td>
+                <td style="padding:8px;${color}">${order.customerName}</td>
+                <td style="padding:8px;${color}">${order.recipient || ''}</td>
+                <td style="padding:8px;${color}">${order.phone}</td>
+                <td style="padding:8px;${color}">${order.postalCode || ''}</td>
+                <td style="padding:8px;font-size:12px;max-width:150px;${color}">${order.address}</td>
+                <td style="padding:8px;font-size:12px;max-width:150px;${color}">${order.addressDetail || ''}</td>
+                <td style="padding:8px;${color}">${order.productName}</td>
+                <td style="padding:8px;${color}">${order.productCode || ''}</td>
+                <td style="padding:8px;font-size:12px;max-width:150px;${color}">${order.optionName || ''}</td>
+                <td style="padding:8px;text-align:center;${color}">${order.quantity}</td>
+                <td style="padding:8px;text-align:right;${color}">${(order.orderAmount || 0).toLocaleString()}</td>`;
 
             tr.querySelector('.imweb-order-checkbox').addEventListener('change', e => {
                 this.toggleOrder(index, e.target.checked);
