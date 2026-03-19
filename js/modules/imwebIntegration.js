@@ -44,9 +44,9 @@ window.ImwebIntegrationModule = {
     createImwebModal() {
         const modal = document.createElement('div');
         modal.id = 'imwebModal';
-        modal.className = 'modal hidden';
+        modal.className = 'modal-overlay hidden';
         modal.innerHTML = `
-            <div class="modal-content" style="width:98%;max-width:1600px;height:95%;display:flex;flex-direction:column;">
+            <div class="modal-content" style="width:98%;max-width:1600px;height:90vh;display:flex;flex-direction:column;padding:0;overflow:hidden;">
                 <div class="modal-header">
                     <h3>아임웹 주문 가져오기</h3>
                     <button class="close-modal" data-modal="imwebModal">&times;</button>
@@ -98,6 +98,12 @@ window.ImwebIntegrationModule = {
         });
         modal.querySelector('.close-modal').addEventListener('click', () => {
             modal.classList.add('hidden');
+        });
+        modal.querySelector('.btn-outline[data-modal]')?.addEventListener('click', () => {
+            modal.classList.add('hidden');
+        });
+        modal.addEventListener('click', e => {
+            if (e.target === modal) modal.classList.add('hidden');
         });
     },
 
