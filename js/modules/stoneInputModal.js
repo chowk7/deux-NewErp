@@ -18,15 +18,17 @@ window.StoneInputModalModule = {
             const bName = (b.diamondType || '').toLowerCase();
             return aName.localeCompare(bName, 'ko-KR');
         });
-        this.stoneInputArray = (existingStones || []).map((s, i) => ({
-            id: s.id || `stone_${Date.now()}_${i}`,
-            stoneType: s.stoneType || '',
-            stoneQty: s.stoneQty || 0,
-            stoneCert: s.stoneCert || '',
-            stonePrice: s.stonePrice || 0,
-            totalPrice: (s.stonePrice || 0) * (s.stoneQty || 0),
-            warrantyFee: s.warrantyFee || 0
-        }));
+        this.stoneInputArray = (existingStones || [])
+            .filter(s => s.stoneType && s.stoneQty > 0)  // 빈 항목 제외
+            .map((s, i) => ({
+                id: s.id || `stone_${Date.now()}_${i}`,
+                stoneType: s.stoneType || '',
+                stoneQty: s.stoneQty || 0,
+                stoneCert: s.stoneCert || '',
+                stonePrice: s.stonePrice || 0,
+                totalPrice: (s.stonePrice || 0) * (s.stoneQty || 0),
+                warrantyFee: s.warrantyFee || 0
+            }));
         this.currentEditId = null;
         this.onSaveCallback = callback;
     },
@@ -121,22 +123,23 @@ window.StoneInputModalModule = {
             }
         );
 
-        // 나석 종류 검색 드롭다운 생성 (이름순 정렬)
+        // 이벤트 리스너 등록 및 초기 목록 렌더링 (searchable select보다 먼저 등록해야 wrapper 유효)
+        this.attachEventListeners(wrapper);
+
+        // 나석 종류 검색 드롭다운 생성 (이름순 정렬) - onSelect 콜백으로 단가 자동 표시
         const stoneTypeContainer = wrapper.querySelector('#stoneTypeSelectContainer');
         if (stoneTypeContainer) {
             const stoneTypeOptions = this.diamondRates.map(d => d.diamondType);
             const searchableSelect = window.Utils.createSearchableSelect(
                 stoneTypeOptions,
                 '',
-                null,
+                (value) => this.onStoneTypeChange(value, wrapper),
                 '나석 종류 검색...',
                 'stoneType'
             );
             stoneTypeContainer.replaceWith(searchableSelect);
         }
 
-        // 이벤트 리스너 등록 및 초기 목록 렌더링
-        this.attachEventListeners(wrapper);
         this.renderStoneList(wrapper); // 내부에서 attachStoneItemListeners + updateSummary 자동 호출
     },
 
