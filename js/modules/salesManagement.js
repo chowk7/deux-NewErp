@@ -1122,11 +1122,13 @@ window.SalesManagementModule = {
     },
 
     downloadOrderCsvData() {
+        const STATUS_KEYS = ['stoneRequested','workshopRequested','productionComplete','shippingReady','delivered'];
         const rows = this.orders.map(o => {
             const row = { ...o };
             if (row.orderDate?.toDate) {
                 row.orderDate = row.orderDate.toDate().toLocaleDateString('ko-KR');
             }
+            STATUS_KEYS.forEach(k => { row[k] = row[k] === true ? 'Y' : 'N'; });
             return row;
         });
         window.Utils.downloadCsvData(this.ORDER_FIELDS, rows, '매출표.csv');
@@ -1264,12 +1266,11 @@ window.SalesManagementModule = {
                             if (row[`stonePrice${i}`]) row[`stonePrice${i}`] = parseFloat(String(row[`stonePrice${i}`]).replace(/,/g, '')) || 0;
                         }
 
+                        const toBool = v => ['Y','y','YES','yes','TRUE','true','1'].includes(String(v ?? '').trim()) || v === true;
                         ['stoneRequested','workshopRequested','productionComplete','shippingReady','delivered'].forEach(k => {
-                            row[k] = (row[k] === 'Y' || row[k] === 'y' || row[k] === true || row[k] === 'true');
+                            row[k] = toBool(row[k]);
                         });
-
-                        const ic = row['inputCompleted'];
-                        row['inputCompleted'] = (ic === 'Y' || ic === 'y' || ic === 'true' || ic === true);
+                        row['inputCompleted'] = toBool(row['inputCompleted']);
 
                         addBatch.set(ref, { ...row, createdAt: new Date(), updatedAt: new Date() });
                         if ((idx + 1) % 500 === 0) {
