@@ -50,7 +50,7 @@ steps:
       - 'managed'
       - '--allow-unauthenticated'
       - '--set-env-vars'
-      - 'IMWEB_API_KEY=${_IMWEB_API_KEY},IMWEB_API_SECRET=${_IMWEB_API_SECRET}'
+      - 'IMWEB_API_KEY=${_IMWEB_API_KEY},IMWEB_API_SECRET=${_IMWEB_API_SECRET},GCS_BUCKET_NAME=new_erp'
     id: 'deploy'
 
 # 이미지 저장
