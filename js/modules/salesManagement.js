@@ -623,7 +623,7 @@ window.SalesManagementModule = {
         }
 
         const body = `<div class="form-grid">` +
-            this.ORDER_FIELDS.map(f => {
+            this.ORDER_FIELDS.filter(f => f.type !== 'status').map(f => {
                 const isRequired = req.includes(f.key);
                 let val = order?.[f.key] ?? '';
 
@@ -776,6 +776,12 @@ window.SalesManagementModule = {
                 // 이미지 파일 필드 제거 (Firestore에 저장할 수 없음)
                 delete data.img_salesReceipt;
                 delete data.img_orderSheet;
+
+                // status 필드: 폼에서 문자열로 오는 경우 boolean 변환 (수정 시 타입 보정)
+                ['stoneRequested','workshopRequested','productionComplete','shippingReady','delivered'].forEach(k => {
+                    if (data[k] === 'true') data[k] = true;
+                    else if (data[k] === 'false' || data[k] === '') delete data[k]; // 수정 시 기존값 유지
+                });
 
                 // 귀걸이(E)가 아니면 뒷침 제거
                 if (data.category !== 'E(귀걸이)') {

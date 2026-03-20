@@ -50,9 +50,19 @@ window.Utils = {
         if (onSubmit) {
             wrapper.querySelector('#modalForm').addEventListener('submit', async (e) => {
                 e.preventDefault();
-                const formData = new FormData(e.target);
-                const data = Object.fromEntries(formData);
-                await onSubmit(data, wrapper);
+                const submitBtn = e.target.querySelector('button[type="submit"]');
+                const origText = submitBtn ? submitBtn.textContent : '';
+                if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = '저장 중...'; }
+                try {
+                    const formData = new FormData(e.target);
+                    const data = Object.fromEntries(formData);
+                    await onSubmit(data, wrapper);
+                } catch (err) {
+                    console.error('[openModal] 저장 오류:', err);
+                    this.showNotification('저장 중 오류가 발생했습니다: ' + (err?.message || err), 'error', 6000);
+                } finally {
+                    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = origText; }
+                }
             });
         }
 
