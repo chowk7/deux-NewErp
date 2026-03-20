@@ -10,6 +10,8 @@ const helmet = require('helmet');
 const admin = require('firebase-admin');
 const path = require('path');
 const fs = require('fs');
+const multer = require('multer');
+const { Storage } = require('@google-cloud/storage');
 require('dotenv').config();
 
 // Firebase Admin 초기화
@@ -71,6 +73,17 @@ app.use('/js', express.static(path.join(__dirname, 'js')));
 // Firestore 인스턴스
 const db = admin.firestore();
 const storage = admin.storage();
+
+// GCP Storage (new_erp 버킷)
+const gcsClient = new Storage();
+const GCS_BUCKET = process.env.GCS_BUCKET_NAME || 'new_erp';
+const bucket = gcsClient.bucket(GCS_BUCKET);
+
+// multer: 메모리 저장소, 최대 20MB
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 20 * 1024 * 1024 },
+});
 
 // ===== 프론트엔드 라우트 =====
 
@@ -510,6 +523,74 @@ app.get('/api/imweb/orders', verifyToken, async (req, res) => {
     } catch (error) {
         console.error('[Imweb] Error:', error);
         res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ===== 이미지 업로드 API (GCP new_erp 버킷) =====
+
+/**
+ * POST /api/upload
+ * 이미지/PDF를 GCP new_erp 버킷에 업로드
+ * Body: multipart/form-data { file, folder }
+ * Response: { path }
+ */
+app.post('/api/upload', verifyToken, upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ error: '파일이 없습니다.' });
+
+        const folder = req.body.folder || 'uploads';
+        const fileName = `${Date.now()}_${req.file.originalname}`;
+        const filePath = `${folder}/${fileName}`;
+
+        const blob = bucket.file(filePath);
+        await blob.save(req.file.buffer, {
+            contentType: req.file.mimetype,
+            resumable: false,
+        });
+
+        res.json({ path: filePath });
+    } catch (error) {
+        console.error('[Upload] Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * GET /api/signed-url?path=...
+ * GCP 버킷 파일의 서명된 URL 생성 (15분 유효)
+ * Response: { url }
+ */
+app.get('/api/signed-url', verifyToken, async (req, res) => {
+    try {
+        const filePath = req.query.path;
+        if (!filePath) return res.status(400).json({ error: 'path 파라미터가 필요합니다.' });
+
+        const [url] = await bucket.file(filePath).getSignedUrl({
+            action: 'read',
+            expires: Date.now() + 15 * 60 * 1000, // 15분
+        });
+
+        res.json({ url });
+    } catch (error) {
+        console.error('[SignedUrl] Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * DELETE /api/files?path=...
+ * GCP 버킷에서 파일 삭제
+ */
+app.delete('/api/files', verifyToken, async (req, res) => {
+    try {
+        const filePath = req.query.path;
+        if (!filePath) return res.status(400).json({ error: 'path 파라미터가 필요합니다.' });
+
+        await bucket.file(filePath).delete({ ignoreNotFound: true });
+        res.json({ success: true });
+    } catch (error) {
+        console.error('[DeleteFile] Error:', error);
+        res.status(500).json({ error: error.message });
     }
 });
 
