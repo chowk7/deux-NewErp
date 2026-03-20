@@ -279,7 +279,7 @@ window.OrderManagementModule = {
     },
 
     showForm(itemId = null, itemData = null, onComplete = null) {
-        const item = itemData || (itemId ? this.items.find(i => i.id === itemId) : null);
+        const item = itemData || (itemId ? this.allItems.find(i => i.id === itemId) : null);
 
         const statusInputs = this.STATUS_FIELDS.map(f => {
             const val = item?.[f.key] ?? '';
@@ -419,7 +419,7 @@ window.OrderManagementModule = {
 
     // 이미지 보기 (GCP 서명된 URL, 15분 유효)
     async viewImage(itemId, imageType) {
-        const item = this.items.find(i => i.id === itemId);
+        const item = this.allItems.find(i => i.id === itemId);
         const filePath = item?.images?.[imageType];
         if (!filePath) return alert('이미지가 없습니다.');
 
@@ -439,7 +439,7 @@ window.OrderManagementModule = {
     // 이미지 삭제 (GCP new_erp 버킷)
     async removeImage(itemId, imageType) {
         if (!(await window.Utils.confirm('이미지를 삭제하시겠습니까?'))) return;
-        const item = this.items.find(i => i.id === itemId);
+        const item = this.allItems.find(i => i.id === itemId);
         const filePath = item?.images?.[imageType];
         if (filePath) {
             try {
