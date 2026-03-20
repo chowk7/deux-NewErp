@@ -4,7 +4,7 @@
 window.ImwebIntegrationModule = {
     orders: [],
     selectedOrders: [],
-    recentCustomerNames: new Set(),
+    recentOrderMap: new Map(),   // customerName → [productName, ...]
 
     // 아임웹 주문 가져오기
     async fetchImwebOrders() {
@@ -28,9 +28,14 @@ window.ImwebIntegrationModule = {
                 throw new Error(data.error || '주문 조회 실패');
             }
 
-            this.recentCustomerNames = new Set(
-                recentSnap.docs.map(d => (d.data().customerName || '').trim()).filter(Boolean)
-            );
+            this.recentOrderMap = new Map();
+            recentSnap.docs.forEach(d => {
+                const name = (d.data().customerName || '').trim();
+                const prod = (d.data().productName  || '').trim();
+                if (!name) return;
+                if (!this.recentOrderMap.has(name)) this.recentOrderMap.set(name, []);
+                this.recentOrderMap.get(name).push(prod);
+            });
             this.orders = data.orders || [];
             this.selectedOrders = [];
             this.showImwebModal();
@@ -124,7 +129,10 @@ window.ImwebIntegrationModule = {
             const isSelected = this.selectedOrders.some(
                 o => o.orderNumber === order.orderNumber && o.productName === order.productName
             );
-            const isDuplicate = this.recentCustomerNames.has((order.customerName || '').trim());
+            const custName   = (order.customerName || '').trim();
+            const imwebProd  = (order.productName  || '').trim();
+            const existProds = this.recentOrderMap.get(custName) || [];
+            const isDuplicate = existProds.some(p => p.includes(imwebProd));
             const color = isDuplicate ? 'color:#aaa;' : 'color:#000;';
             const tr = document.createElement('tr');
             tr.innerHTML = `
