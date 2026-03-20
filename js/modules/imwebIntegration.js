@@ -262,18 +262,36 @@ window.ImwebIntegrationModule = {
                 </tr>`;
             }).join('');
 
+            // 기존 등록 제품명 배지 (클릭 → 포커스된 입력에 삽입)
+            const knownBadges = knownNames.map(n => {
+                const safe = n.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+                return `<span class="_pfix_badge" data-name="${safe}"
+                    style="display:inline-block;padding:3px 10px;margin:3px;background:#f0f9ff;border:1px solid #bae6fd;
+                           border-radius:12px;font-size:12px;cursor:pointer;color:#0369a1;white-space:nowrap;"
+                    title="클릭하면 선택한 입력란에 적용">${safe}</span>`;
+            }).join('');
+
             const count = unmatchedNames.length;
             wrapper.innerHTML = `
                 <div class="modal-overlay">
-                    <div class="modal-content" style="max-width:680px;max-height:90vh;display:flex;flex-direction:column;">
+                    <div class="modal-content" style="max-width:720px;max-height:90vh;display:flex;flex-direction:column;">
                         <div class="modal-header">
                             <h3>⚠ 제품명 불일치 확인 (${count}건)</h3>
                         </div>
                         <div style="padding:16px 20px;overflow-y:auto;flex:1;">
-                            <p style="margin-bottom:14px;color:#374151;line-height:1.5;">
+                            <p style="margin-bottom:12px;color:#374151;line-height:1.5;">
                                 아래 제품명이 기존 등록 제품과 일치하지 않습니다.<br>
-                                드롭다운에서 기존 제품명을 선택하거나, 새 이름 그대로 저장할 수 있습니다.
+                                입력란을 클릭한 뒤 아래 목록의 제품명을 선택하거나, 직접 입력·수정하세요.
                             </p>
+
+                            <!-- 기존 등록 제품 목록 (참고용) -->
+                            <div style="margin-bottom:16px;padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;">
+                                <div style="font-size:12px;font-weight:600;color:#475569;margin-bottom:6px;">
+                                    기존 등록 제품 (${knownNames.length}개) — 클릭하면 입력란에 적용
+                                </div>
+                                <div id="_pfix_badges" style="line-height:1.8;">${knownBadges || '<span style="color:#9ca3af;font-size:12px;">등록된 제품 없음</span>'}</div>
+                            </div>
+
                             <datalist id="${sharedListId}">${sharedOpts}</datalist>
                             <table style="width:100%;border-collapse:collapse;font-size:13px;">
                                 <thead style="position:sticky;top:0;background:#f9fafb;z-index:1;">
@@ -291,6 +309,23 @@ window.ImwebIntegrationModule = {
                         </div>
                     </div>
                 </div>`;
+
+            // 마지막 포커스된 입력 추적
+            let lastFocused = wrapper.querySelector('.product-name-fix');
+            wrapper.querySelectorAll('.product-name-fix').forEach(input => {
+                input.addEventListener('focus', () => { lastFocused = input; });
+            });
+
+            // 배지 클릭 → lastFocused 입력에 제품명 적용
+            wrapper.querySelector('#_pfix_badges')?.addEventListener('click', e => {
+                const badge = e.target.closest('._pfix_badge');
+                if (!badge || !lastFocused) return;
+                lastFocused.value = badge.dataset.name;
+                lastFocused.focus();
+                // 시각 피드백: 배지 잠깐 하이라이트
+                badge.style.background = '#bae6fd';
+                setTimeout(() => { badge.style.background = '#f0f9ff'; }, 400);
+            });
 
             wrapper.querySelector('#_pfix_confirm').addEventListener('click', () => {
                 const map = {};
