@@ -310,9 +310,11 @@ window.OrderManagementModule = {
                                 ? `<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
                                     <span style="font-size:0.8rem;color:#6b7280;">📎 저장됨</span>
                                     <button type="button" class="btn btn-sm btn-outline"
-                                        data-action="viewImage" data-id="${itemId}" data-type="${t.key}">보기</button>
+                                        data-action="viewImage" data-id="${itemId}" data-type="${t.key}"
+                                        data-path="${item.images[t.key]}">보기</button>
                                     <button type="button" class="btn btn-sm btn-danger"
-                                        data-action="removeImage" data-id="${itemId}" data-type="${t.key}">삭제</button>
+                                        data-action="removeImage" data-id="${itemId}" data-type="${t.key}"
+                                        data-path="${item.images[t.key]}">삭제</button>
                                   </div>` : ''}
                             <input type="file" name="img_${t.key}" accept="image/*,.pdf"
                                 style="font-size:0.875rem;">
@@ -407,9 +409,10 @@ window.OrderManagementModule = {
             const action = btn.dataset.action;
             const id = btn.dataset.id;
             const type = btn.dataset.type;
+            const path = btn.dataset.path || null;
             if (typeof this[action] === 'function') {
                 if (type) {
-                    this[action](id, type);
+                    this[action](id, type, path);
                 } else {
                     this[action](id);
                 }
@@ -418,9 +421,9 @@ window.OrderManagementModule = {
     },
 
     // 이미지 보기 (GCP 서명된 URL, 15분 유효)
-    async viewImage(itemId, imageType) {
-        const item = this.allItems.find(i => i.id === itemId);
-        const filePath = item?.images?.[imageType];
+    // knownPath: 폼 버튼의 data-path 속성에서 직접 전달된 경로 (allItems 재조회 불필요)
+    async viewImage(itemId, imageType, knownPath = null) {
+        const filePath = knownPath || this.allItems.find(i => i.id === itemId)?.images?.[imageType];
         if (!filePath) return alert('이미지가 없습니다.');
 
         try {
@@ -437,10 +440,10 @@ window.OrderManagementModule = {
     },
 
     // 이미지 삭제 (GCP new_erp 버킷)
-    async removeImage(itemId, imageType) {
+    // knownPath: 폼 버튼의 data-path 속성에서 직접 전달된 경로
+    async removeImage(itemId, imageType, knownPath = null) {
         if (!(await window.Utils.confirm('이미지를 삭제하시겠습니까?'))) return;
-        const item = this.allItems.find(i => i.id === itemId);
-        const filePath = item?.images?.[imageType];
+        const filePath = knownPath || this.allItems.find(i => i.id === itemId)?.images?.[imageType];
         if (filePath) {
             try {
                 const token = await window.firebaseAuth.currentUser.getIdToken();
@@ -450,11 +453,14 @@ window.OrderManagementModule = {
                 });
             } catch (e) { /* 이미 없음 */ }
         }
+        // Firestore에서 해당 이미지 키 제거
+        const item = this.allItems.find(i => i.id === itemId);
         const updatedImages = { ...(item?.images || {}) };
         delete updatedImages[imageType];
         await window.firebaseDb.collection('sales').doc('orders')
             .collection('items').doc(itemId)
             .update({ images: updatedImages, updatedAt: new Date() });
+        this.allItems = [];
         this.load();
     },
 
