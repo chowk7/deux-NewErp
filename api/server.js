@@ -451,7 +451,7 @@ app.get('/api/imweb/orders', verifyToken, async (req, res) => {
 
         for (const order of recentOrders) {
             const orderNo = order.order_no;
-            const buyer         = order.billing?.name || order.orderer?.name || '미상';
+            const buyer         = order.orderer?.name || order.billing?.name || order.member_name || '미상';
 
             // 첫 번째 주문의 필드 구조를 로그로 출력 (배송지 필드 파악용)
             if (!debugLogged) {
@@ -472,11 +472,13 @@ app.get('/api/imweb/orders', verifyToken, async (req, res) => {
                 if (debugLogged && orders.length === 0) {
                     console.log('[Imweb] pGroup keys:', Object.keys(pGroup));
                     console.log('[Imweb] pGroup.delivery:', JSON.stringify(pGroup.delivery));
+                    console.log('[Imweb] pGroup.recipient:', JSON.stringify(pGroup.recipient));
+                    console.log('[Imweb] pGroup.receiver:', JSON.stringify(pGroup.receiver));
                 }
 
-                // delivery 정보: prod-order.delivery > order.delivery > order.receiver > order.billing 순으로 우선
-                // 아임웹 v2 API는 배송지를 order.receiver 에 담음
-                const dlv = pGroup.delivery || order.delivery || order.receiver || order.billing || {};
+                // delivery 정보: prod-order > order 순으로, 필드명(delivery/recipient/receiver/billing) 모두 시도
+                const dlv = pGroup.delivery || pGroup.recipient || pGroup.receiver
+                          || order.delivery || order.recipient || order.receiver || order.billing || {};
                 const recipient     = safeStr(dlv.name  || buyer);
                 const phone         = safeStr(dlv.phone || dlv.mobile || dlv.tel
                                     || order.orderer?.phone || order.orderer?.mobile || order.orderer?.tel || '');
