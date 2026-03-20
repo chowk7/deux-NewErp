@@ -672,6 +672,18 @@ window.SalesManagementModule = {
                     input = `<select name="${f.key}" ${isRequired ? 'required' : ''}>
                                 <option value="">선택</option>${opts}
                              </select>`;
+                } else if (f.key === 'orderNumber' && !orderId) {
+                    // 신규 직접입력 주문: 주문번호 자동생성 (연도4+월일4+시분초6+랜덤1)
+                    const _now = new Date();
+                    const _auto = String(_now.getFullYear())
+                        + String(_now.getMonth()+1).padStart(2,'0')
+                        + String(_now.getDate()).padStart(2,'0')
+                        + String(_now.getHours()).padStart(2,'0')
+                        + String(_now.getMinutes()).padStart(2,'0')
+                        + String(_now.getSeconds()).padStart(2,'0')
+                        + String(Math.floor(Math.random()*10));
+                    input = `<input type="${f.type}" name="${f.key}" value="${_auto}"
+                                ${isRequired ? 'required' : ''}>`;
                 } else if (f.key === 'size') {
                     // 사이즈: 예시 표시
                     input = `<input type="${f.type}" name="${f.key}" value="${val}"
