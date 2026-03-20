@@ -476,14 +476,17 @@ app.get('/api/imweb/orders', verifyToken, async (req, res) => {
                     console.log('[Imweb] pGroup.receiver:', JSON.stringify(pGroup.receiver));
                 }
 
-                // delivery 정보: prod-order > order 순으로, 필드명(delivery/recipient/receiver/billing) 모두 시도
-                const dlv = pGroup.delivery || pGroup.recipient || pGroup.receiver
-                          || order.delivery || order.recipient || order.receiver || order.billing || {};
+                // 아임웹 v2: order.delivery.address.* 에 실제 배송지 필드가 있음
+                const dlvRaw = pGroup.delivery || pGroup.recipient || pGroup.receiver
+                             || order.delivery || order.recipient || order.receiver || order.billing || {};
+                // delivery.address가 객체면 그 안을 사용, 아니면 dlvRaw 직접 사용
+                const dlv = (dlvRaw.address && typeof dlvRaw.address === 'object')
+                          ? dlvRaw.address : dlvRaw;
                 const recipient     = safeStr(dlv.name  || buyer);
                 const phone         = safeStr(dlv.phone || dlv.mobile || dlv.tel
-                                    || order.orderer?.phone || order.orderer?.mobile || order.orderer?.tel || '');
-                const postalCode    = safeStr(dlv.zip_code || dlv.zipcode || dlv.zip || '');
-                const address       = safeStr(dlv.address || '');
+                                    || order.orderer?.call || order.orderer?.phone || order.orderer?.mobile || '');
+                const postalCode    = safeStr(dlv.postcode || dlv.zip_code || dlv.zipcode || dlv.zip || '');
+                const address       = safeStr(typeof dlv.address === 'string' ? dlv.address : '');
                 const addressDetail = safeStr(dlv.address_detail || dlv.addressDetail || dlv.detail_address || '');
 
                 // 배송완료·구매확정·취소·반품 제외
