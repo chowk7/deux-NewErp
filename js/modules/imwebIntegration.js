@@ -252,11 +252,15 @@ window.ImwebIntegrationModule = {
                 return '';
             };
 
-            // 기존 고객목록 로드 (이름 기준 중복 체크)
+            // 기존 고객목록 로드 (이름+전화번호 기준 중복 체크, 전화번호 없으면 이름만)
             const customerSnap = await window.firebaseDb
                 .collection('sales').doc('customers').collection('items').get();
-            const existingCustomerNames = new Set(
-                customerSnap.docs.map(d => (d.data().customerName || '').trim())
+            const existingCustomerKeys = new Set(
+                customerSnap.docs.map(d => {
+                    const name  = (d.data().customerName || '').trim();
+                    const phone = (d.data().phone || '').replace(/\D/g, '');
+                    return phone ? `${name}|${phone}` : name;
+                })
             );
 
             const batch      = window.firebaseDb.batch();
@@ -264,7 +268,7 @@ window.ImwebIntegrationModule = {
             const customersCollection = window.firebaseDb.collection('sales').doc('customers').collection('items');
 
             // 신규 고객 추적 (같은 배치 내 중복 방지)
-            const newCustomerNames = new Set();
+            const newCustomerKeys = new Set();
 
             this.selectedOrders.forEach(order => {
                 // 옵션명 파싱 → 색상/사이즈 자동 기입
@@ -299,10 +303,12 @@ window.ImwebIntegrationModule = {
                     source:       'imweb'
                 });
 
-                // 신규 고객이면 고객목록에 추가
-                const name = (order.customerName || '').trim();
-                if (name && !existingCustomerNames.has(name) && !newCustomerNames.has(name)) {
-                    newCustomerNames.add(name);
+                // 신규 고객이면 고객목록에 추가 (이름+전화번호 기준, 동명이인 구분)
+                const name  = (order.customerName || '').trim();
+                const phone = (order.phone || '').replace(/\D/g, '');
+                const key   = phone ? `${name}|${phone}` : name;
+                if (name && !existingCustomerKeys.has(key) && !newCustomerKeys.has(key)) {
+                    newCustomerKeys.add(key);
                     const custRef = customersCollection.doc();
                     batch.set(custRef, {
                         customerName:  name,
@@ -321,7 +327,7 @@ window.ImwebIntegrationModule = {
 
             await batch.commit();
 
-            const newCustCount = newCustomerNames.size;
+            const newCustCount = newCustomerKeys.size;
             let msg = `${this.selectedOrders.length}개의 주문이 추가되었습니다.`;
             if (newCustCount > 0) msg += ` (신규 고객 ${newCustCount}명 자동 등록)`;
             window.Utils.showNotification(msg, 'success');
