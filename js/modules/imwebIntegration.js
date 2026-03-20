@@ -232,44 +232,52 @@ window.ImwebIntegrationModule = {
 
     // 제품명 불일치 보정 모달
     // 반환값: { 원본명: 수정명, ... } 또는 null(취소)
+    // - unmatchedNames: 중복 제거된 불일치 제품명 배열
+    // - knownNames: 기존 등록된 제품명 배열 (datalist 후보)
     _showProductNameCorrectionModal(unmatchedNames, knownNames) {
         return new Promise(resolve => {
             const wrapper = document.createElement('div');
             wrapper.setAttribute('data-modal', '');
 
-            const rows = unmatchedNames.map((name, i) => {
+            // 공통 datalist 1개 (모든 행이 공유)
+            const sharedListId = '_imweb_known_products';
+            const sharedOpts = knownNames.map(n => {
+                const v = n.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+                return `<option value="${v}"></option>`;
+            }).join('');
+
+            const rows = unmatchedNames.map(name => {
                 const safe = name.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
-                const opts = knownNames.map(n =>
-                    `<option value="${n.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}"></option>`
-                ).join('');
                 return `
                 <tr>
-                    <td style="padding:10px;border:1px solid #e5e7eb;color:#6b7280;max-width:220px;word-break:break-all;">${safe}</td>
+                    <td style="padding:10px;border:1px solid #e5e7eb;color:#6b7280;word-break:break-all;width:45%;">${safe}</td>
                     <td style="padding:10px;border:1px solid #e5e7eb;">
                         <input type="text" class="product-name-fix"
                             data-original="${safe}"
                             value="${safe}"
-                            list="imweb-plist-${i}"
+                            list="${sharedListId}"
+                            placeholder="기존 제품 선택 또는 새 이름 입력"
                             style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:13px;">
-                        <datalist id="imweb-plist-${i}">${opts}</datalist>
                     </td>
                 </tr>`;
             }).join('');
 
+            const count = unmatchedNames.length;
             wrapper.innerHTML = `
                 <div class="modal-overlay">
-                    <div class="modal-content" style="max-width:680px;">
+                    <div class="modal-content" style="max-width:680px;max-height:90vh;display:flex;flex-direction:column;">
                         <div class="modal-header">
-                            <h3>⚠ 제품명 불일치 확인</h3>
+                            <h3>⚠ 제품명 불일치 확인 (${count}건)</h3>
                         </div>
-                        <div style="padding:16px 20px;">
+                        <div style="padding:16px 20px;overflow-y:auto;flex:1;">
                             <p style="margin-bottom:14px;color:#374151;line-height:1.5;">
                                 아래 제품명이 기존 등록 제품과 일치하지 않습니다.<br>
                                 드롭다운에서 기존 제품명을 선택하거나, 새 이름 그대로 저장할 수 있습니다.
                             </p>
+                            <datalist id="${sharedListId}">${sharedOpts}</datalist>
                             <table style="width:100%;border-collapse:collapse;font-size:13px;">
-                                <thead>
-                                    <tr style="background:#f9fafb;">
+                                <thead style="position:sticky;top:0;background:#f9fafb;z-index:1;">
+                                    <tr>
                                         <th style="padding:10px;text-align:left;border:1px solid #e5e7eb;width:45%;">아임웹 제품명</th>
                                         <th style="padding:10px;text-align:left;border:1px solid #e5e7eb;">저장할 제품명</th>
                                     </tr>
@@ -277,8 +285,8 @@ window.ImwebIntegrationModule = {
                                 <tbody>${rows}</tbody>
                             </table>
                         </div>
-                        <div style="display:flex;gap:10px;justify-content:flex-end;padding:14px 20px;border-top:1px solid #e5e7eb;">
-                            <button id="_pfix_confirm" class="btn btn-primary">확인</button>
+                        <div style="flex-shrink:0;display:flex;gap:10px;justify-content:flex-end;padding:14px 20px;border-top:1px solid #e5e7eb;">
+                            <button id="_pfix_confirm" class="btn btn-primary">확인 (${count}건 적용)</button>
                             <button id="_pfix_cancel" class="btn btn-outline">취소</button>
                         </div>
                     </div>
@@ -287,12 +295,12 @@ window.ImwebIntegrationModule = {
             wrapper.querySelector('#_pfix_confirm').addEventListener('click', () => {
                 const map = {};
                 wrapper.querySelectorAll('.product-name-fix').forEach(input => {
-                    const original = input.dataset.original;
+                    const original = input.dataset.original;  // 브라우저가 HTML 엔티티 디코딩
                     const corrected = input.value.trim();
                     if (corrected && corrected !== original) map[original] = corrected;
                 });
                 wrapper.remove();
-                resolve(map);
+                resolve(map);  // 빈 객체여도 OK (전부 그대로 저장)
             });
 
             wrapper.querySelector('#_pfix_cancel').addEventListener('click', () => {
@@ -301,7 +309,6 @@ window.ImwebIntegrationModule = {
             });
 
             document.body.appendChild(wrapper);
-
             // 첫 번째 입력에 포커스
             const first = wrapper.querySelector('.product-name-fix');
             if (first) first.focus();
