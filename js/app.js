@@ -108,9 +108,9 @@ class DiamonJewelryApp {
             'price-settings': 'priceSettingsContent',
             'orders': 'ordersContent',
             'manufacturing-costs': 'manufacturingCostsContent',
-            'order-management': 'orderManagementContent',
             'admin-expenses': 'adminExpensesContent',
             'profit-loss': 'profitLossContent',
+            'gold-inventory': 'goldInventoryContent',
             'notes': 'notesContent',
             'images': 'imagesContent'
         };
@@ -123,7 +123,9 @@ class DiamonJewelryApp {
 
                 // 해당 모듈 로드
                 try {
-                    if (window.PriceManagementModule && (menuId === 'diamond-rates' || menuId === 'option-charges' || menuId === 'price-settings')) {
+                    if (menuId === 'dashboard') {
+                        await this.loadDashboard();
+                    } else if (window.PriceManagementModule && (menuId === 'diamond-rates' || menuId === 'option-charges' || menuId === 'price-settings')) {
                         window.PriceManagementModule.loadData(menuId);
                     } else if (window.SalesManagementModule && menuId === 'orders') {
                         await window.SalesManagementModule.loadOrders();
@@ -132,13 +134,14 @@ class DiamonJewelryApp {
                     } else if (window.CustomerManagementModule && menuId === 'customers') {
                         await window.CustomerManagementModule.loadCustomers();
                     } else if (window.ManufacturingCostsModule && menuId === 'manufacturing-costs') {
+                        window.ManufacturingCostsModule.allCosts = [];
                         await window.ManufacturingCostsModule.load();
-                    } else if (window.OrderManagementModule && menuId === 'order-management') {
-                        await window.OrderManagementModule.load();
                     } else if (window.AdminExpensesModule && menuId === 'admin-expenses') {
                         await window.AdminExpensesModule.load();
                     } else if (window.ProfitLossModule && menuId === 'profit-loss') {
                         await window.ProfitLossModule.load();
+                    } else if (window.GoldInventoryModule && menuId === 'gold-inventory') {
+                        await window.GoldInventoryModule.load();
                     } else if (menuId === 'notes') {
                         notes.loadNotes().then(() => notes.renderNotes());
                     }
@@ -174,6 +177,7 @@ class DiamonJewelryApp {
         this.setupPriceManagementModule();
         this.setupSalesManagementModule();
         this.setupNewModules();
+        this.loadDashboard();
     }
 
     /**
@@ -234,7 +238,73 @@ class DiamonJewelryApp {
         if (window.OrderManagementModule) window.OrderManagementModule.init();
         if (window.AdminExpensesModule) window.AdminExpensesModule.init();
         if (window.ProfitLossModule) window.ProfitLossModule.init();
+        if (window.GoldInventoryModule) window.GoldInventoryModule.init();
         if (window.notes) window.notes.init();
+    }
+
+    /**
+     * 대시보드 로드 - 배송완료되지 않은 주문 현황 표시
+     */
+    async loadDashboard() {
+        const loading = document.getElementById('dashboardLoading');
+        const table   = document.getElementById('dashboardTable');
+        const empty   = document.getElementById('dashboardEmpty');
+        const tbody   = table?.querySelector('tbody');
+        if (!tbody) return;
+
+        if (loading) loading.style.display = 'block';
+        if (table)   table.style.display   = 'none';
+        if (empty)   empty.style.display   = 'none';
+
+        try {
+            const snap = await window.firebaseDb
+                .collection('sales').doc('orders').collection('items')
+                .orderBy('orderDate', 'asc')
+                .get();
+
+            const now = new Date();
+            const twoWeeksMs = 14 * 24 * 60 * 60 * 1000;
+
+            const rows = snap.docs
+                .map(d => ({ id: d.id, ...d.data() }))
+                .filter(o => !o.delivered);
+
+            if (loading) loading.style.display = 'none';
+
+            if (rows.length === 0) {
+                if (empty) empty.style.display = 'block';
+                return;
+            }
+
+            const badge = v => v
+                ? `<span style="color:#10b981;font-weight:600;">✓</span>`
+                : `<span style="color:#d1d5db;">○</span>`;
+
+            tbody.innerHTML = rows.map(o => {
+                const orderDate = o.orderDate?.toDate ? new Date(o.orderDate.toDate()) : null;
+                const dateStr   = orderDate ? orderDate.toLocaleDateString('ko-KR') : '-';
+                const overdue   = orderDate && (now - orderDate) > twoWeeksMs;
+                const rowStyle  = overdue
+                    ? 'background:#fef2f2;color:#b91c1c;'
+                    : '';
+
+                return `<tr style="${rowStyle}">
+                    <td>${dateStr}</td>
+                    <td>${o.customerName || '-'}</td>
+                    <td>${o.productName  || '-'}</td>
+                    <td>${o.optionName   || '-'}</td>
+                    <td style="text-align:center;">${badge(o.stoneRequested)}</td>
+                    <td style="text-align:center;">${badge(o.workshopRequested)}</td>
+                    <td style="text-align:center;">${badge(o.productionComplete)}</td>
+                    <td style="text-align:center;">${badge(o.shippingReady)}</td>
+                </tr>`;
+            }).join('');
+
+            if (table) table.style.display = '';
+        } catch (err) {
+            console.error('[Dashboard] 로드 실패:', err);
+            if (loading) loading.textContent = '데이터 로드 실패: ' + err.message;
+        }
     }
 
     /**

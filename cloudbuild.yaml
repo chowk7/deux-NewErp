@@ -49,6 +49,8 @@ steps:
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
+      - '--set-env-vars'
+      - 'IMWEB_API_KEY=${_IMWEB_API_KEY},IMWEB_API_SECRET=${_IMWEB_API_SECRET},GCS_BUCKET_NAME=new_erp'
     id: 'deploy'
 
 # 이미지 저장
@@ -66,6 +68,9 @@ substitutions:
   _REGION: 'asia-northeast1'
   _SERVICE_NAME: 'diamond-jewelry-api'
   _DEPLOY_TIMEOUT: '900s'
+  # ⚠️ 아래 값은 GCP Console > Cloud Build > 트리거 설정에서 덮어쓰기 필요
+  _IMWEB_API_KEY: ''
+  _IMWEB_API_SECRET: ''
 
 # 타임아웃
 timeout: '1200s'

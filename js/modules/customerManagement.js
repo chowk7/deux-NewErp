@@ -18,6 +18,7 @@ window.CustomerManagementModule = {
     customerRequired: [],
     pageSize: 100,
     sortState: { column: null, direction: 'asc' },
+    searchQuery: '',
 
     async init() {
         this.setupEventListeners();
@@ -41,11 +42,20 @@ window.CustomerManagementModule = {
         // 표시항목 설정
         document.getElementById('customerDisplaySettingsBtn')
             ?.addEventListener('click', () => this.openDisplaySettings());
+
+        // 검색창
+        document.getElementById('customerSearchInput')
+            ?.addEventListener('input', e => {
+                this.searchQuery = e.target.value;
+                this.renderTable();
+            });
     },
 
     openDisplaySettings() {
+        const defaultKeys = ['id', 'customerName', 'email', 'phone', 'address', 'addressDetail', 'ownMallSignup'];
         window.Utils.openDisplayFieldsModal('customers', this.FIELDS,
-            () => this.loadCustomers());
+            () => this.loadCustomers(),
+            defaultKeys);
     },
 
     async loadCustomers() {
@@ -60,6 +70,10 @@ window.CustomerManagementModule = {
             console.log('✓ Firebase query succeeded, documents:', snap.docs.length);
             this.customers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             console.log('✓ Customers loaded successfully:', this.customers.length);
+
+            // 기존 데이터 전화번호에서 '-' 제거 (마이그레이션)
+            await this._migratePhoneNumbers();
+
             this.sortState = { column: null, direction: 'asc' };
             this.renderTable();
         } catch (error) {
@@ -69,6 +83,40 @@ window.CustomerManagementModule = {
             this.customers = [];
             this.renderTable();
         }
+    },
+
+    // 전화번호에서 '-' 및 공백 제거
+    _normalizePhone(val) {
+        return (val || '').replace(/[-\s]/g, '');
+    },
+
+    // 기존 저장 데이터 중 '-' 포함 전화번호를 Firestore에서 정리
+    async _migratePhoneNumbers() {
+        const dirty = this.customers.filter(c => c.phone && c.phone.includes('-'));
+        if (dirty.length === 0) return;
+
+        const batch = window.firebaseDb.batch();
+        const col = window.firebaseDb.collection('sales').doc('customers').collection('items');
+        dirty.forEach(c => {
+            const normalized = this._normalizePhone(c.phone);
+            batch.update(col.doc(c.id), { phone: normalized });
+            c.phone = normalized;  // 로컬 데이터도 즉시 반영
+        });
+        await batch.commit();
+        console.log(`✓ 전화번호 마이그레이션: ${dirty.length}건 '-' 제거 완료`);
+    },
+
+    // 검색 필터 적용 후 결과 반환
+    _filteredCustomers() {
+        const q = this._normalizePhone(this.searchQuery).toLowerCase();
+        if (!q) return this.customers;
+        return this.customers.filter(c => {
+            const name    = (c.customerName || '').toLowerCase();
+            const address = ((c.address || '') + ' ' + (c.addressDetail || '')).toLowerCase();
+            const phone   = this._normalizePhone(c.phone);
+            const email   = (c.email || '').toLowerCase();
+            return name.includes(q) || address.includes(q) || phone.includes(q) || email.includes(q);
+        });
     },
 
     sortCustomers(column) {
@@ -140,12 +188,15 @@ window.CustomerManagementModule = {
         const fieldMap = {};
         this.FIELDS.forEach(f => fieldMap[f.key] = f);
 
-        if (this.customers.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="${displayFieldKeys.length + 2}" style="text-align:center">데이터가 없습니다.</td></tr>`;
+        const filtered = this._filteredCustomers();
+
+        if (filtered.length === 0) {
+            const msg = this.searchQuery ? '검색 결과가 없습니다.' : '데이터가 없습니다.';
+            tbody.innerHTML = `<tr><td colspan="${displayFieldKeys.length + 2}" style="text-align:center">${msg}</td></tr>`;
             return;
         }
 
-        tbody.innerHTML = this.customers.map(c => {
+        tbody.innerHTML = filtered.map(c => {
             const cells = displayFieldKeys.map(key => {
                 const field = fieldMap[key];
                 if (!field) return '<td>-</td>';
@@ -155,9 +206,12 @@ window.CustomerManagementModule = {
                 // 체크박스 표시
                 if (field.type === 'checkbox') {
                     return `<td>${val ? '✓' : ''}</td>`;
-                } else if (val === undefined || val === null || val === '') {
-                    val = '-';
                 }
+
+                // 전화번호: '-' 없이 출력
+                if (key === 'phone') val = this._normalizePhone(val);
+
+                if (val === undefined || val === null || val === '') val = '-';
 
                 return `<td>${val}</td>`;
             }).join('');
@@ -169,8 +223,6 @@ window.CustomerManagementModule = {
                     <td>
                         <button class="btn btn-sm btn-primary"
                             data-action="showForm" data-id="${c.id}">수정</button>
-                        <button class="btn btn-sm btn-danger"
-                            data-action="delete" data-id="${c.id}">삭제</button>
                     </td>
                 </tr>`;
         }).join('');
@@ -331,8 +383,13 @@ window.CustomerManagementModule = {
                     input = `<input type="checkbox" name="${f.key}"
                                 ${customer?.[f.key] ? 'checked' : ''}>`;
                 } else {
+                    // 전화번호: '-' 제거 후 표시, 숫자 입력 안내
+                    if (f.key === 'phone') val = this._normalizePhone(val);
+                    const extra = f.key === 'phone'
+                        ? ' placeholder="숫자만 입력 (예: 01012345678)" inputmode="numeric"'
+                        : '';
                     input = `<input type="${f.type}" name="${f.key}" value="${val}"
-                                ${isRequired ? 'required' : ''}>`;
+                                ${isRequired ? 'required' : ''}${extra}>`;
                 }
 
                 return `
@@ -348,6 +405,8 @@ window.CustomerManagementModule = {
             async (data, wrapper) => {
                 // 체크박스 처리
                 data.ownMallSignup = !!data.ownMallSignup;
+                // 전화번호 '-' 제거
+                if (data.phone) data.phone = this._normalizePhone(data.phone);
 
                 if (customerId) {
                     await window.firebaseDb
@@ -386,6 +445,7 @@ window.CustomerManagementModule = {
                 .collection('sales').doc('customers').collection('items');
 
             for (const row of rows) {
+                if (row.phone) row.phone = this._normalizePhone(row.phone);
                 const docId = row.id || window.firebaseDb.collection('_').doc().id;
                 const docRef = collection.doc(docId);
                 batch.set(docRef, {

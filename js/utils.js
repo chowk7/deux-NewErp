@@ -39,13 +39,6 @@ window.Utils = {
             </div>
         `;
 
-        // 배경 클릭 닫기 (modal-overlay만 클릭했을 때)
-        wrapper.querySelector('.modal-overlay').addEventListener('click', (e) => {
-            if (e.target.classList.contains('modal-overlay')) {
-                wrapper.remove();
-            }
-        });
-
         // 닫기 버튼
         wrapper.querySelector('.modal-close-btn').addEventListener('click', () => wrapper.remove());
 
@@ -57,9 +50,19 @@ window.Utils = {
         if (onSubmit) {
             wrapper.querySelector('#modalForm').addEventListener('submit', async (e) => {
                 e.preventDefault();
-                const formData = new FormData(e.target);
-                const data = Object.fromEntries(formData);
-                await onSubmit(data, wrapper);
+                const submitBtn = e.target.querySelector('button[type="submit"]');
+                const origText = submitBtn ? submitBtn.textContent : '';
+                if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = '저장 중...'; }
+                try {
+                    const formData = new FormData(e.target);
+                    const data = Object.fromEntries(formData);
+                    await onSubmit(data, wrapper);
+                } catch (err) {
+                    console.error('[openModal] 저장 오류:', err);
+                    this.showNotification('저장 중 오류가 발생했습니다: ' + (err?.message || err), 'error', 6000);
+                } finally {
+                    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = origText; }
+                }
             });
         }
 
@@ -70,7 +73,7 @@ window.Utils = {
     /**
      * 확인 모달
      */
-    confirm(message) {
+    confirm(message, confirmLabel = '삭제') {
         return new Promise((resolve) => {
             const wrapper = document.createElement('div');
             wrapper.setAttribute('data-modal', '');
@@ -79,7 +82,7 @@ window.Utils = {
                     <div class="modal-content" style="max-width:400px;">
                         <p style="margin-bottom:20px;">${message}</p>
                         <div class="modal-footer">
-                            <button type="button" class="btn btn-danger" id="confirmYes">삭제</button>
+                            <button type="button" class="btn btn-danger" id="confirmYes">${confirmLabel}</button>
                             <button type="button" class="btn btn-secondary" id="confirmNo">취소</button>
                         </div>
                     </div>
@@ -87,11 +90,6 @@ window.Utils = {
             `;
             wrapper.querySelector('#confirmYes').addEventListener('click', () => { wrapper.remove(); resolve(true); });
             wrapper.querySelector('#confirmNo').addEventListener('click', () => { wrapper.remove(); resolve(false); });
-            wrapper.querySelector('.modal-overlay').addEventListener('click', (e) => {
-                if (e.target.classList.contains('modal-overlay')) {
-                    wrapper.remove(); resolve(false);
-                }
-            });
             document.body.appendChild(wrapper);
         });
     },
@@ -231,11 +229,6 @@ window.Utils = {
 
         wrapper.querySelector('.modal-close-btn').addEventListener('click', () => wrapper.remove());
         wrapper.querySelector('.modal-cancel-btn').addEventListener('click', () => wrapper.remove());
-        wrapper.querySelector('.modal-overlay').addEventListener('click', (e) => {
-            if (e.target.classList.contains('modal-overlay')) {
-                wrapper.remove();
-            }
-        });
 
         // CSV 양식 다운로드
         wrapper.querySelector('#csvTemplateBtn').addEventListener('click', () => {
@@ -380,10 +373,11 @@ window.Utils = {
      * @param {Array} fields - 전체 필드 배열
      * @param {Function} onSave - 저장 콜백 (selectedFieldKeys) => void
      */
-    openDisplayFieldsModal(tableKey, fields, onSave) {
-        // 저장된 표시 필드 로드 (없으면 기본값: 모두 표시)
+    openDisplayFieldsModal(tableKey, fields, onSave, defaultKeys = null) {
+        // 저장된 표시 필드 로드 (없으면 defaultKeys, 그것도 없으면 전체)
         const savedFields = JSON.parse(sessionStorage.getItem(`${tableKey}_displayFields`) || '[]');
-        const displayFieldKeys = savedFields.length > 0 ? savedFields : fields.map(f => f.key);
+        const fallback = defaultKeys || fields.map(f => f.key);
+        const displayFieldKeys = savedFields.length > 0 ? savedFields : fallback;
 
         const bodyHtml = `
             <div style="max-height:400px;overflow-y:auto;padding:12px;">

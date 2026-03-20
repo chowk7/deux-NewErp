@@ -8,7 +8,7 @@ window.ProductRatesModule = {
         { key: 'ownCode',         label: '자체상품코드',    type: 'text',   calc: false },
         { key: 'productCode',     label: '상품코드',        type: 'text',   calc: false },
         { key: 'category',        label: '종류',            type: 'select', calc: false,
-          options: ['반지','목걸이','팔찌','귀걸이','브로치','기타'] },
+          options: ['R(반지)','N(목걸이)','B(팔찌)','E(귀걸이)','기타'] },
         { key: 'productName',     label: '상품명',          type: 'text',   calc: false },
         { key: 'size',            label: '사이즈',          type: 'text',   calc: false },
         { key: 'sizeAddFee',      label: '사이즈추가금',    type: 'number', calc: false },
@@ -49,6 +49,8 @@ window.ProductRatesModule = {
     settings: {},
     diamondRates: [],
     sortState: { column: null, direction: 'asc' },
+    activeCategory: '전체',
+    searchQuery: '',
 
     async init() {
         // 나석단가표 로드 및 드롭다운 옵션 설정
@@ -78,11 +80,19 @@ window.ProductRatesModule = {
         // 표시항목 설정
         document.getElementById('productDisplaySettingsBtn')
             ?.addEventListener('click', () => this.openDisplaySettings());
+
+        // 검색 입력
+        document.getElementById('productSearchInput')
+            ?.addEventListener('input', (e) => {
+                this.searchQuery = e.target.value.trim().toLowerCase();
+                this.renderTable();
+            });
     },
 
     openDisplaySettings() {
+        const defaultKeys = ['ownCode', 'productCode', 'productName', 'category', 'productCost', 'finalPrice', 'ownMallProfitRate'];
         window.Utils.openDisplayFieldsModal('productRates', this.FIELDS,
-            () => this.load());
+            () => this.load(), defaultKeys);
     },
 
     async loadDiamondRates() {
@@ -106,6 +116,11 @@ window.ProductRatesModule = {
             .orderBy('createdAt', 'desc').get();
         this.products = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         this.sortState = { column: null, direction: 'asc' };
+        this.activeCategory = '전체';
+        this.searchQuery = '';
+        const searchInput = document.getElementById('productSearchInput');
+        if (searchInput) searchInput.value = '';
+        this.renderCategoryTabs();
         this.renderTable();
     },
 
@@ -155,28 +170,91 @@ window.ProductRatesModule = {
         this.renderTable();
     },
 
+    // 종류 값을 정규화: 'R', '반지' → 'R(반지)' 등
+    _normalizeCategory(cat) {
+        const map = {
+            'R': 'R(반지)', 'R(반지)': 'R(반지)', '반지': 'R(반지)',
+            'N': 'N(목걸이)', 'N(목걸이)': 'N(목걸이)', '목걸이': 'N(목걸이)',
+            'B': 'B(팔찌)', 'B(팔찌)': 'B(팔찌)', '팔찌': 'B(팔찌)',
+            'E': 'E(귀걸이)', 'E(귀걸이)': 'E(귀걸이)', '귀걸이': 'E(귀걸이)',
+        };
+        return (cat && map[cat]) ? map[cat] : '기타';
+    },
+
+    // 카테고리 탭 렌더링
+    renderCategoryTabs() {
+        const tabsEl = document.getElementById('productCategoryTabs');
+        if (!tabsEl) return;
+
+        const categories = ['전체', ...this.FIELDS.find(f => f.key === 'category')?.options || []];
+        const counts = {};
+        categories.forEach(c => counts[c] = 0);
+        this.products.forEach(p => {
+            counts['전체']++;
+            const normalized = this._normalizeCategory(p.category);
+            if (counts[normalized] !== undefined) counts[normalized]++;
+            else counts[normalized] = 1;
+        });
+
+        tabsEl.innerHTML = categories.map(cat => {
+            const active = this.activeCategory === cat;
+            const cnt = counts[cat] || 0;
+            return `<button data-cat="${cat}"
+                style="padding:6px 14px;border-radius:20px;border:1px solid ${active ? '#3b82f6' : '#d1d5db'};
+                       background:${active ? '#3b82f6' : '#fff'};color:${active ? '#fff' : '#374151'};
+                       cursor:pointer;font-size:0.85rem;white-space:nowrap;">
+                ${cat} (${cnt})
+            </button>`;
+        }).join('');
+
+        tabsEl.querySelectorAll('button[data-cat]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.activeCategory = btn.dataset.cat;
+                this.renderCategoryTabs();
+                this.renderTable();
+            });
+        });
+    },
+
+    // 현재 필터/검색 조건 적용 후 표시할 제품 목록
+    _filteredProducts() {
+        return this.products.filter(p => {
+            const catMatch = this.activeCategory === '전체' || this._normalizeCategory(p.category) === this.activeCategory;
+            if (!catMatch) return false;
+            if (!this.searchQuery) return true;
+            const nameMatch = (p.productName || '').toLowerCase().includes(this.searchQuery);
+            const codeMatch = (p.productCode || '').toLowerCase().includes(this.searchQuery);
+            return nameMatch || codeMatch;
+        });
+    },
+
     renderTable() {
         const tbody = document.querySelector('#productRatesTable tbody');
         if (!tbody) return;
+
+        const filtered = this._filteredProducts();
+
         if (this.products.length === 0) {
             tbody.innerHTML = `<tr><td colspan="9" style="text-align:center">데이터가 없습니다.</td></tr>`;
             return;
         }
-        tbody.innerHTML = this.products.map((p, idx) => `
+        if (filtered.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#9ca3af;">검색 결과가 없습니다.</td></tr>`;
+            return;
+        }
+        tbody.innerHTML = filtered.map((p, idx) => `
             <tr data-id="${p.id}">
                 <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${p.id}"></td>
                 <td>${p.ownCode || '-'}</td>
                 <td>${p.productCode || '-'}</td>
                 <td>${p.productName || '-'}</td>
                 <td>${p.category || '-'}</td>
-                <td>${window.Utils.formatNumber(p.productCost)}</td>
-                <td>${window.Utils.formatNumber(p.finalPrice)}</td>
-                <td>${p.ownMallProfitRate ? p.ownMallProfitRate.toFixed(1) + '%' : '-'}</td>
+                <td>${window.Utils.formatNumber(Math.round(p.productCost || 0))}</td>
+                <td>${window.Utils.formatNumber(Math.round(p.finalPrice || 0))}</td>
+                <td>${p.ownMallProfitRate != null ? p.ownMallProfitRate.toFixed(1) + '%' : '-'}</td>
                 <td>
                     <button class="btn btn-sm btn-primary"
                         data-action="showForm" data-id="${p.id}">수정</button>
-                    <button class="btn btn-sm btn-danger"
-                        data-action="delete" data-id="${p.id}">삭제</button>
                 </td>
             </tr>`).join('');
 
@@ -431,7 +509,7 @@ window.ProductRatesModule = {
         const stoneOptions = (this.diamondRates || []).map(d => d.diamondType);
 
         const wrapper = window.Utils.openModal(
-            productId ? '제품단가 수정' : '제품단가 추가', body,
+            productId ? '제품가격 수정' : '제품가격 추가', body,
             async (data, w) => {
                 // stones 배열 구성
                 const stonesContainer = w.querySelector('#stonesContainer');
@@ -462,6 +540,22 @@ window.ProductRatesModule = {
                 this.load();
             }
         );
+
+        // 상품코드 입력 시 종류(카테고리) 자동 추출
+        const productCodeInput = wrapper.querySelector('[name="productCode"]');
+        const categorySelect = wrapper.querySelector('[name="category"]');
+        if (productCodeInput && categorySelect) {
+            const autoFillCategory = () => {
+                const codeChars = productCodeInput.value.match(/[A-Za-z]/g);
+                if (codeChars && codeChars.length >= 3) {
+                    const categoryChar = codeChars[2].toUpperCase();
+                    const categoryMap = { 'R': 'R(반지)', 'N': 'N(목걸이)', 'B': 'B(팔찌)', 'E': 'E(귀걸이)' };
+                    categorySelect.value = categoryMap[categoryChar] || '기타';
+                }
+            };
+            productCodeInput.addEventListener('input', autoFillCategory);
+            productCodeInput.addEventListener('change', autoFillCategory);
+        }
 
         // 나석 종류 검색 드롭다운 설정 헬퍼 함수
         const setupStoneTypeSearchable = (container) => {
@@ -737,12 +831,14 @@ window.ProductRatesModule = {
                 .filter(s => s.type && s.qty > 0);
             data.stones = newStones;
 
+            const RATE_KEYS = new Set(['ownMallProfitRate','deptProfitRate','ownMallProfitRate18k','deptProfitRate18k']);
             const calc = this.calculate(data);
             this.FIELDS.filter(f => f.calc).forEach(f => {
                 const el = wrapper.querySelector(`[name="${f.key}"]`);
-                if (el) el.value = Number.isInteger(calc[f.key])
-                    ? calc[f.key]
-                    : parseFloat(calc[f.key] || 0).toFixed(2);
+                if (!el) return;
+                el.value = RATE_KEYS.has(f.key)
+                    ? parseFloat(calc[f.key] || 0).toFixed(1)
+                    : Math.round(calc[f.key] || 0);
             });
         };
 

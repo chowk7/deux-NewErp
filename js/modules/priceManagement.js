@@ -24,6 +24,8 @@ window.PriceManagementModule = {
     optionCharges: [],
     diamondRequired: [],
     optionRequired: [],
+    diamondSortState: { key: null, dir: 'asc' },
+    diamondSearchQuery: '',
 
     // ===== 초기화 =====
 
@@ -32,6 +34,13 @@ window.PriceManagementModule = {
     },
 
     setupEventListeners() {
+        // 나석단가표 검색
+        document.getElementById('diamondSearchInput')
+            ?.addEventListener('input', (e) => {
+                this.diamondSearchQuery = e.target.value.trim().toLowerCase();
+                this.renderDiamondRatesTable();
+            });
+
         document.getElementById('addDiamondRateBtn')
             ?.addEventListener('click', () => this.showDiamondRateForm());
         document.getElementById('addOptionChargeBtn')
@@ -99,14 +108,45 @@ window.PriceManagementModule = {
     },
 
     renderDiamondRatesTable() {
-        const tbody = document.querySelector('#diamondRatesTable tbody');
+        const diamondTable = document.querySelector('#diamondRatesTable');
+        const tbody = diamondTable?.querySelector('tbody');
         if (!tbody) return;
 
-        if (this.diamondRates.length === 0) {
+        // 검색 필터
+        let rows = this.diamondRates.filter(r => {
+            if (!this.diamondSearchQuery) return true;
+            return (r.diamondType || '').toLowerCase().includes(this.diamondSearchQuery);
+        });
+
+        // 정렬
+        const { key, dir } = this.diamondSortState;
+        if (key) {
+            rows = [...rows].sort((a, b) => {
+                const av = a[key] ?? '';
+                const bv = b[key] ?? '';
+                const cmp = typeof av === 'number' && typeof bv === 'number'
+                    ? av - bv
+                    : String(av).localeCompare(String(bv), 'ko');
+                return dir === 'asc' ? cmp : -cmp;
+            });
+        }
+
+        // 헤더 정렬 아이콘 업데이트
+        diamondTable.querySelectorAll('thead th[data-sort-key]').forEach(th => {
+            const icon = th.querySelector('.sort-icon');
+            if (!icon) return;
+            if (th.dataset.sortKey === key) {
+                icon.textContent = dir === 'asc' ? '▲' : '▼';
+            } else {
+                icon.textContent = '↕';
+            }
+        });
+
+        if (rows.length === 0) {
             tbody.innerHTML = '<tr><td colspan="8" style="text-align:center">데이터가 없습니다.</td></tr>';
             return;
         }
-        tbody.innerHTML = this.diamondRates.map(r => `
+        tbody.innerHTML = rows.map(r => `
             <tr data-id="${r.id}">
                 <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${r.id}"></td>
                 <td>${r.diamondType || '-'}</td>
@@ -124,8 +164,7 @@ window.PriceManagementModule = {
             </tr>`).join('');
 
         // 테이블 헤더 업데이트
-        const table = document.querySelector('#diamondRatesTable');
-        const thead = table?.querySelector('thead tr');
+        const thead = diamondTable.querySelector('thead tr');
         if (thead) {
             const checkboxTh = document.createElement('th');
             checkboxTh.style.textAlign = 'center';
@@ -138,36 +177,45 @@ window.PriceManagementModule = {
             thead.insertBefore(checkboxTh, thead.firstChild);
         }
 
-        // Event delegation for action buttons
-        if (table) {
-            table.removeEventListener('click', this._diamondTableHandler);
-            this._diamondTableHandler = (e) => {
-                const btn = e.target.closest('[data-action]');
-                if (!btn) return;
-                const action = btn.dataset.action;
-                const id = btn.dataset.id;
-                if (typeof this[action] === 'function') {
-                    this[action](id);
+        // Event delegation for action buttons + 헤더 정렬
+        diamondTable.removeEventListener('click', this._diamondTableHandler);
+        this._diamondTableHandler = (e) => {
+            // 헤더 정렬 클릭
+            const th = e.target.closest('thead th[data-sort-key]');
+            if (th) {
+                const sortKey = th.dataset.sortKey;
+                if (this.diamondSortState.key === sortKey) {
+                    this.diamondSortState.dir = this.diamondSortState.dir === 'asc' ? 'desc' : 'asc';
+                } else {
+                    this.diamondSortState = { key: sortKey, dir: 'asc' };
                 }
-            };
-            table.addEventListener('click', this._diamondTableHandler);
-
-            // 헤더 체크박스 이벤트
-            const headerCheckbox = table.querySelector('thead .header-checkbox');
-            if (headerCheckbox) {
-                headerCheckbox.addEventListener('change', (e) => {
-                    const allCheckboxes = table.querySelectorAll('tbody .row-checkbox');
-                    allCheckboxes.forEach(cb => cb.checked = e.target.checked);
-                    this.updateDiamondBulkDeleteBtn();
-                });
+                this.renderDiamondRatesTable();
+                return;
             }
+            // 행 버튼 클릭
+            const btn = e.target.closest('[data-action]');
+            if (!btn) return;
+            const action = btn.dataset.action;
+            const id = btn.dataset.id;
+            if (typeof this[action] === 'function') {
+                this[action](id);
+            }
+        };
+        diamondTable.addEventListener('click', this._diamondTableHandler);
 
-            // 각 행의 체크박스 이벤트
-            const checkboxes = table.querySelectorAll('tbody .row-checkbox');
-            checkboxes.forEach(cb => {
-                cb.addEventListener('change', () => this.updateDiamondBulkDeleteBtn());
+        // 헤더 체크박스 이벤트
+        const headerCheckbox = diamondTable.querySelector('thead .header-checkbox');
+        if (headerCheckbox) {
+            headerCheckbox.addEventListener('change', (e) => {
+                diamondTable.querySelectorAll('tbody .row-checkbox').forEach(cb => cb.checked = e.target.checked);
+                this.updateDiamondBulkDeleteBtn();
             });
         }
+
+        // 각 행의 체크박스 이벤트
+        diamondTable.querySelectorAll('tbody .row-checkbox').forEach(cb => {
+            cb.addEventListener('change', () => this.updateDiamondBulkDeleteBtn());
+        });
 
         this.updateDiamondBulkDeleteBtn();
     },

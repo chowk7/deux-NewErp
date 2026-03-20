@@ -39,9 +39,11 @@ window.OrderManagementModule = {
     },
 
     openDisplaySettings() {
+        const defaultKeys = ['orderNumber', 'customerName', 'productName', 'stoneRequested', 'workshopRequested', 'productionComplete', 'shippingReady', 'delivered'];
         window.Utils.openDisplayFieldsModal('orderManagement',
             [...this.STATUS_FIELDS],
-            () => this.load());
+            () => this.load(),
+            defaultKeys);
     },
 
     async load(page = 1) {
@@ -276,8 +278,8 @@ window.OrderManagementModule = {
         });
     },
 
-    showForm(itemId = null) {
-        const item = itemId ? this.items.find(i => i.id === itemId) : null;
+    showForm(itemId = null, itemData = null, onComplete = null) {
+        const item = itemData || (itemId ? this.allItems.find(i => i.id === itemId) : null);
 
         const statusInputs = this.STATUS_FIELDS.map(f => {
             const val = item?.[f.key] ?? '';
@@ -308,9 +310,11 @@ window.OrderManagementModule = {
                                 ? `<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
                                     <span style="font-size:0.8rem;color:#6b7280;">📎 저장됨</span>
                                     <button type="button" class="btn btn-sm btn-outline"
-                                        data-action="viewImage" data-id="${itemId}" data-type="${t.key}">보기</button>
+                                        data-action="viewImage" data-id="${itemId}" data-type="${t.key}"
+                                        data-path="${item.images[t.key]}">보기</button>
                                     <button type="button" class="btn btn-sm btn-danger"
-                                        data-action="removeImage" data-id="${itemId}" data-type="${t.key}">삭제</button>
+                                        data-action="removeImage" data-id="${itemId}" data-type="${t.key}"
+                                        data-path="${item.images[t.key]}">삭제</button>
                                   </div>` : ''}
                             <input type="file" name="img_${t.key}" accept="image/*,.pdf"
                                 style="font-size:0.875rem;">
@@ -351,16 +355,32 @@ window.OrderManagementModule = {
                     updatedAt:           new Date(),
                 };
 
-                // 이미지 업로드 처리
+                // 이미지 업로드 처리 (GCP new_erp 버킷)
                 for (const t of this.IMAGE_TYPES) {
                     const fileInput = wrapper.querySelector(`[name="img_${t.key}"]`);
                     if (fileInput?.files?.length > 0) {
                         const file = fileInput.files[0];
                         const docId = itemId || 'new_' + Date.now();
-                        const path = `orders/${docId}/${t.key}/${file.name}`;
-                        const ref  = window.firebaseStorage.ref(path);
-                        await ref.put(file);
-                        // Firestore에는 경로만 저장
+                        const folder = `orders/${docId}/${t.key}`;
+
+                        const formData = new FormData();
+                        formData.append('file', file);
+                        formData.append('folder', folder);
+
+                        const token = await window.firebaseAuth.currentUser.getIdToken();
+                        const uploadRes = await fetch('/api/upload', {
+                            method: 'POST',
+                            headers: { 'Authorization': `Bearer ${token}` },
+                            body: formData,
+                        });
+
+                        if (!uploadRes.ok) {
+                            const err = await uploadRes.json();
+                            throw new Error(err.error || '이미지 업로드 실패');
+                        }
+
+                        const { path } = await uploadRes.json();
+                        // Firestore에는 GCS 경로만 저장
                         docData.images[t.key] = path;
                     }
                 }
@@ -373,7 +393,12 @@ window.OrderManagementModule = {
                         .collection('items').add({ ...docData, createdAt: new Date() });
                 }
                 w.remove();
-                this.load();
+                if (onComplete) {
+                    onComplete();
+                } else {
+                    this.allItems = [];
+                    this.load();
+                }
             }
         );
 
@@ -384,9 +409,10 @@ window.OrderManagementModule = {
             const action = btn.dataset.action;
             const id = btn.dataset.id;
             const type = btn.dataset.type;
+            const path = btn.dataset.path || null;
             if (typeof this[action] === 'function') {
                 if (type) {
-                    this[action](id, type);
+                    this[action](id, type, path);
                 } else {
                     this[action](id);
                 }
@@ -394,34 +420,47 @@ window.OrderManagementModule = {
         });
     },
 
-    // 이미지 보기 (서명된 URL 생성)
-    async viewImage(itemId, imageType) {
-        const item = this.items.find(i => i.id === itemId);
-        const path = item?.images?.[imageType];
-        if (!path) return alert('이미지가 없습니다.');
+    // 이미지 보기 (GCP 서명된 URL, 15분 유효)
+    // knownPath: 폼 버튼의 data-path 속성에서 직접 전달된 경로 (allItems 재조회 불필요)
+    async viewImage(itemId, imageType, knownPath = null) {
+        const filePath = knownPath || this.allItems.find(i => i.id === itemId)?.images?.[imageType];
+        if (!filePath) return alert('이미지가 없습니다.');
 
         try {
-            const ref = window.firebaseStorage.ref(path);
-            const url = await ref.getDownloadURL();
+            const token = await window.firebaseAuth.currentUser.getIdToken();
+            const res = await fetch(`/api/signed-url?path=${encodeURIComponent(filePath)}`, {
+                headers: { 'Authorization': `Bearer ${token}` },
+            });
+            if (!res.ok) throw new Error((await res.json()).error);
+            const { url } = await res.json();
             window.open(url, '_blank');
         } catch (e) {
             alert('이미지를 불러올 수 없습니다: ' + e.message);
         }
     },
 
-    // 이미지 삭제
-    async removeImage(itemId, imageType) {
+    // 이미지 삭제 (GCP new_erp 버킷)
+    // knownPath: 폼 버튼의 data-path 속성에서 직접 전달된 경로
+    async removeImage(itemId, imageType, knownPath = null) {
         if (!(await window.Utils.confirm('이미지를 삭제하시겠습니까?'))) return;
-        const item = this.items.find(i => i.id === itemId);
-        const path = item?.images?.[imageType];
-        if (path) {
-            try { await window.firebaseStorage.ref(path).delete(); } catch (e) { /* 이미 없음 */ }
+        const filePath = knownPath || this.allItems.find(i => i.id === itemId)?.images?.[imageType];
+        if (filePath) {
+            try {
+                const token = await window.firebaseAuth.currentUser.getIdToken();
+                await fetch(`/api/files?path=${encodeURIComponent(filePath)}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                });
+            } catch (e) { /* 이미 없음 */ }
         }
+        // Firestore에서 해당 이미지 키 제거
+        const item = this.allItems.find(i => i.id === itemId);
         const updatedImages = { ...(item?.images || {}) };
         delete updatedImages[imageType];
         await window.firebaseDb.collection('sales').doc('orders')
             .collection('items').doc(itemId)
             .update({ images: updatedImages, updatedAt: new Date() });
+        this.allItems = [];
         this.load();
     },
 

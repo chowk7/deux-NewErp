@@ -13,7 +13,7 @@ window.SalesManagementModule = {
         { key: 'optionName',      label: '옵션명',        type: 'text',   defaultRequired: false },
         { key: 'remark',          label: '기타',          type: 'text',   defaultRequired: false },
         { key: 'category',        label: '종류',          type: 'select', defaultRequired: false,
-          options: ['R(반지)','N(목걸이)','B(팔찌)','E(귀걸이)'] },
+          options: ['R(반지)','N(목걸이)','B(팔찌)','E(귀걸이)','기타'] },
         { key: 'productCode',     label: '상품코드',      type: 'text',   defaultRequired: false },
         { key: 'length',          label: '길이(cm)',      type: 'number', defaultRequired: false },
         { key: 'color',           label: '색상',          type: 'select', defaultRequired: false,
@@ -38,6 +38,11 @@ window.SalesManagementModule = {
         { key: 'phone',           label: '연락처',        type: 'text',   defaultRequired: false },
         { key: 'address',         label: '주소',          type: 'text',   defaultRequired: false },
         { key: 'addressDetail',   label: '주소상세',      type: 'text',   defaultRequired: false },
+        { key: 'stoneRequested',     label: '나석신청', type: 'status', defaultRequired: false },
+        { key: 'workshopRequested',  label: '공방신청', type: 'status', defaultRequired: false },
+        { key: 'productionComplete', label: '제작완료', type: 'status', defaultRequired: false },
+        { key: 'shippingReady',      label: '배송준비', type: 'status', defaultRequired: false },
+        { key: 'delivered',          label: '배송완료', type: 'status', defaultRequired: false },
     ],
 
     // 통합 CSV 필드 (매출 + 제조원가 + 주문관리)
@@ -45,9 +50,13 @@ window.SalesManagementModule = {
 
     orders: [],
     allOrders: [], // 필터링 전 전체 데이터
+    filteredOrders: [], // 연도+검색 필터 적용 데이터
     orderRequired: [],
     pageSize: 50,
     currentPage: 1,
+    selectedYear: 'all',
+    searchQuery: '',
+    showUndeliveredOnly: false,
     orderSortState: { column: null, direction: 'asc' },
 
     async init() {
@@ -81,18 +90,13 @@ window.SalesManagementModule = {
             ]).flat(),
             { key: 'separator2', label: '--- 주문관리 ---', type: 'text' },
             // 주문관리 필드
-            { key: 'stoneRequestDate',    label: '나석신청일',   type: 'date'     },
-            { key: 'stoneCertificationDate', label: '나석보증서발급일', type: 'date' },
-            { key: 'workshopRequestDate', label: '공방신청일',   type: 'date'     },
-            { key: 'workshopDeliveryDate', label: '공방납품일',  type: 'date'     },
-            { key: 'completionDate',      label: '제작완료일',   type: 'date'     },
-            { key: 'shippingReadyDate',   label: '배송준비일',   type: 'date'     },
-            { key: 'stoneRequested',      label: '나석신청여부', type: 'checkbox' },
-            { key: 'workshopRequested',   label: '공방신청여부', type: 'checkbox' },
-            { key: 'productionComplete',  label: '제작완료여부', type: 'checkbox' },
-            { key: 'shippingReady',       label: '배송준비여부', type: 'checkbox' },
-            { key: 'delivered',           label: '배송완료여부', type: 'checkbox' },
-            { key: 'deliveryRemarks',     label: '배송비고',      type: 'text'    },
+            { key: 'stoneRequestDate',       label: '나석신청일',       type: 'date' },
+            { key: 'stoneCertificationDate', label: '나석보증서발급일',  type: 'date' },
+            { key: 'workshopRequestDate',    label: '공방신청일',        type: 'date' },
+            { key: 'workshopDeliveryDate',   label: '공방납품일',        type: 'date' },
+            { key: 'completionDate',         label: '제작완료일',        type: 'date' },
+            { key: 'shippingReadyDate',      label: '배송준비일',        type: 'date' },
+            { key: 'deliveryRemarks',        label: '배송비고',          type: 'text' },
         ];
         this.setupEventListeners();
     },
@@ -132,14 +136,131 @@ window.SalesManagementModule = {
         // 주문서 출력 버튼
         document.getElementById('printOrderBtn')
             ?.addEventListener('click', () => this.printOrders());
+
+        // 발렉스 양식 출력 버튼
+        document.getElementById('printValexFormBtn')
+            ?.addEventListener('click', () => this.printValexForm());
     },
 
     openOrderDisplaySettings() {
+        const defaultKeys = ['orderDate', 'orderNumber', 'customerName', 'productName', 'orderAmount', 'salesAmount'];
         window.Utils.openDisplayFieldsModal('orders', this.ORDER_FIELDS,
-            () => this.loadOrders());
+            () => this.loadOrders(),
+            defaultKeys);
     },
 
     // ===== 매출표 =====
+
+    getOrderYears() {
+        const years = new Set();
+        this.allOrders.forEach(o => {
+            const raw = o.orderDate;
+            const date = raw?.toDate ? raw.toDate() : (raw ? new Date(raw) : null);
+            if (date && !isNaN(date.getTime())) years.add(String(date.getFullYear()));
+        });
+        return Array.from(years).sort((a, b) => b - a);
+    },
+
+    applyOrderFilters() {
+        let data = this.allOrders;
+        if (this.selectedYear !== 'all') {
+            data = data.filter(o => {
+                const raw = o.orderDate;
+                const date = raw?.toDate ? raw.toDate() : (raw ? new Date(raw) : null);
+                return date && String(date.getFullYear()) === this.selectedYear;
+            });
+        }
+        if (this.showUndeliveredOnly) {
+            data = data.filter(o => !o.delivered);
+        }
+        if (this.searchQuery) {
+            const q = this.searchQuery.toLowerCase();
+            data = data.filter(o =>
+                (o.customerName || '').toLowerCase().includes(q) ||
+                (o.productName || '').toLowerCase().includes(q)
+            );
+        }
+        this.filteredOrders = data;
+    },
+
+    renderOrderFilterBar() {
+        const container = document.getElementById('ordersFilterBar');
+        if (!container) return;
+
+        const years = this.getOrderYears();
+        const yearBtns = ['all', ...years].map(y =>
+            `<button class="btn btn-sm orders-year-btn ${this.selectedYear === y ? 'btn-primary' : 'btn-outline'}" data-year="${y}">${y === 'all' ? '전체' : y + '년'}</button>`
+        ).join('');
+
+        const hasFilter = this.searchQuery || this.selectedYear !== 'all' || this.showUndeliveredOnly;
+        container.innerHTML = `
+            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:10px 0 12px;">
+                <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+                    <span style="font-size:0.85rem;color:#6b7280;white-space:nowrap;">연도</span>
+                    ${yearBtns}
+                </div>
+                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                    <button class="btn btn-sm ${this.showUndeliveredOnly ? 'btn-primary' : 'btn-outline'}" id="undeliveredFilterBtn">
+                        🚚 배송완료 전만 보기
+                    </button>
+                </div>
+                <div style="display:flex;gap:6px;align-items:center;margin-left:auto;flex-wrap:wrap;">
+                    <input type="text" id="ordersSearchInput" placeholder="고객명 또는 상품명"
+                        value="${this.searchQuery.replace(/"/g, '&quot;')}"
+                        style="padding:6px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:0.875rem;width:200px;">
+                    <button class="btn btn-sm btn-primary" id="ordersSearchBtn">검색</button>
+                    ${hasFilter ? '<button class="btn btn-sm btn-outline" id="ordersClearBtn">초기화</button>' : ''}
+                </div>
+            </div>`;
+
+        container.querySelectorAll('.orders-year-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.selectedYear = btn.dataset.year;
+                this.currentPage = 1;
+                this.applyOrderFilters();
+                this.orders = this.filteredOrders.slice(0, this.pageSize);
+                this.renderOrdersTable();
+                this.renderPagination();
+                this.renderOrderFilterBar();
+            });
+        });
+
+        document.getElementById('ordersSearchBtn')?.addEventListener('click', () => {
+            this.searchQuery = document.getElementById('ordersSearchInput')?.value?.trim() || '';
+            this.currentPage = 1;
+            this.applyOrderFilters();
+            this.orders = this.filteredOrders.slice(0, this.pageSize);
+            this.renderOrdersTable();
+            this.renderPagination();
+            this.renderOrderFilterBar();
+        });
+
+        document.getElementById('ordersSearchInput')?.addEventListener('keydown', e => {
+            if (e.key === 'Enter') document.getElementById('ordersSearchBtn')?.click();
+        });
+
+        document.getElementById('undeliveredFilterBtn')?.addEventListener('click', () => {
+            this.showUndeliveredOnly = !this.showUndeliveredOnly;
+            this.currentPage = 1;
+            this.applyOrderFilters();
+            this.orders = this.filteredOrders.slice(0, this.pageSize);
+            this.renderOrdersTable();
+            this.renderPagination();
+            this.renderOrderFilterBar();
+        });
+
+        document.getElementById('ordersClearBtn')?.addEventListener('click', () => {
+            this.selectedYear = 'all';
+            this.searchQuery = '';
+            this.showUndeliveredOnly = false;
+            this.currentPage = 1;
+            this.applyOrderFilters();
+            this.orders = this.filteredOrders.slice(0, this.pageSize);
+            this.renderOrdersTable();
+            this.renderPagination();
+            this.renderOrderFilterBar();
+        });
+    },
 
     async loadOrders(page = 1) {
         try {
@@ -155,13 +276,16 @@ window.SalesManagementModule = {
                 this.allOrders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             }
 
+            this.applyOrderFilters();
+
             // 페이지에 맞는 데이터만 추출
             const startIdx = (this.currentPage - 1) * this.pageSize;
             const endIdx = startIdx + this.pageSize;
-            this.orders = this.allOrders.slice(startIdx, endIdx);
+            this.orders = this.filteredOrders.slice(startIdx, endIdx);
             this.orderSortState = { column: null, direction: 'asc' };
             this.renderOrdersTable();
             this.renderPagination();
+            this.renderOrderFilterBar();
         } catch (error) {
             console.error('[SalesManagement] loadOrders 실패:', error);
             window.Utils.showNotification('매출표 로드 실패', 'error');
@@ -242,6 +366,11 @@ window.SalesManagementModule = {
 
                 let val = o[key];
 
+                // 상태(체크박스) 타입
+                if (field.type === 'status') {
+                    return `<td style="text-align:center;"><input type="checkbox" class="status-checkbox" data-id="${o.id}" data-field="${key}" ${val ? 'checked' : ''}></td>`;
+                }
+
                 // 날짜 포맷
                 if (field.type === 'date' && val) {
                     val = val.toDate ? new Date(val.toDate()).toLocaleDateString('ko-KR') : '-';
@@ -254,15 +383,27 @@ window.SalesManagementModule = {
                 return `<td>${val}</td>`;
             }).join('');
 
+            // 이미지 링크 (주문관리 IMAGE_TYPES 참조)
+            const imageTypes = window.OrderManagementModule?.IMAGE_TYPES || [];
+            const imageCell = imageTypes.length > 0
+                ? imageTypes.map(t =>
+                    o.images?.[t.key]
+                        ? `<a href="#" style="font-size:0.75rem;margin-right:4px;"
+                            data-action="viewOrderImage" data-id="${o.id}" data-type="${t.key}">📎${t.label}</a>`
+                        : `<span style="color:#d1d5db;font-size:0.75rem;margin-right:4px;">${t.label}</span>`
+                  ).join('')
+                : '';
+
             return `
                 <tr data-id="${o.id}">
                     <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${o.id}"></td>
                     ${cells}
+                    <td style="font-size:0.8rem;">${imageCell}</td>
                     <td>
                         <button class="btn btn-sm btn-primary"
                             data-action="showOrderForm" data-id="${o.id}">수정</button>
-                        <button class="btn btn-sm btn-danger"
-                            data-action="deleteOrder" data-id="${o.id}">삭제</button>
+                        <button class="btn btn-sm btn-outline"
+                            data-action="openStatusForm" data-id="${o.id}">상태</button>
                     </td>
                 </tr>`;
         }).join('');
@@ -298,6 +439,11 @@ window.SalesManagementModule = {
                 thead.appendChild(th);
             });
 
+            // 첨부이미지 헤더
+            const imageTh = document.createElement('th');
+            imageTh.textContent = '첨부이미지';
+            thead.appendChild(imageTh);
+
             // 관리 헤더 생성
             const manageTh = document.createElement('th');
             manageTh.textContent = '관리';
@@ -332,6 +478,27 @@ window.SalesManagementModule = {
             checkboxes.forEach(cb => {
                 cb.addEventListener('change', () => this.updateOrderBulkDeleteBtn());
             });
+
+            // 상태 체크박스 이벤트 (즉시 저장)
+            table.querySelectorAll('tbody .status-checkbox').forEach(cb => {
+                cb.addEventListener('change', async () => {
+                    const id = cb.dataset.id;
+                    const field = cb.dataset.field;
+                    const newVal = cb.checked;
+                    try {
+                        await window.firebaseDb.collection('sales').doc('orders')
+                            .collection('items').doc(id)
+                            .update({ [field]: newVal, updatedAt: new Date() });
+                        const inAll = this.allOrders.find(o => o.id === id);
+                        if (inAll) inAll[field] = newVal;
+                        const inCurr = this.orders.find(o => o.id === id);
+                        if (inCurr) inCurr[field] = newVal;
+                    } catch (err) {
+                        window.Utils.showNotification('상태 업데이트 실패', 'error');
+                        cb.checked = !newVal;
+                    }
+                });
+            });
         }
 
         this.updateOrderBulkDeleteBtn();
@@ -341,7 +508,7 @@ window.SalesManagementModule = {
         const paginationContainer = document.getElementById('ordersPagination');
         if (!paginationContainer) return;
 
-        const totalCount = this.allOrders.length;
+        const totalCount = this.filteredOrders.length;
         const totalPages = Math.ceil(totalCount / this.pageSize);
         const maxPageButtons = 5;
 
@@ -395,7 +562,7 @@ window.SalesManagementModule = {
         });
 
         document.getElementById('nextPageBtn')?.addEventListener('click', () => {
-            const totalPages = Math.ceil(this.totalCount / this.pageSize);
+            const totalPages = Math.ceil(this.filteredOrders.length / this.pageSize);
             if (this.currentPage < totalPages) this.loadOrders(this.currentPage + 1);
         });
 
@@ -456,7 +623,7 @@ window.SalesManagementModule = {
         }
 
         const body = `<div class="form-grid">` +
-            this.ORDER_FIELDS.map(f => {
+            this.ORDER_FIELDS.filter(f => f.type !== 'status').map(f => {
                 const isRequired = req.includes(f.key);
                 let val = order?.[f.key] ?? '';
 
@@ -505,6 +672,18 @@ window.SalesManagementModule = {
                     input = `<select name="${f.key}" ${isRequired ? 'required' : ''}>
                                 <option value="">선택</option>${opts}
                              </select>`;
+                } else if (f.key === 'orderNumber' && !orderId) {
+                    // 신규 직접입력 주문: 주문번호 자동생성 (연도4+월일4+시분초6+랜덤1)
+                    const _now = new Date();
+                    const _auto = String(_now.getFullYear())
+                        + String(_now.getMonth()+1).padStart(2,'0')
+                        + String(_now.getDate()).padStart(2,'0')
+                        + String(_now.getHours()).padStart(2,'0')
+                        + String(_now.getMinutes()).padStart(2,'0')
+                        + String(_now.getSeconds()).padStart(2,'0')
+                        + String(Math.floor(Math.random()*10));
+                    input = `<input type="${f.type}" name="${f.key}" value="${_auto}"
+                                ${isRequired ? 'required' : ''}>`;
                 } else if (f.key === 'size') {
                     // 사이즈: 예시 표시
                     input = `<input type="${f.type}" name="${f.key}" value="${val}"
@@ -568,9 +747,9 @@ window.SalesManagementModule = {
                     if (data.productCode) {
                         const codeChars = data.productCode.match(/[A-Za-z]/g);
                         if (codeChars && codeChars.length >= 3) {
-                            const categoryChar = codeChars[2];
+                            const categoryChar = codeChars[2].toUpperCase();
                             const categoryMap = { 'E': 'E(귀걸이)', 'R': 'R(반지)', 'N': 'N(목걸이)', 'B': 'B(팔찌)' };
-                            data.category = categoryMap[categoryChar] || '';
+                            data.category = categoryMap[categoryChar] || '기타';
                         }
                     }
                 }
@@ -597,6 +776,12 @@ window.SalesManagementModule = {
                 // 이미지 파일 필드 제거 (Firestore에 저장할 수 없음)
                 delete data.img_salesReceipt;
                 delete data.img_orderSheet;
+
+                // status 필드: 폼에서 문자열로 오는 경우 boolean 변환 (수정 시 타입 보정)
+                ['stoneRequested','workshopRequested','productionComplete','shippingReady','delivered'].forEach(k => {
+                    if (data[k] === 'true') data[k] = true;
+                    else if (data[k] === 'false' || data[k] === '') delete data[k]; // 수정 시 기존값 유지
+                });
 
                 // 귀걸이(E)가 아니면 뒷침 제거
                 if (data.category !== 'E(귀걸이)') {
@@ -778,9 +963,9 @@ window.SalesManagementModule = {
                         // 종류 자동 추출
                         const codeChars = product.code.match(/[A-Za-z]/g);
                         if (codeChars && codeChars.length >= 3) {
-                            const categoryChar = codeChars[2];
+                            const categoryChar = codeChars[2].toUpperCase();
                             const categoryMap = { 'E': 'E(귀걸이)', 'R': 'R(반지)', 'N': 'N(목걸이)', 'B': 'B(팔찌)' };
-                            const category = categoryMap[categoryChar] || '';
+                            const category = categoryMap[categoryChar] || '기타';
                             const categorySelect = wrapper.querySelector('[name="category"]');
                             if (categorySelect) categorySelect.value = category;
 
@@ -910,6 +1095,7 @@ window.SalesManagementModule = {
         }
 
         await batch.commit();
+        this.allOrders = [];
         this.loadOrders();
         window.Utils.showNotification('주문이 삭제되었습니다.', 'success');
     },
@@ -963,6 +1149,7 @@ window.SalesManagementModule = {
         }
 
         await batch.commit();
+        this.allOrders = [];
         this.loadOrders();
         window.Utils.showNotification(`${checkedIds.length}개 주문이 삭제되었습니다.`, 'success');
     },
@@ -973,11 +1160,13 @@ window.SalesManagementModule = {
     },
 
     downloadOrderCsvData() {
+        const STATUS_KEYS = ['stoneRequested','workshopRequested','productionComplete','shippingReady','delivered'];
         const rows = this.orders.map(o => {
             const row = { ...o };
             if (row.orderDate?.toDate) {
                 row.orderDate = row.orderDate.toDate().toLocaleDateString('ko-KR');
             }
+            STATUS_KEYS.forEach(k => { row[k] = row[k] === true ? 'Y' : 'N'; });
             return row;
         });
         window.Utils.downloadCsvData(this.ORDER_FIELDS, rows, '매출표.csv');
@@ -994,7 +1183,7 @@ window.SalesManagementModule = {
                     row.orderDate = isNaN(d) ? null : firebase.firestore.Timestamp.fromDate(d);
                 }
                 ['orderAmount','salesAmount','commissionRate'].forEach(k => {
-                    if (row[k] !== undefined) row[k] = parseFloat(row[k]) || 0;
+                    if (row[k] !== undefined) row[k] = parseFloat(String(row[k]).replace(/,/g, '')) || 0;
                 });
                 batch.set(ref, { ...row, createdAt: new Date(), updatedAt: new Date() });
             });
@@ -1022,12 +1211,10 @@ window.SalesManagementModule = {
                     row[k] = row[k].toDate().toLocaleDateString('ko-KR');
                 }
             });
-            // 입력 완료 포맷팅 (boolean → Y/N)
-            if (row['inputCompleted'] === true) {
-                row['inputCompleted'] = 'Y';
-            } else {
-                row['inputCompleted'] = 'N';
-            }
+            // boolean → Y/N 변환 (입력완료 + 상태 필드)
+            ['inputCompleted', 'stoneRequested', 'workshopRequested', 'productionComplete', 'shippingReady', 'delivered'].forEach(k => {
+                row[k] = row[k] === true ? 'Y' : 'N';
+            });
             return row;
         });
         window.Utils.downloadCsvData(fields, rows, '통합.csv');
@@ -1035,65 +1222,148 @@ window.SalesManagementModule = {
 
     openIntegratedCsvUpload() {
         const fields = this.INTEGRATED_CSV_FIELDS.filter(f => !f.key.startsWith('separator'));
-        window.Utils.openCsvUploadModal(fields, async (rows) => {
-            const batch = window.firebaseDb.batch();
-            rows.forEach(row => {
-                const ref = window.firebaseDb
-                    .collection('sales').doc('orders').collection('items').doc();
 
-                // 날짜 변환
-                ['orderDate', 'stoneRequestDate', 'stoneCertificationDate', 'workshopRequestDate',
-                 'workshopDeliveryDate', 'completionDate', 'shippingReadyDate'].forEach(k => {
-                    if (row[k]) {
-                        const d = new Date(row[k]);
-                        row[k] = isNaN(d) ? null : firebase.firestore.Timestamp.fromDate(d);
+        // 추가/교체 선택 다이얼로그
+        const choiceWrapper = document.createElement('div');
+        choiceWrapper.setAttribute('data-modal', '');
+        choiceWrapper.innerHTML = `
+            <div class="modal-overlay" style="z-index:10000;">
+                <div class="modal-content" style="max-width:420px;">
+                    <div class="modal-header">
+                        <h3>통합 CSV 업로드 방식 선택</h3>
+                    </div>
+                    <div style="padding:20px 24px;">
+                        <p style="margin-bottom:16px;color:#374151;">기존 데이터를 어떻게 처리할까요?</p>
+                        <div style="display:flex;flex-direction:column;gap:12px;">
+                            <button id="csvModeAppend" class="btn btn-primary" style="padding:14px;font-size:1rem;">
+                                ➕ 추가 — 기존 데이터 유지 후 새 항목 추가
+                            </button>
+                            <button id="csvModeReplace" class="btn btn-danger" style="padding:14px;font-size:1rem;">
+                                🔄 교체 — 기존 데이터 전체 삭제 후 새 항목으로 교체
+                            </button>
+                            <button id="csvModeCancel" class="btn btn-secondary" style="padding:10px;">취소</button>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        document.body.appendChild(choiceWrapper);
+
+        const cleanup = () => choiceWrapper.remove();
+
+        choiceWrapper.querySelector('#csvModeCancel').addEventListener('click', cleanup);
+        choiceWrapper.querySelector('.modal-overlay').addEventListener('click', e => {
+            if (e.target.classList.contains('modal-overlay')) cleanup();
+        });
+
+        const startUpload = (replaceMode) => {
+            cleanup();
+            window.Utils.openCsvUploadModal(fields, async (rows) => {
+                try {
+                    const col = window.firebaseDb.collection('sales').doc('orders').collection('items');
+
+                    // 교체 모드: 기존 전체 삭제
+                    if (replaceMode) {
+                        const existing = await col.get();
+                        const delBatches = [];
+                        let delBatch = window.firebaseDb.batch();
+                        let count = 0;
+                        existing.docs.forEach(doc => {
+                            delBatch.delete(doc.ref);
+                            count++;
+                            if (count % 500 === 0) {
+                                delBatches.push(delBatch.commit());
+                                delBatch = window.firebaseDb.batch();
+                            }
+                        });
+                        if (count % 500 !== 0) delBatches.push(delBatch.commit());
+                        await Promise.all(delBatches);
                     }
-                });
 
-                // 숫자 변환
-                ['orderAmount','salesAmount','commissionRate','productWeight','stoneWeight',
-                 'goldWeight14k','goldWeightPure','goldMarketPrice','goldValue','settingCost','laborCost',
-                 'platingCost','stoneCostManual','stoneCostRef','otherCost','manufacturingCost'].forEach(k => {
-                    if (row[k] !== undefined) row[k] = parseFloat(row[k]) || 0;
-                });
+                    // 새 데이터 저장 (500개씩 배치 분할)
+                    const addBatches = [];
+                    let addBatch = window.firebaseDb.batch();
+                    rows.forEach((row, idx) => {
+                        const ref = col.doc();
 
-                // 나석 숫자 필드 변환
-                for (let i = 1; i <= 10; i++) {
-                    if (row[`stoneQty${i}`]) row[`stoneQty${i}`] = parseFloat(row[`stoneQty${i}`]) || 0;
-                    if (row[`stonePrice${i}`]) row[`stonePrice${i}`] = parseFloat(row[`stonePrice${i}`]) || 0;
+                        ['orderDate', 'stoneRequestDate', 'stoneCertificationDate', 'workshopRequestDate',
+                         'workshopDeliveryDate', 'completionDate', 'shippingReadyDate'].forEach(k => {
+                            if (row[k]) {
+                                const d = new Date(row[k]);
+                                row[k] = isNaN(d) ? null : firebase.firestore.Timestamp.fromDate(d);
+                            }
+                        });
+
+                        ['orderAmount','salesAmount','commissionRate','productWeight','stoneWeight',
+                         'goldWeight14k','goldWeightPure','goldMarketPrice','goldValue','settingCost','laborCost',
+                         'platingCost','stoneCostManual','stoneCostRef','otherCost','manufacturingCost'].forEach(k => {
+                            if (row[k] !== undefined) row[k] = parseFloat(String(row[k]).replace(/,/g, '')) || 0;
+                        });
+
+                        for (let i = 1; i <= 10; i++) {
+                            if (row[`stoneQty${i}`]) row[`stoneQty${i}`] = parseFloat(String(row[`stoneQty${i}`]).replace(/,/g, '')) || 0;
+                            if (row[`stonePrice${i}`]) row[`stonePrice${i}`] = parseFloat(String(row[`stonePrice${i}`]).replace(/,/g, '')) || 0;
+                        }
+
+                        const toBool = v => ['Y','y','YES','yes','TRUE','true','1'].includes(String(v ?? '').trim()) || v === true;
+                        ['stoneRequested','workshopRequested','productionComplete','shippingReady','delivered'].forEach(k => {
+                            row[k] = toBool(row[k]);
+                        });
+                        row['inputCompleted'] = toBool(row['inputCompleted']);
+
+                        addBatch.set(ref, { ...row, createdAt: new Date(), updatedAt: new Date() });
+                        if ((idx + 1) % 500 === 0) {
+                            addBatches.push(addBatch.commit());
+                            addBatch = window.firebaseDb.batch();
+                        }
+                    });
+                    if (rows.length % 500 !== 0) addBatches.push(addBatch.commit());
+                    await Promise.all(addBatches);
+
+                    const modeLabel = replaceMode ? '교체' : '추가';
+                    window.Utils.showNotification(`${rows.length}개 항목 ${modeLabel} 완료(매출+제조원가+주문관리)`, 'success');
+                    this.allOrders = [];
+                    if (window.ManufacturingCostsModule) window.ManufacturingCostsModule.allCosts = [];
+                    this.loadOrders();
+                } catch (err) {
+                    console.error('[IntegratedCSV] 업로드 실패:', err);
+                    window.Utils.showNotification(`업로드 실패: ${err.message}`, 'error');
                 }
-
-                // 체크박스 변환
-                ['stoneRequested','workshopRequested','productionComplete','shippingReady','delivered'].forEach(k => {
-                    if (row[k] === 'true' || row[k] === true || row[k] === '1' || row[k] === 1) {
-                        row[k] = true;
-                    } else {
-                        row[k] = false;
-                    }
-                });
-
-                // 입력 완료 변환 (Y/N → boolean)
-                if (row['inputCompleted']) {
-                    if (row['inputCompleted'] === 'Y' || row['inputCompleted'] === 'y' ||
-                        row['inputCompleted'] === 'true' || row['inputCompleted'] === true) {
-                        row['inputCompleted'] = true;
-                    } else {
-                        row['inputCompleted'] = false;
-                    }
-                } else {
-                    row['inputCompleted'] = false;
-                }
-
-                batch.set(ref, { ...row, createdAt: new Date(), updatedAt: new Date() });
             });
-            await batch.commit();
-            window.Utils.showNotification(`${rows.length}개 항목(매출+제조원가+주문관리)이 저장되었습니다.`, 'success');
-            this.loadOrders();
+        };
+
+        choiceWrapper.querySelector('#csvModeAppend').addEventListener('click', () => startUpload(false));
+        choiceWrapper.querySelector('#csvModeReplace').addEventListener('click', async () => {
+            const ok = await window.Utils.confirm('기존 데이터를 모두 삭제하고 CSV 파일로 교체합니다. 계속하시겠습니까?');
+            if (ok) startUpload(true);
         });
     },
 
+
     openOrderRequiredSettings() {
         window.Utils.openRequiredFieldsModal('orders', this.ORDER_FIELDS);
+    },
+
+    openStatusForm(orderId) {
+        const order = this.orders.find(o => o.id === orderId);
+        if (!order) return;
+        if (window.OrderManagementModule) {
+            window.OrderManagementModule.showForm(orderId, order, () => {
+                this.allOrders = [];
+                this.loadOrders();
+            });
+        }
+    },
+
+    async viewOrderImage(orderId, imageType) {
+        const order = this.orders.find(o => o.id === orderId);
+        const path = order?.images?.[imageType];
+        if (!path) return;
+        try {
+            const url = await window.firebaseStorage.ref(path).getDownloadURL();
+            window.open(url, '_blank');
+        } catch (e) {
+            window.Utils.showNotification('이미지를 불러올 수 없습니다.', 'error');
+        }
     },
 
     printOrders() {
@@ -1176,6 +1446,108 @@ window.SalesManagementModule = {
         } catch (error) {
             console.error('Failed to generate Excel file:', error);
             window.Utils.showNotification('주문서 출력에 실패했습니다.', 'error');
+        }
+    },
+
+    printValexForm() {
+        if (typeof XLSX === 'undefined') {
+            window.Utils.showNotification('라이브러리를 로드하는 중입니다. 잠시 후 다시 시도해주세요.', 'warning');
+            return;
+        }
+
+        const table = document.querySelector('#ordersTable');
+        const checkedIds = Array.from(table.querySelectorAll('tbody .row-checkbox:checked'))
+            .map(cb => cb.dataset.id);
+
+        if (checkedIds.length === 0) {
+            window.Utils.showNotification('선택된 주문이 없습니다.', 'warning');
+            return;
+        }
+
+        const selectedOrders = this.orders.filter(o => checkedIds.includes(o.id));
+
+        // 오늘 날짜 (YYYY-MM-DD)
+        const today = new Date();
+        const todayStr = today.getFullYear() + '-' +
+            String(today.getMonth() + 1).padStart(2, '0') + '-' +
+            String(today.getDate()).padStart(2, '0');
+
+        const headers = [
+            '*NO(삭제금지)',
+            '*고객사주문번호',
+            '*주문형태',
+            '*주문일',
+            '*고객명',
+            '*연락처',
+            '우편번호',
+            '*주소',
+            '상세주소',
+            '*상품명',
+            '주문수량',
+            '*상품무게(kg)',
+            '상자크기',
+            '*상품가격(원)',
+            '고객 메모',
+            '고객사 메모'
+        ];
+
+        const rows = selectedOrders.map((order, idx) => ({
+            '*NO(삭제금지)': idx + 1,
+            '*고객사주문번호': order.orderNumber || '',
+            '*주문형태': '배송',
+            '*주문일': todayStr,
+            '*고객명': order.customerName || '',
+            '*연락처': order.phone || '',
+            '우편번호': order.postalCode || '',
+            '*주소': order.address || '',
+            '상세주소': order.addressDetail || '',
+            '*상품명': order.productName || '',
+            '주문수량': 1,
+            '*상품무게(kg)': 0.2,
+            '상자크기': 20,
+            '*상품가격(원)': 999000,
+            '고객 메모': '안전한 배송 부탁드립니다.',
+            '고객사 메모': ''
+        }));
+
+        try {
+            const workbook = XLSX.utils.book_new();
+            const worksheet = XLSX.utils.json_to_sheet(rows, { header: headers });
+
+            worksheet['!cols'] = [
+                { wch: 12 },  // NO
+                { wch: 20 },  // 고객사주문번호
+                { wch: 10 },  // 주문형태
+                { wch: 12 },  // 주문일
+                { wch: 12 },  // 고객명
+                { wch: 15 },  // 연락처
+                { wch: 10 },  // 우편번호
+                { wch: 30 },  // 주소
+                { wch: 20 },  // 상세주소
+                { wch: 20 },  // 상품명
+                { wch: 10 },  // 주문수량
+                { wch: 14 },  // 상품무게
+                { wch: 10 },  // 상자크기
+                { wch: 14 },  // 상품가격
+                { wch: 25 },  // 고객 메모
+                { wch: 15 }   // 고객사 메모
+            ];
+
+            XLSX.utils.book_append_sheet(workbook, worksheet, '발렉스양식');
+
+            const now = new Date();
+            const timeString = now.getFullYear() +
+                String(now.getMonth() + 1).padStart(2, '0') +
+                String(now.getDate()).padStart(2, '0') + '_' +
+                String(now.getHours()).padStart(2, '0') +
+                String(now.getMinutes()).padStart(2, '0') +
+                String(now.getSeconds()).padStart(2, '0');
+
+            XLSX.writeFile(workbook, `발렉스양식_${timeString}.xlsx`);
+            window.Utils.showNotification(`${checkedIds.length}건 발렉스 양식이 다운로드되었습니다.`, 'success');
+        } catch (error) {
+            console.error('Failed to generate Valex Excel file:', error);
+            window.Utils.showNotification('발렉스 양식 출력에 실패했습니다.', 'error');
         }
     },
 };
