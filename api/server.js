@@ -447,24 +447,42 @@ app.get('/api/imweb/orders', verifyToken, async (req, res) => {
         const recentOrders = rawOrders.filter(o => o.order_time && o.order_time >= timestampLimit);
 
         const orders = [];
+        let debugLogged = false;
 
         for (const order of recentOrders) {
             const orderNo = order.order_no;
             const buyer         = order.billing?.name || order.orderer?.name || '미상';
+
+            // 첫 번째 주문의 필드 구조를 로그로 출력 (배송지 필드 파악용)
+            if (!debugLogged) {
+                debugLogged = true;
+                console.log('[Imweb] order keys:', Object.keys(order));
+                console.log('[Imweb] orderer:', JSON.stringify(order.orderer));
+                console.log('[Imweb] receiver:', JSON.stringify(order.receiver));
+                console.log('[Imweb] billing:', JSON.stringify(order.billing));
+                console.log('[Imweb] delivery:', JSON.stringify(order.delivery));
+            }
 
             const prodOrders = await getImwebProdOrders(accessToken, orderNo);
 
             for (const pGroup of prodOrders) {
                 const status = pGroup.status || order.status || '';
 
-                // delivery 정보: prod-order > order.delivery > order.billing 순으로 우선
-                const dlv = pGroup.delivery || order.delivery || order.billing || {};
+                // prod-order의 첫 번째 항목 필드 구조 로그
+                if (debugLogged && orders.length === 0) {
+                    console.log('[Imweb] pGroup keys:', Object.keys(pGroup));
+                    console.log('[Imweb] pGroup.delivery:', JSON.stringify(pGroup.delivery));
+                }
+
+                // delivery 정보: prod-order.delivery > order.delivery > order.receiver > order.billing 순으로 우선
+                // 아임웹 v2 API는 배송지를 order.receiver 에 담음
+                const dlv = pGroup.delivery || order.delivery || order.receiver || order.billing || {};
                 const recipient     = safeStr(dlv.name  || buyer);
-                const phone         = safeStr(dlv.phone || dlv.tel
-                                    || order.orderer?.phone || order.orderer?.tel || '');
-                const postalCode    = safeStr(dlv.zip_code || dlv.zipcode || '');
-                const address       = safeStr(dlv.address       || '');
-                const addressDetail = safeStr(dlv.address_detail || dlv.addressDetail || '');
+                const phone         = safeStr(dlv.phone || dlv.mobile || dlv.tel
+                                    || order.orderer?.phone || order.orderer?.mobile || order.orderer?.tel || '');
+                const postalCode    = safeStr(dlv.zip_code || dlv.zipcode || dlv.zip || '');
+                const address       = safeStr(dlv.address || '');
+                const addressDetail = safeStr(dlv.address_detail || dlv.addressDetail || dlv.detail_address || '');
 
                 // 배송완료·구매확정·취소·반품 제외
                 if (
