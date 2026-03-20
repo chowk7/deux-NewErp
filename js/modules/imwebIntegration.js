@@ -230,16 +230,93 @@ window.ImwebIntegrationModule = {
         return prefix + '옐로우';
     },
 
+    // 제품명 불일치 보정 모달
+    // 반환값: { 원본명: 수정명, ... } 또는 null(취소)
+    _showProductNameCorrectionModal(unmatchedNames, knownNames) {
+        return new Promise(resolve => {
+            const wrapper = document.createElement('div');
+            wrapper.setAttribute('data-modal', '');
+
+            const rows = unmatchedNames.map((name, i) => {
+                const safe = name.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+                const opts = knownNames.map(n =>
+                    `<option value="${n.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}"></option>`
+                ).join('');
+                return `
+                <tr>
+                    <td style="padding:10px;border:1px solid #e5e7eb;color:#6b7280;max-width:220px;word-break:break-all;">${safe}</td>
+                    <td style="padding:10px;border:1px solid #e5e7eb;">
+                        <input type="text" class="product-name-fix"
+                            data-original="${safe}"
+                            value="${safe}"
+                            list="imweb-plist-${i}"
+                            style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:13px;">
+                        <datalist id="imweb-plist-${i}">${opts}</datalist>
+                    </td>
+                </tr>`;
+            }).join('');
+
+            wrapper.innerHTML = `
+                <div class="modal-overlay">
+                    <div class="modal-content" style="max-width:680px;">
+                        <div class="modal-header">
+                            <h3>⚠ 제품명 불일치 확인</h3>
+                        </div>
+                        <div style="padding:16px 20px;">
+                            <p style="margin-bottom:14px;color:#374151;line-height:1.5;">
+                                아래 제품명이 기존 등록 제품과 일치하지 않습니다.<br>
+                                드롭다운에서 기존 제품명을 선택하거나, 새 이름 그대로 저장할 수 있습니다.
+                            </p>
+                            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                                <thead>
+                                    <tr style="background:#f9fafb;">
+                                        <th style="padding:10px;text-align:left;border:1px solid #e5e7eb;width:45%;">아임웹 제품명</th>
+                                        <th style="padding:10px;text-align:left;border:1px solid #e5e7eb;">저장할 제품명</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${rows}</tbody>
+                            </table>
+                        </div>
+                        <div style="display:flex;gap:10px;justify-content:flex-end;padding:14px 20px;border-top:1px solid #e5e7eb;">
+                            <button id="_pfix_confirm" class="btn btn-primary">확인</button>
+                            <button id="_pfix_cancel" class="btn btn-outline">취소</button>
+                        </div>
+                    </div>
+                </div>`;
+
+            wrapper.querySelector('#_pfix_confirm').addEventListener('click', () => {
+                const map = {};
+                wrapper.querySelectorAll('.product-name-fix').forEach(input => {
+                    const original = input.dataset.original;
+                    const corrected = input.value.trim();
+                    if (corrected && corrected !== original) map[original] = corrected;
+                });
+                wrapper.remove();
+                resolve(map);
+            });
+
+            wrapper.querySelector('#_pfix_cancel').addEventListener('click', () => {
+                wrapper.remove();
+                resolve(null);
+            });
+
+            document.body.appendChild(wrapper);
+
+            // 첫 번째 입력에 포커스
+            const first = wrapper.querySelector('.product-name-fix');
+            if (first) first.focus();
+        });
+    },
+
     // 선택한 주문 추가
     async importSelectedOrders() {
         if (this.selectedOrders.length === 0) {
             window.Utils.showNotification('선택한 주문이 없습니다.', 'warning');
             return;
         }
-        if (!(await window.Utils.confirm(`${this.selectedOrders.length}개의 주문을 추가하시겠습니까?`, '추가'))) return;
 
         try {
-            window.Utils.showNotification('주문을 추가 중입니다...', 'info');
+            window.Utils.showNotification('제품 정보를 확인 중입니다...', 'info');
 
             // 제품단가표에서 상품명 → 상품코드·카테고리 매핑
             const productSnap = await window.firebaseDb
@@ -249,6 +326,27 @@ window.ImwebIntegrationModule = {
                 const { productName, productCode } = d.data();
                 if (productName && productCode) productMap[productName] = productCode;
             });
+
+            // 기존 제품명과 다른 아임웹 제품명 검출
+            const knownNames = Object.keys(productMap);
+            const unmatched = [...new Set(
+                this.selectedOrders
+                    .map(o => (o.productName || '').trim())
+                    .filter(p => p && !productMap.hasOwnProperty(p))
+            )];
+
+            if (unmatched.length > 0) {
+                const correctionMap = await this._showProductNameCorrectionModal(unmatched, knownNames);
+                if (correctionMap === null) return; // 사용자가 취소
+
+                // 선택 주문에 보정된 제품명 반영
+                this.selectedOrders = this.selectedOrders.map(order => {
+                    const fixed = correctionMap[(order.productName || '').trim()];
+                    return fixed ? { ...order, productName: fixed } : order;
+                });
+            }
+
+            if (!(await window.Utils.confirm(`${this.selectedOrders.length}개의 주문을 추가하시겠습니까?`, '추가'))) return;
 
             const extractCategory = (productName) => {
                 const code = productMap[productName] || '';
