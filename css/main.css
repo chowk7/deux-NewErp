@@ -182,10 +182,10 @@ html, body {
 
 /* ===== 버튼 ===== */
 .btn {
-    padding: 0.2rem 0.6rem;
+    padding: 0.26rem 0.78rem;
     border: none;
     border-radius: var(--border-radius);
-    font-size: 0.64rem;
+    font-size: 0.832rem;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s;
@@ -226,8 +226,8 @@ html, body {
 }
 
 .btn-sm {
-    padding: 0.12rem 0.4rem;
-    font-size: 0.6rem;
+    padding: 0.156rem 0.52rem;
+    font-size: 0.78rem;
 }
 
 .btn-block {
