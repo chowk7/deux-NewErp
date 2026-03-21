@@ -669,7 +669,7 @@ window.ManufacturingCostsModule = {
             return `
                 <div class="form-group">
                     <label>${f.label}${f.calc ? ' <span style="color:#9ca3af;font-size:0.75rem">(자동)</span>' : ''}${isRequired ? ' <span style="color:red">*</span>' : ''}</label>
-                    <input type="${f.type}" name="${f.key}" value="${val}" step="0.01"
+                    <input type="${f.type}" name="${f.key}" value="${f.calc && val !== '' ? Math.round(val) : val}" step="0.01"
                         ${isReadOnly ? 'readonly style="background:#f3f4f6;"' : ''}
                         ${isRequired ? 'required' : ''}>
                 </div>`;

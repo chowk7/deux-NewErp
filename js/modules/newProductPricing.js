@@ -432,7 +432,7 @@ window.NewProductPricingModule = {
                         ).join('');
                         input = `<select name="${f.key}"><option value="">선택</option>${opts}</select>`;
                     } else if (f.type !== 'custom') {
-                        input = `<input type="${f.type}" name="${f.key}" value="${val !== '' ? val : ''}"
+                        input = `<input type="${f.type}" name="${f.key}" value="${f.calc && val !== '' ? Math.round(val) : val !== '' ? val : ''}"
                             step="0.01" class="${f.calc ? 'calc-field' : ''}"
                             ${f.calc ? 'readonly style="background:#f3f4f6;"' : ''}>`;
                     } else {
