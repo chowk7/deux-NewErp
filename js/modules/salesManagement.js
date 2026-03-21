@@ -1103,21 +1103,33 @@ window.SalesManagementModule = {
     updateOrderBulkDeleteBtn() {
         const table = document.querySelector('#ordersTable');
         const checkedCount = table?.querySelectorAll('tbody .row-checkbox:checked').length || 0;
+        const buttonGroup = document.querySelector('#ordersContent .button-group');
+        let wordDocBtn    = document.getElementById('wordDocOrderBtn');
         let bulkDeleteBtn = document.getElementById('bulkDeleteOrderBtn');
 
         if (checkedCount > 0) {
+            if (!wordDocBtn) {
+                wordDocBtn = document.createElement('button');
+                wordDocBtn.id = 'wordDocOrderBtn';
+                wordDocBtn.className = 'btn btn-secondary';
+                wordDocBtn.style.marginLeft = '8px';
+                if (buttonGroup) buttonGroup.appendChild(wordDocBtn);
+            }
+            wordDocBtn.textContent = `📄 주문서 (${checkedCount}개)`;
+            wordDocBtn.onclick = () => this.generateOrderDocument();
+
             if (!bulkDeleteBtn) {
                 bulkDeleteBtn = document.createElement('button');
                 bulkDeleteBtn.id = 'bulkDeleteOrderBtn';
                 bulkDeleteBtn.className = 'btn btn-danger';
                 bulkDeleteBtn.style.marginLeft = '8px';
-                const buttonGroup = document.querySelector('#ordersContent .button-group');
                 if (buttonGroup) buttonGroup.appendChild(bulkDeleteBtn);
             }
             bulkDeleteBtn.textContent = `🗑️ ${checkedCount}개 삭제`;
             bulkDeleteBtn.onclick = () => this.bulkDeleteOrders();
-        } else if (bulkDeleteBtn) {
-            bulkDeleteBtn.remove();
+        } else {
+            wordDocBtn?.remove();
+            bulkDeleteBtn?.remove();
         }
     },
 
@@ -1152,6 +1164,200 @@ window.SalesManagementModule = {
         this.allOrders = [];
         this.loadOrders();
         window.Utils.showNotification(`${checkedIds.length}개 주문이 삭제되었습니다.`, 'success');
+    },
+
+    async generateOrderDocument() {
+        const D = window.docx;
+        if (!D) {
+            window.Utils.showNotification('Word 라이브러리가 아직 로드되지 않았습니다. 잠시 후 다시 시도해주세요.', 'warning');
+            return;
+        }
+
+        const table = document.querySelector('#ordersTable');
+        const checkedIds = Array.from(table.querySelectorAll('tbody .row-checkbox:checked'))
+            .map(cb => cb.dataset.id);
+        if (checkedIds.length === 0) {
+            window.Utils.showNotification('선택된 주문이 없습니다.', 'warning');
+            return;
+        }
+
+        const selectedOrders = this.allOrders.filter(o => checkedIds.includes(o.id));
+        const first = selectedOrders[0];
+
+        // 고객 이메일 조회
+        let customerEmail = '';
+        try {
+            const snap = await window.firebaseDb.collection('customers')
+                .where('customerName', '==', first.customerName).limit(1).get();
+            if (!snap.empty) customerEmail = snap.docs[0].data().email || '';
+        } catch (e) { /* 없으면 빈 값 */ }
+
+        // 헬퍼
+        const fmtDate = v => {
+            if (!v) return '';
+            if (v?.toDate) return v.toDate().toLocaleDateString('ko-KR');
+            return String(v);
+        };
+        const fmt = n => (parseFloat(n) || 0).toLocaleString('ko-KR');
+        const total = selectedOrders.reduce((s, o) => s + (parseFloat(o.orderAmount) || 0), 0);
+
+        const {
+            Document, Paragraph, TextRun, Table, TableRow, TableCell,
+            Packer, AlignmentType, BorderStyle, WidthType, ShadingType,
+            VerticalAlign, convertInchesToTwip,
+        } = D;
+
+        // 공통 border 스타일
+        const border = (style = BorderStyle.SINGLE, size = 4, color = '999999') =>
+            ({ style, size, color });
+        const solidBorders = {
+            top:    border(), bottom: border(), left: border(), right: border(),
+        };
+        const noBorders = {
+            top:    border(BorderStyle.NONE, 0, 'FFFFFF'),
+            bottom: border(BorderStyle.NONE, 0, 'FFFFFF'),
+            left:   border(BorderStyle.NONE, 0, 'FFFFFF'),
+            right:  border(BorderStyle.NONE, 0, 'FFFFFF'),
+        };
+
+        // 텍스트 단락 헬퍼
+        const p = (text, opts = {}) => new Paragraph({
+            children: [new TextRun({ text: String(text ?? ''), ...opts })],
+            alignment: opts.align || AlignmentType.LEFT,
+            spacing: { after: opts.spaceAfter ?? 80 },
+        });
+
+        // 셀 헬퍼
+        const cell = (children, opts = {}) => new TableCell({
+            children: Array.isArray(children) ? children : [children],
+            borders: opts.borders ?? solidBorders,
+            shading: opts.shading,
+            columnSpan: opts.columnSpan,
+            verticalAlign: VerticalAlign.CENTER,
+            width: opts.width,
+            margins: { top: 60, bottom: 60, left: 100, right: 100 },
+        });
+
+        // ── 헤더 정보 단락들 ──
+        const headerParas = [
+            new Paragraph({
+                children: [new TextRun({ text: 'Deux Infinis : 듀 인피니스', bold: true, size: 36 })],
+                spacing: { after: 60 },
+            }),
+            p('deuxinfinis.com', { size: 18, color: '555555', spaceAfter: 240 }),
+            p(''),
+            p(`주문번호……………${first.orderNumber || ''}`),
+            p(`주문일자……………${fmtDate(first.orderDate)}`),
+            p(`기타…………………${first.remark || ''}`, { spaceAfter: 240 }),
+            p(''),
+        ];
+
+        // ── 배송정보 / 주문자 정보 2컬럼 테이블 ──
+        const shadeGray = { type: ShadingType.SOLID, fill: 'EEEEEE' };
+        const infoTable = new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            rows: [
+                new TableRow({ children: [
+                    cell(p('배송정보', { bold: true, size: 20 }), { shading: shadeGray, width: { size: 50, type: WidthType.PERCENTAGE } }),
+                    cell(p('주문자 정보', { bold: true, size: 20 }), { shading: shadeGray, width: { size: 50, type: WidthType.PERCENTAGE } }),
+                ]}),
+                new TableRow({ children: [
+                    cell(p([first.address, first.addressDetail].filter(Boolean).join(' & '))),
+                    cell(p(first.customerName || '')),
+                ]}),
+                new TableRow({ children: [
+                    cell(p(first.phone || '')),
+                    cell(p(customerEmail)),
+                ]}),
+                new TableRow({ children: [
+                    cell(p(first.recipient || '')),
+                    cell(p('')),
+                ]}),
+            ],
+        });
+
+        // ── 상품 테이블 ──
+        const COL = [
+            { w: 35, label: '주문 내역',   align: AlignmentType.LEFT   },
+            { w: 30, label: '옵션',        align: AlignmentType.LEFT   },
+            { w:  8, label: '수량',        align: AlignmentType.CENTER },
+            { w: 13, label: '단가',        align: AlignmentType.RIGHT  },
+            { w: 14, label: '소계',        align: AlignmentType.RIGHT  },
+        ];
+
+        const shadeBlue = { type: ShadingType.SOLID, fill: 'EFF6FF' };
+        const headerRow = new TableRow({
+            tableHeader: true,
+            children: COL.map(c => cell(
+                new Paragraph({ children: [new TextRun({ text: c.label, bold: true, size: 18 })], alignment: c.align }),
+                { shading: shadeBlue, width: { size: c.w, type: WidthType.PERCENTAGE } }
+            )),
+        });
+
+        const productRows = selectedOrders.map(o => new TableRow({
+            children: [
+                cell(p(o.productName || '')),
+                cell(p(o.optionName || '')),
+                cell(new Paragraph({ children: [new TextRun('1')], alignment: AlignmentType.CENTER })),
+                cell(new Paragraph({ children: [new TextRun(`${fmt(o.orderAmount)} 원`)], alignment: AlignmentType.RIGHT })),
+                cell(new Paragraph({ children: [new TextRun(`${fmt(o.orderAmount)} 원`)], alignment: AlignmentType.RIGHT })),
+            ],
+        }));
+
+        // 합계/배송비/결제금액 행 (앞 3칸 병합)
+        const summaryRows = [
+            ['합계',   `${fmt(total)} 원`],
+            ['배송비', '없음'],
+            ['결제금액', `${fmt(total)} 원`],
+        ].map(([label, value]) => new TableRow({
+            children: [
+                cell(p(''), { columnSpan: 3, borders: { ...solidBorders, right: border(BorderStyle.NONE, 0, 'FFFFFF') } }),
+                cell(new Paragraph({ children: [new TextRun({ text: label, bold: true, size: 18 })], alignment: AlignmentType.RIGHT })),
+                cell(new Paragraph({ children: [new TextRun({ text: value })], alignment: AlignmentType.RIGHT })),
+            ],
+        }));
+
+        const productTable = new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            rows: [headerRow, ...productRows, ...summaryRows],
+        });
+
+        // ── 문서 생성 ──
+        const doc = new Document({
+            sections: [{
+                properties: {
+                    page: {
+                        margin: {
+                            top:    convertInchesToTwip(1.0),
+                            right:  convertInchesToTwip(1.0),
+                            bottom: convertInchesToTwip(1.0),
+                            left:   convertInchesToTwip(1.0),
+                        },
+                    },
+                },
+                children: [
+                    ...headerParas,
+                    infoTable,
+                    p(''),
+                    productTable,
+                    p(''),
+                ],
+            }],
+        });
+
+        try {
+            const blob = await Packer.toBlob(doc);
+            const url  = URL.createObjectURL(blob);
+            const a    = document.createElement('a');
+            a.href     = url;
+            a.download = `주문서_${first.orderNumber || Date.now()}.docx`;
+            a.click();
+            URL.revokeObjectURL(url);
+            window.Utils.showNotification('주문서가 다운로드되었습니다.', 'success');
+        } catch (err) {
+            console.error('[generateOrderDocument]', err);
+            window.Utils.showNotification('주문서 생성에 실패했습니다: ' + err.message, 'error');
+        }
     },
 
     // CSV - 매출표 (날짜 등 복잡한 타입 제외하고 text 기반으로 처리)
