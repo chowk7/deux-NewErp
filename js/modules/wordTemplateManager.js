@@ -380,28 +380,74 @@ window.WordTemplateManager = {
     },
 
     /**
-     * 여러 주문을 슬롯 번호 붙인 배치 변수 맵으로 변환
-     * 슬롯 순서: 왼쪽→오른쪽→아래 (3열 기준, 1~27)
-     * 빈 슬롯은 모든 키를 빈 문자열로 채움
+     * 게런티 카드 전용 XML 처리
+     * - 1행 1열 셀에 {{변수명}} 패턴이 있으면 "배치 모드"로 동작
+     * - 각 테이블 셀을 슬롯으로 보고, 첫 번째 셀 내용을 템플릿으로 복사하여
+     *   해당 order의 데이터로 치환 (순서: 왼쪽→오른쪽→아래)
+     * - order가 없는 슬롯은 tcPr(셀 서식) 보존 + 내용 공란 처리
      */
-    _buildBatchVariables(orders) {
-        const KEYS = ['주문번호','고객명','이메일','수령인','연락처','우편번호','주소','주소상세',
-                      '상품명','옵션명','수량','주문금액','최종주문금액','매출금액',
-                      '주문일','기타','색상','제품중량','구매월','구매경로상세','보증서'];
-        const result = {};
-        for (let i = 1; i <= 27; i++) {
-            const order = orders[i - 1];
-            const vars = order ? this._buildVariables(order) : {};
-            for (const key of KEYS) {
-                result[`${key}-${i}`] = vars[key] ?? '';
+    _renderWarrantyCardXml(xmlStr, orders) {
+        const escXml = s => String(s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+        // 테이블 셀 단위로 처리
+        let cellIndex = 0;
+        let templateInner = null; // 첫 번째 셀 내부 XML (템플릿)
+        let templateTcPr  = '';   // 첫 번째 셀의 서식 태그
+
+        return xmlStr.replace(/<w:tc[ >][\s\S]*?<\/w:tc>/g, (cell) => {
+            const i = cellIndex++;
+
+            // 셀 여는 태그와 내부 내용 분리
+            const tcOpen  = cell.match(/^(<w:tc(?:\s[^>]*)?>)/)?.[1] ?? '<w:tc>';
+            const inner   = cell.slice(tcOpen.length, -'</w:tc>'.length);
+
+            // 첫 번째 셀: 템플릿 저장
+            if (i === 0) {
+                templateInner = inner;
+                templateTcPr  = inner.match(/(<w:tcPr>[\s\S]*?<\/w:tcPr>)/)?.[1] ?? '';
             }
-        }
-        return result;
+
+            // 첫 번째 셀에 변수가 없으면 일반 치환 모드 (기존 방식)
+            if (!templateInner || !templateInner.includes('{{')) return cell;
+
+            const order = orders[i];
+            let newInner;
+
+            if (order) {
+                // 첫 번째 셀 템플릿 복사 후 변수 치환 (단락 단위 재조립)
+                newInner = templateInner.replace(/<w:p[ >][\s\S]*?<\/w:p>/g, paragraph => {
+                    const texts = [];
+                    const tRe = /<w:t(?:[^>]*)>([\s\S]*?)<\/w:t>/g;
+                    let m;
+                    while ((m = tRe.exec(paragraph)) !== null) texts.push(m[1]);
+                    const fullText = texts.join('');
+                    if (!fullText.includes('{{')) return paragraph;
+
+                    let replaced = fullText;
+                    const vars = this._buildVariables(order);
+                    for (const [key, val] of Object.entries(vars)) {
+                        replaced = replaced.split(`{{${key}}}`).join(String(val));
+                    }
+                    if (replaced === fullText) return paragraph;
+
+                    const paraOpen = paragraph.match(/^<w:p(?:\s[^>]*)?>/)?.[0] ?? '<w:p>';
+                    const pPr = paragraph.match(/(<w:pPr>[\s\S]*?<\/w:pPr>)/)?.[1] ?? '';
+                    const rPr = paragraph.match(/(<w:rPr>[\s\S]*?<\/w:rPr>)/)?.[1] ?? '';
+                    return `${paraOpen}${pPr}<w:r>${rPr}<w:t xml:space="preserve">${escXml(replaced)}</w:t></w:r></w:p>`;
+                });
+            } else {
+                // 빈 슬롯: 셀 서식 보존 + 빈 단락
+                newInner = `${templateTcPr}<w:p><w:pPr/></w:p>`;
+            }
+
+            return `${tcOpen}${newInner}</w:tc>`;
+        });
     },
 
     /**
      * 게런티 카드 전용 - 최대 27개 주문을 단일 파일로 출력
-     * {{변수명-1}} ~ {{변수명-27}} 형식의 배치 변수를 한 번에 치환
+     * Word 템플릿 1행 1열에 {{변수명}} 형식으로 양식 작성 → 나머지 셀 자동 복사·치환
      */
     async generateWarrantyCardFromTemplate(docId, orders) {
         if (!window.PizZip) {
@@ -420,8 +466,19 @@ window.WordTemplateManager = {
             if (!resp.ok) throw new Error('템플릿 파일 다운로드 실패');
             const arrayBuffer = await resp.arrayBuffer();
 
-            const batchVariables = this._buildBatchVariables(orders);
-            const blob = this._renderTemplate(arrayBuffer, batchVariables);
+            // docx XML 파일 직접 처리 (셀 단위 치환)
+            const zip = new window.PizZip(arrayBuffer);
+            const targets = Object.keys(zip.files).filter(name =>
+                /^word\/(document|header\d*|footer\d*)\.xml$/.test(name)
+            );
+            for (const name of targets) {
+                const xml = zip.files[name].asText();
+                zip.file(name, this._renderWarrantyCardXml(xml, orders));
+            }
+            const blob = zip.generate({
+                type: 'blob',
+                mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            });
 
             const dateStr = new Date().toLocaleDateString('ko-KR').replace(/\. /g, '-').replace('.', '');
             const outName = `게런티카드_${orders.length}건_${dateStr}.docx`;
