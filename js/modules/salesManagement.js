@@ -1166,10 +1166,23 @@ window.SalesManagementModule = {
         window.Utils.showNotification(`${checkedIds.length}개 주문이 삭제되었습니다.`, 'success');
     },
 
+    _loadDocxLibrary() {
+        return new Promise((resolve, reject) => {
+            if (window.docx) return resolve(window.docx);
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.js';
+            script.onload = () => window.docx ? resolve(window.docx) : reject(new Error('docx 로드 실패'));
+            script.onerror = () => reject(new Error('docx 스크립트 로드 실패'));
+            document.head.appendChild(script);
+        });
+    },
+
     async generateShippingDocument() {
-        const D = window.docx;
-        if (!D) {
-            window.Utils.showNotification('Word 라이브러리가 아직 로드되지 않았습니다. 잠시 후 다시 시도해주세요.', 'warning');
+        let D;
+        try {
+            D = await this._loadDocxLibrary();
+        } catch (e) {
+            window.Utils.showNotification('Word 라이브러리 로드에 실패했습니다: ' + e.message, 'error');
             return;
         }
 
