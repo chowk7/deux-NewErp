@@ -266,11 +266,32 @@ window.WordTemplateManager = {
         });
     },
 
+    /** Firestore Timestamp 또는 문자열을 한국어 날짜 문자열로 변환 */
+    _formatDate(val) {
+        if (!val) return '';
+        // Firestore Timestamp 객체
+        if (val && typeof val.toDate === 'function') {
+            return val.toDate().toLocaleDateString('ko-KR');
+        }
+        // 숫자 seconds (Timestamp plain object)
+        if (val && typeof val === 'object' && val.seconds != null) {
+            return new Date(val.seconds * 1000).toLocaleDateString('ko-KR');
+        }
+        // 일반 문자열/Date
+        const d = new Date(val);
+        return isNaN(d) ? String(val) : d.toLocaleDateString('ko-KR');
+    },
+
     /** 주문 데이터를 템플릿 변수 맵으로 변환 */
     _buildVariables(order) {
+        const amountFmt = v => v != null && v !== ''
+            ? Number(v).toLocaleString('ko-KR') + '원'
+            : '';
+        const orderAmountStr = amountFmt(order.orderAmount);
         return {
             주문번호: order.orderNumber || order.주문번호 || '',
             고객명: order.customerName || order.고객명 || '',
+            이메일: order.email || order.이메일 || '',
             수령인: order.recipient || order.수령인 || '',
             연락처: order.phone || order.연락처 || '',
             우편번호: order.postalCode || order.우편번호 || '',
@@ -279,10 +300,10 @@ window.WordTemplateManager = {
             상품명: order.productName || order.상품명 || '',
             옵션명: order.optionName || order.옵션명 || '',
             수량: String(order.quantity || order.수량 || '1'),
-            주문금액: order.orderAmount != null
-                ? Number(order.orderAmount).toLocaleString('ko-KR') + '원'
-                : (order.주문금액 || ''),
-            주문일: order.orderDate || order.주문일 || '',
+            최종주문금액: orderAmountStr,
+            주문금액: orderAmountStr,          // 이전 호환
+            매출금액: amountFmt(order.salesAmount),
+            주문일: this._formatDate(order.orderDate || order.주문일),
             기타: order.remark || order.memo || order.기타 || '',
         };
     },
