@@ -832,9 +832,20 @@ window.SalesManagementModule = {
                         updatedAt: new Date()
                     };
 
-                    await window.firebaseDb
+                    const docRef = await window.firebaseDb
                         .collection('sales').doc('orders').collection('items')
                         .add(fullData);
+
+                    // 추가 정보 입력 모달
+                    const additionalInfo = await window.Utils.showAdditionalOrderModal(data);
+                    if (additionalInfo.purchasePath || additionalInfo.commissionRate) {
+                        await docRef.update(additionalInfo);
+                    }
+
+                    // 제조원가표 자동 입력 - 제품단가표의 나석정보 복사
+                    if (window.ManufacturingCostsModule) {
+                        await window.ManufacturingCostsModule.autoFillFromProductRates(docRef.id);
+                    }
                 }
                 w.remove();
                 this.loadOrders();

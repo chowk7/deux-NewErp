@@ -418,9 +418,12 @@ window.ImwebIntegrationModule = {
             // 신규 고객 추적 (같은 배치 내 중복 방지)
             const newCustomerKeys = new Set();
 
-            this.selectedOrders.forEach(order => {
+            for (const order of this.selectedOrders) {
                 // 옵션명 파싱 → 색상/사이즈 자동 기입
                 const { color, size } = this._parseOption(order.optionName);
+
+                // 추가 정보 입력 모달
+                const additionalInfo = await window.Utils.showAdditionalOrderModal(order);
 
                 const docRef = collection.doc();
                 batch.set(docRef, {
@@ -441,6 +444,10 @@ window.ImwebIntegrationModule = {
                     salesAmount:  order.orderAmount  || 0,
                     remark:       order.memo         || '',
                     category:     extractCategory(order.productName),
+                    purchasePath:        additionalInfo.purchasePath || '',
+                    purchasePathDetail:  additionalInfo.purchasePathDetail || '',
+                    commissionRate:      additionalInfo.commissionRate || 0,
+                    warranty:            additionalInfo.warranty || '',
                     stoneRequested:     false,
                     workshopRequested:  false,
                     productionComplete: false,
@@ -471,7 +478,7 @@ window.ImwebIntegrationModule = {
                         source:        'imweb'
                     });
                 }
-            });
+            }
 
             await batch.commit();
 

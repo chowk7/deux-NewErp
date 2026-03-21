@@ -693,4 +693,121 @@ window.Utils = {
             });
         });
     },
+
+    /**
+     * 주문의 추가 정보(구매경로, 수수료율, 보증서) 입력 모달
+     * @param {Object} orderData - 기존 주문 데이터
+     * @returns {Promise<{purchasePath, purchasePathDetail, commissionRate, warranty}>}
+     */
+    showAdditionalOrderModal(orderData = {}) {
+        return new Promise((resolve) => {
+            const modal = this.openModal('추가 정보 입력', 600);
+
+            const onlineOptions = ['자사몰', '신세계V', 'SSG', '현대몰'];
+            const offlineOptions = ['백화점(현대본점)', '백화점(현대무역점)', '백화점(현대킨텍스)', '백화점(현대목동점)'];
+            const warrantyOptions = ['없음', 'VS', 'VVS'];
+
+            const form = document.createElement('form');
+            form.className = 'form-group';
+            form.style.cssText = 'display: flex; flex-direction: column; gap: 1rem;';
+
+            // 구매경로
+            const pathLabel = document.createElement('label');
+            pathLabel.style.cssText = 'font-weight: 500; color: #1f2937;';
+            pathLabel.textContent = '구매경로';
+            const pathSelect = document.createElement('select');
+            pathSelect.style.cssText = 'padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem;';
+            pathSelect.innerHTML = '<option value="">선택하세요</option>' +
+                onlineOptions.map(opt => `<option value="온라인" ${orderData.purchasePath === '온라인' && orderData.purchasePathDetail === opt ? 'selected' : ''}>${opt}</option>`).join('') +
+                offlineOptions.map(opt => `<option value="오프라인" ${orderData.purchasePath === '오프라인' && orderData.purchasePathDetail === opt ? 'selected' : ''}>${opt}</option>`).join('');
+
+            form.appendChild(pathLabel);
+            form.appendChild(pathSelect);
+
+            // 구매경로상세
+            const detailLabel = document.createElement('label');
+            detailLabel.style.cssText = 'font-weight: 500; color: #1f2937; margin-top: 0.5rem;';
+            detailLabel.textContent = '구매경로상세';
+            const detailSelect = document.createElement('select');
+            detailSelect.style.cssText = 'padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem;';
+
+            const updateDetailOptions = () => {
+                const pathValue = pathSelect.value;
+                const options = pathValue === '온라인' ? onlineOptions : (pathValue === '오프라인' ? offlineOptions : []);
+                detailSelect.innerHTML = '<option value="">선택하세요</option>' +
+                    options.map(opt => `<option value="${opt}" ${orderData.purchasePathDetail === opt ? 'selected' : ''}>${opt}</option>`).join('');
+            };
+
+            pathSelect.addEventListener('change', updateDetailOptions);
+
+            form.appendChild(detailLabel);
+            form.appendChild(detailSelect);
+
+            // 수수료율
+            const commLabel = document.createElement('label');
+            commLabel.style.cssText = 'font-weight: 500; color: #1f2937; margin-top: 0.5rem;';
+            commLabel.textContent = '수수료율(%)';
+            const commInput = document.createElement('input');
+            commInput.type = 'number';
+            commInput.value = orderData.commissionRate || '';
+            commInput.style.cssText = 'padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem;';
+            commInput.min = '0';
+            commInput.max = '100';
+            commInput.step = '0.1';
+            form.appendChild(commLabel);
+            form.appendChild(commInput);
+
+            // 보증서
+            const warrantyLabel = document.createElement('label');
+            warrantyLabel.style.cssText = 'font-weight: 500; color: #1f2937; margin-top: 0.5rem;';
+            warrantyLabel.textContent = '보증서';
+            const warrantySelect = document.createElement('select');
+            warrantySelect.style.cssText = 'padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem;';
+            warrantySelect.innerHTML = '<option value="">선택하세요</option>' +
+                warrantyOptions.map(opt => `<option value="${opt}" ${orderData.warranty === opt ? 'selected' : ''}>${opt}</option>`).join('');
+            form.appendChild(warrantyLabel);
+            form.appendChild(warrantySelect);
+
+            // 버튼
+            const btnGroup = document.createElement('div');
+            btnGroup.style.cssText = 'display: flex; gap: 0.5rem; margin-top: 1rem;';
+            const confirmBtn = document.createElement('button');
+            confirmBtn.type = 'button';
+            confirmBtn.className = 'btn btn-primary';
+            confirmBtn.textContent = '저장';
+            const cancelBtn = document.createElement('button');
+            cancelBtn.type = 'button';
+            cancelBtn.className = 'btn btn-secondary';
+            cancelBtn.textContent = '취소';
+
+            btnGroup.appendChild(confirmBtn);
+            btnGroup.appendChild(cancelBtn);
+            form.appendChild(btnGroup);
+
+            modal.querySelector('.modal-body').appendChild(form);
+
+            updateDetailOptions();
+
+            confirmBtn.addEventListener('click', () => {
+                const result = {
+                    purchasePath: pathSelect.value,
+                    purchasePathDetail: detailSelect.value,
+                    commissionRate: commInput.value ? parseFloat(commInput.value) : 0,
+                    warranty: warrantySelect.value
+                };
+                modal.remove();
+                resolve(result);
+            });
+
+            cancelBtn.addEventListener('click', () => {
+                modal.remove();
+                resolve({
+                    purchasePath: '',
+                    purchasePathDetail: '',
+                    commissionRate: 0,
+                    warranty: ''
+                });
+            });
+        });
+    },
 };

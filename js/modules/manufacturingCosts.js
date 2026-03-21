@@ -837,4 +837,87 @@ window.ManufacturingCostsModule = {
             }
         );
     },
+
+    /**
+     * 주문ID로부터 제품단가표의 나석정보를 조회하여 자동으로 채워줌
+     * @param {string} orderId - 주문 문서 ID
+     */
+    async autoFillFromProductRates(orderId) {
+        try {
+            // 주문 정보 조회
+            const orderDoc = await window.firebaseDb
+                .collection('sales').doc('orders').collection('items').doc(orderId).get();
+
+            if (!orderDoc.exists) {
+                window.Utils.showNotification('주문을 찾을 수 없습니다.', 'warning');
+                return;
+            }
+
+            const order = orderDoc.data();
+            const productName = order.productName || '';
+            const productCode = order.productCode || '';
+
+            if (!productName && !productCode) {
+                window.Utils.showNotification('주문의 상품명이 없습니다.', 'warning');
+                return;
+            }
+
+            // 제품단가표 조회
+            const productSnap = await window.firebaseDb
+                .collection('prices').doc('productRates').collection('items').get();
+
+            let targetProduct = null;
+            for (const doc of productSnap.docs) {
+                const prod = doc.data();
+                if ((prod.productName === productName || prod.productCode === productCode)) {
+                    targetProduct = prod;
+                    break;
+                }
+            }
+
+            if (!targetProduct || !targetProduct.stones || targetProduct.stones.length === 0) {
+                window.Utils.showNotification(`"${productName}"의 나석정보가 등록되지 않았습니다.`, 'warning');
+                return;
+            }
+
+            // 제품단가표의 나석정보를 주문의 제조원가에 복사
+            const updateData = {};
+            const stones = targetProduct.stones || [];
+
+            // 나석 필드 초기화 및 데이터 채우기
+            for (let i = 0; i < 10; i++) {
+                if (i < stones.length && stones[i].type && stones[i].qty) {
+                    updateData[`stoneType${i+1}`] = stones[i].type;
+                    updateData[`stoneQty${i+1}`] = stones[i].qty;
+                    updateData[`stoneCert${i+1}`] = targetProduct.stoneWarranty || '';
+                    updateData[`stonePrice${i+1}`] = 0; // 나중에 calculate()에서 자동 계산
+                } else {
+                    updateData[`stoneType${i+1}`] = '';
+                    updateData[`stoneQty${i+1}`] = 0;
+                    updateData[`stoneCert${i+1}`] = '';
+                    updateData[`stonePrice${i+1}`] = 0;
+                }
+            }
+
+            // 보증서 정보도 복사
+            if (targetProduct.stoneWarranty && targetProduct.stoneWarranty !== '없음') {
+                updateData.warranty = targetProduct.stoneWarranty;
+            }
+
+            // 주문 업데이트
+            await window.firebaseDb
+                .collection('sales').doc('orders').collection('items').doc(orderId)
+                .update(updateData);
+
+            window.Utils.showNotification(`"${productName}"의 나석정보가 자동으로 입력되었습니다.`, 'success');
+
+            // 제조원가 테이블 새로고침
+            if (window.ManufacturingCostsModule) {
+                window.ManufacturingCostsModule.load();
+            }
+        } catch (error) {
+            console.error('[ManufacturingCosts] autoFillFromProductRates error:', error);
+            window.Utils.showNotification('나석정보 자동입력 중 오류가 발생했습니다: ' + error.message, 'error');
+        }
+    },
 };
