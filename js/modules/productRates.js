@@ -228,104 +228,93 @@ window.ProductRatesModule = {
         });
     },
 
+    _formatCell(field, value) {
+        if (value == null || value === '') return '-';
+        if (field.type === 'number') {
+            const num = parseFloat(value);
+            if (isNaN(num)) return '-';
+            if (field.label.includes('%') || field.key.toLowerCase().includes('rate')) {
+                return num.toFixed(1) + '%';
+            }
+            return window.Utils.formatNumber(Math.round(num));
+        }
+        return value || '-';
+    },
+
     renderTable() {
-        const tbody = document.querySelector('#productRatesTable tbody');
+        const table = document.querySelector('#productRatesTable');
+        const tbody = table?.querySelector('tbody');
         if (!tbody) return;
 
+        const defaultDisplayFields = ['ownCode', 'productCode', 'productName', 'category', 'productCost', 'finalPrice', 'ownMallProfitRate'];
+        const displayKeys = window.Utils.getDisplayFields('productRates', defaultDisplayFields);
+        const fieldMap = {};
+        this.FIELDS.forEach(f => fieldMap[f.key] = f);
+        const displayFields = displayKeys.map(k => fieldMap[k]).filter(f => f && f.type !== 'custom');
+
+        // thead 동적 재구성
+        const thead = table.querySelector('thead');
+        if (thead) {
+            thead.innerHTML = `<tr>
+                <th style="text-align:center;width:40px;"><input type="checkbox" class="header-checkbox"></th>
+                ${displayFields.map(f => `<th data-column="${f.key}" style="cursor:pointer;user-select:none;">${f.label}${this.sortState?.column === f.key ? (this.sortState.direction === 'asc' ? ' ▲' : ' ▼') : ''}</th>`).join('')}
+                <th>관리</th>
+            </tr>`;
+        }
+
         const filtered = this._filteredProducts();
+        const colSpan = displayFields.length + 2;
 
         if (this.products.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="9" style="text-align:center">데이터가 없습니다.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="${colSpan}" style="text-align:center">데이터가 없습니다.</td></tr>`;
             return;
         }
         if (filtered.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#9ca3af;">검색 결과가 없습니다.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="${colSpan}" style="text-align:center;color:#9ca3af;">검색 결과가 없습니다.</td></tr>`;
             return;
         }
-        tbody.innerHTML = filtered.map((p, idx) => `
+
+        tbody.innerHTML = filtered.map(p => `
             <tr data-id="${p.id}">
                 <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${p.id}"></td>
-                <td>${p.ownCode || '-'}</td>
-                <td>${p.productCode || '-'}</td>
-                <td>${p.productName || '-'}</td>
-                <td>${p.category || '-'}</td>
-                <td>${window.Utils.formatNumber(Math.round(p.productCost || 0))}</td>
-                <td>${window.Utils.formatNumber(Math.round(p.finalPrice || 0))}</td>
-                <td>${p.ownMallProfitRate != null ? p.ownMallProfitRate.toFixed(1) + '%' : '-'}</td>
+                ${displayFields.map(f => `<td>${this._formatCell(f, p[f.key])}</td>`).join('')}
                 <td>
                     <button class="btn btn-sm btn-primary"
                         data-action="showForm" data-id="${p.id}">수정</button>
                 </td>
             </tr>`).join('');
 
-        // Event delegation for action buttons
-        const table = document.querySelector('#productRatesTable');
-        if (table) {
-            table.removeEventListener('click', this._tableHandler);
-            this._tableHandler = (e) => {
-                const btn = e.target.closest('[data-action]');
-                if (!btn) return;
-                const action = btn.dataset.action;
-                const id = btn.dataset.id;
-                if (typeof this[action] === 'function') {
-                    this[action](id);
-                }
-            };
-            table.addEventListener('click', this._tableHandler);
-
-            // 테이블 헤더 정렬 기능 추가
-            const theadRow = table.querySelector('thead tr');
-            if (theadRow) {
-                // 기존 클릭 이벤트 제거
-                const thElements = theadRow.querySelectorAll('th');
-                thElements.forEach(th => {
-                    if (th.dataset.column) {
-                        const newTh = th.cloneNode(true);
-                        th.parentNode.replaceChild(newTh, th);
-                    }
-                });
-
-                // 새로운 클릭 이벤트 추가
-                const columns = ['ownCode', 'productCode', 'productName', 'category', 'productCost', 'finalPrice', 'ownMallProfitRate'];
-                theadRow.querySelectorAll('th').forEach((th, idx) => {
-                    if (idx > 0 && idx < columns.length + 1) { // 체크박스 제외, 관리 제외
-                        const column = columns[idx - 1];
-                        // 기존 화살표 제거
-                        const label = th.textContent.trim().replace(/\s*[▲▼]\s*$/, '');
-                        const isSorted = this.sortState.column === column;
-                        const arrow = isSorted ? (this.sortState.direction === 'asc' ? ' ▲' : ' ▼') : '';
-                        th.textContent = label + arrow;
-                        th.setAttribute('data-column', column);
-                        th.style.cursor = 'pointer';
-                        th.style.userSelect = 'none';
-                        th.addEventListener('click', () => this.sortProducts(column));
-                    }
-                });
+        // 액션 버튼 이벤트
+        table.removeEventListener('click', this._tableHandler);
+        this._tableHandler = (e) => {
+            const btn = e.target.closest('[data-action]');
+            if (!btn) return;
+            const action = btn.dataset.action;
+            const id = btn.dataset.id;
+            if (typeof this[action] === 'function') {
+                this[action](id);
             }
+        };
+        table.addEventListener('click', this._tableHandler);
 
-            // 테이블 헤더에 체크박스 추가
-            const thead = table?.querySelector('thead tr');
-            if (thead && !thead.querySelector('.header-checkbox')) {
-                const checkboxTh = document.createElement('th');
-                checkboxTh.style.textAlign = 'center';
-                checkboxTh.innerHTML = '<input type="checkbox" class="header-checkbox">';
-                thead.insertBefore(checkboxTh, thead.firstChild);
+        // 헤더 정렬 이벤트
+        thead.querySelectorAll('th[data-column]').forEach(th => {
+            th.addEventListener('click', () => this.sortProducts(th.dataset.column));
+        });
 
-                // 헤더 체크박스 이벤트
-                const headerCheckbox = checkboxTh.querySelector('.header-checkbox');
-                headerCheckbox.addEventListener('change', (e) => {
-                    const allCheckboxes = table.querySelectorAll('tbody .row-checkbox');
-                    allCheckboxes.forEach(cb => cb.checked = e.target.checked);
-                    this.updateBulkDeleteBtn();
-                });
-            }
-
-            // 각 행의 체크박스 이벤트
-            const checkboxes = table.querySelectorAll('tbody .row-checkbox');
-            checkboxes.forEach(cb => {
-                cb.addEventListener('change', () => this.updateBulkDeleteBtn());
+        // 헤더 체크박스 이벤트
+        const headerCheckbox = thead.querySelector('.header-checkbox');
+        if (headerCheckbox) {
+            headerCheckbox.addEventListener('change', (e) => {
+                table.querySelectorAll('tbody .row-checkbox').forEach(cb => cb.checked = e.target.checked);
+                this.updateBulkDeleteBtn();
             });
         }
+
+        // 행 체크박스 이벤트
+        table.querySelectorAll('tbody .row-checkbox').forEach(cb => {
+            cb.addEventListener('change', () => this.updateBulkDeleteBtn());
+        });
 
         this.updateBulkDeleteBtn();
     },
