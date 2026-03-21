@@ -694,7 +694,7 @@ window.ManufacturingCostsModule = {
                     ${cost?.stoneQty_text || '나석정보가 입력되지 않았습니다'}
                 </div>
                 <input type="hidden" name="stoneQty_text" id="stoneQtyInput" value="${cost?.stoneQty_text || ''}">
-                <input type="hidden" name="stoneArray" id="stoneArrayInput" value='${JSON.stringify(cost?.stones || [])}'>
+                <input type="hidden" name="stoneArray" id="stoneArrayInput" value='${cost?.stoneArray || '[]'}'>
             </div>
         `;
 
@@ -709,19 +709,34 @@ window.ManufacturingCostsModule = {
         const wrapper = window.Utils.openModal(
             '제조원가 수정', body,
             async (data, w) => {
+                // stoneArray, stoneQty_text는 문자열로 보존; 나머지 숫자 필드 변환
+                const STRING_KEYS = new Set(['orderId', 'productionMonth', 'stoneArray', 'stoneQty_text']);
                 Object.keys(data).forEach(k => {
                     if (k === 'inputCompleted') {
-                        // 체크박스 값 boolean으로 변환
                         data[k] = data[k] === 'on' || data[k] === true;
-                    } else if (k !== 'orderId' && k !== 'productionMonth') {
+                    } else if (!STRING_KEYS.has(k)) {
                         data[k] = parseFloat(data[k]) || 0;
                     }
                 });
                 const calculated = this.calculate(data);
+
+                // stoneArray에서 개별 나석 필드(stoneType1~10 등) 생성
+                let parsedStones = [];
+                try { parsedStones = JSON.parse(data.stoneArray || '[]'); } catch(e) {}
+                const stoneFields = Array.from({length: 10}, (_, i) => {
+                    const s = parsedStones[i];
+                    return {
+                        [`stoneType${i+1}`]:  s ? (s.stoneType || '') : '',
+                        [`stoneQty${i+1}`]:   s ? (s.stoneQty  || 0) : 0,
+                        [`stoneCert${i+1}`]:  s ? (s.stoneCert || s.cert || '') : '',
+                        [`stonePrice${i+1}`]: s ? (s.totalPrice || 0) : 0,
+                    };
+                }).reduce((a, b) => ({...a, ...b}), {});
+
                 // 수정만 가능 (신규 입력은 매출표에서만)
                 await window.firebaseDb.collection('sales').doc('orders')
                     .collection('items').doc(costId)
-                    .update({ ...calculated, updatedAt: new Date() });
+                    .update({ ...calculated, ...stoneFields, updatedAt: new Date() });
                 w.remove();
                 this.load();
             }
@@ -731,25 +746,23 @@ window.ManufacturingCostsModule = {
         const stoneInfoBtn = wrapper.querySelector('#stoneInfoBtn');
         if (stoneInfoBtn) {
             stoneInfoBtn.addEventListener('click', () => {
-                // 1. 이미 수정된 나석 정보가 있으면 사용
-                let existingStones = cost?.stones || [];
-
-                // 2. 없으면 제품단가표에서 기본 나석 정보 로드 (상품명 우선, 다음 productCode)
-                if (existingStones.length === 0) {
-                    // 상품명으로 먼저 검색
-                    if (cost?.productName) {
-                        const product = this.productRates.find(p => p.productName === cost.productName);
-                        if (product && product.stones && product.stones.length > 0) {
-                            existingStones = JSON.parse(JSON.stringify(product.stones));
-                        }
+                // 1. stoneArray (JSON, {stoneType/stoneQty} 형식) 우선 사용
+                let existingStones = [];
+                try {
+                    const parsed = JSON.parse(cost?.stoneArray || '[]');
+                    if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].stoneType) {
+                        existingStones = parsed;
                     }
+                } catch(e) {}
 
-                    // 상품명으로 못 찾으면 productCode로 검색
-                    if (existingStones.length === 0 && cost?.productCode) {
-                        const product = this.productRates.find(p => p.productCode === cost.productCode);
-                        if (product && product.stones && product.stones.length > 0) {
-                            existingStones = JSON.parse(JSON.stringify(product.stones));
-                        }
+                // 2. stoneArray 없으면 제품단가표에서 로드
+                if (existingStones.length === 0) {
+                    const matchProduct = this.productRates.find(p =>
+                        (cost?.productName && p.productName === cost.productName) ||
+                        (cost?.productCode  && p.productCode  === cost.productCode)
+                    );
+                    if (matchProduct?.stones?.length > 0) {
+                        existingStones = JSON.parse(JSON.stringify(matchProduct.stones));
                     }
                 }
 
