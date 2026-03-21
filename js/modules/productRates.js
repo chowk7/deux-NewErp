@@ -942,37 +942,46 @@ window.ProductRatesModule = {
             { key: 'stoneQty10', label: '나석갯수10' }
         ];
 
-        window.Utils.openCsvUploadModal(fieldsForCsv, async (rows) => {
-            const batch = window.firebaseDb.batch();
-            rows.forEach(r => {
-                // stoneType1~10과 stoneQty1~10을 stones 배열로 변환
-                const stones = [];
-                for (let i = 1; i <= 10; i++) {
-                    const type = r[`stoneType${i}`];
-                    const qty = r[`stoneQty${i}`];
-                    if (type && qty) {
-                        stones.push({
-                            type: type,
-                            qty: parseFloat(qty) || 0
-                        });
+        window.Utils.openCsvUploadModal(fieldsForCsv, async (rows, mode) => {
+            const col = window.firebaseDb.collection('prices').doc('productRates').collection('items');
+
+            // 교체 모드: 기존 데이터 전체 삭제
+            if (mode === 'replace') {
+                const existing = await col.get();
+                const delBatch = window.firebaseDb.batch();
+                existing.docs.forEach(d => delBatch.delete(d.ref));
+                await delBatch.commit();
+            }
+
+            // 새 데이터 추가 (500개 단위 batch)
+            const BATCH_LIMIT = 500;
+            for (let start = 0; start < rows.length; start += BATCH_LIMIT) {
+                const chunk = rows.slice(start, start + BATCH_LIMIT);
+                const batch = window.firebaseDb.batch();
+                chunk.forEach(r => {
+                    // stoneType1~10과 stoneQty1~10을 stones 배열로 변환
+                    const stones = [];
+                    for (let i = 1; i <= 10; i++) {
+                        const type = r[`stoneType${i}`];
+                        const qty = r[`stoneQty${i}`];
+                        if (type && qty) stones.push({ type, qty: parseFloat(qty) || 0 });
                     }
-                }
-                r.stones = stones;
+                    r.stones = stones;
+                    for (let i = 1; i <= 10; i++) {
+                        delete r[`stoneType${i}`];
+                        delete r[`stoneQty${i}`];
+                    }
+                    const calculated = this.calculate(r);
+                    const ref = col.doc();
+                    batch.set(ref, { ...calculated, createdAt: new Date(), updatedAt: new Date() });
+                });
+                await batch.commit();
+            }
 
-                // 개별 필드 제거
-                for (let i = 1; i <= 10; i++) {
-                    delete r[`stoneType${i}`];
-                    delete r[`stoneQty${i}`];
-                }
-
-                const calculated = this.calculate(r);
-                const ref = window.firebaseDb.collection('prices').doc('productRates').collection('items').doc();
-                batch.set(ref, { ...calculated, createdAt: new Date(), updatedAt: new Date() });
-            });
-            await batch.commit();
-            window.Utils.showNotification(`${rows.length}개 항목이 저장되었습니다.`, 'success');
+            const modeLabel = mode === 'replace' ? '교체' : '추가';
+            window.Utils.showNotification(`${rows.length}개 항목이 ${modeLabel}되었습니다.`, 'success');
             this.load();
-        });
+        }, { importModeSelector: true });
     },
     openRequiredSettings() { window.Utils.openRequiredFieldsModal('productRates', this.FIELDS.filter(f => !f.calc)); },
 };

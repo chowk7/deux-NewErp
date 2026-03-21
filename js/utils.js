@@ -188,11 +188,27 @@ window.Utils = {
     /**
      * CSV 업로드 모달 표시
      * @param {Array<{key, label, type}>} fields - 필드 정의
-     * @param {Function} onImport - (rows: Object[]) => Promise<void>
+     * @param {Function} onImport - (rows: Object[], mode: 'add'|'replace') => Promise<void>
+     * @param {Object} [options]
+     * @param {boolean} [options.importModeSelector] - 추가/교체 선택 UI 표시 여부
      */
-    openCsvUploadModal(fields, onImport) {
+    openCsvUploadModal(fields, onImport, options = {}) {
         const wrapper = document.createElement('div');
         wrapper.setAttribute('data-modal', '');
+
+        const modeSelectorHtml = options.importModeSelector ? `
+            <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:12px 16px; margin-bottom:16px;">
+                <p style="font-weight:600; margin-bottom:8px; font-size:0.875rem;">업로드 방식 선택</p>
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-bottom:6px;">
+                    <input type="radio" name="importMode" value="add" checked>
+                    <span><strong>추가</strong> — 기존 데이터는 유지하고 CSV 데이터를 추가합니다</span>
+                </label>
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                    <input type="radio" name="importMode" value="replace">
+                    <span><strong>교체</strong> — 기존 데이터를 모두 삭제하고 CSV 데이터로 교체합니다</span>
+                </label>
+            </div>` : '';
+
         wrapper.innerHTML = `
             <div class="modal-overlay">
                 <div class="modal-content" style="max-width:800px;">
@@ -201,6 +217,7 @@ window.Utils = {
                         <button type="button" class="modal-close-btn">✕</button>
                     </div>
                     <div id="csvStep1">
+                        ${modeSelectorHtml}
                         <p style="margin-bottom:12px; color:#6b7280; font-size:0.875rem;">
                             CSV 양식을 먼저 다운로드하여 데이터를 입력한 후 업로드하세요.
                         </p>
@@ -259,10 +276,22 @@ window.Utils = {
         wrapper.querySelector('#csvImportBtn').addEventListener('click', async () => {
             if (parsedData.length === 0) return;
             const btn = wrapper.querySelector('#csvImportBtn');
+            const modeRadio = wrapper.querySelector('input[name="importMode"]:checked');
+            const mode = modeRadio ? modeRadio.value : 'add';
+
+            // 교체 모드일 때 확인
+            if (mode === 'replace') {
+                const confirmed = await this.confirm(
+                    `기존 데이터를 모두 삭제하고 CSV 데이터(${parsedData.length}개)로 교체합니다. 계속하시겠습니까?`,
+                    '교체'
+                );
+                if (!confirmed) return;
+            }
+
             btn.disabled = true;
             btn.textContent = '저장 중...';
             try {
-                await onImport(parsedData);
+                await onImport(parsedData, mode);
                 wrapper.remove();
             } catch (err) {
                 btn.disabled = false;
