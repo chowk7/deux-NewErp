@@ -153,7 +153,7 @@
                             <li><a href="#" data-menu="promotion" class="nav-link">🏷️ 프로모션</a></li>
                             <li><a href="#" data-menu="notes" class="nav-link">📝 노트</a></li>
                             <li><a href="#" data-menu="images" class="nav-link">🖼️ 이미지 관리</a></li>
-                            <li><a href="#" data-menu="word-templates" class="nav-link">📄 워드 양식 관리</a></li>
+                            <li><a href="#" data-menu="word-templates" class="nav-link">📄 양식 관리</a></li>
                         </ul>
                     </nav>
                 </div>
@@ -334,19 +334,19 @@
                         <h2>매출표</h2>
                         <div class="button-group">
                             <button id="addOrderBtn" class="btn btn-primary">+ 새 주문 추가</button>
-                            <button id="importImwebBtn" class="btn btn-success">🌐 아임웹 가져오기</button>
+                            <button id="importImwebBtn" class="btn btn-success">🌐 아임웹 싱크</button>
                             <div id="ordersDownloadBtns" style="display:none;margin-left:8px;">
                                 <button id="downloadOrdersTemplateBtn" class="btn btn-secondary">📥 양식 다운로드</button>
                                 <button id="downloadOrdersDataBtn" class="btn btn-secondary">📊 데이터 다운로드</button>
                             </div>
                             <span style="margin:0 12px;color:#d1d5db;">|</span>
-                            <button id="csvUploadIntegratedBtn" class="btn btn-secondary">📤 통합 CSV 업로드</button>
+                            <button id="csvUploadIntegratedBtn" class="btn btn-secondary">📤 CSV 업로드</button>
                             <div id="integratedDownloadBtns" style="display:none;margin-left:8px;">
                                 <button id="downloadIntegratedCsvTemplateBtn" class="btn btn-secondary">📥 통합 양식</button>
                                 <button id="downloadIntegratedCsvDataBtn" class="btn btn-secondary">📊 통합 데이터</button>
                             </div>
-                            <button id="ordersRequiredSettingsBtn" class="btn btn-outline">⚙️ 필수항목 설정</button>
-                            <button id="ordersDisplaySettingsBtn" class="btn btn-outline">📋 표시항목 설정</button>
+                            <button id="ordersRequiredSettingsBtn" class="btn btn-outline">⚙️ 필수항목</button>
+                            <button id="ordersDisplaySettingsBtn" class="btn btn-outline">📋 표시항목</button>
                         </div>
                         <div id="ordersFilterBar"></div>
                         <table id="ordersTable" class="data-table">
@@ -566,12 +566,12 @@
                         <p>준비 중입니다...</p>
                     </section>
 
-                    <!-- 워드 양식 관리 섹션 -->
+                    <!-- 양식 관리 섹션 -->
                     <section id="wordTemplatesContent" class="content-section hidden">
-                        <h2>워드 양식 관리</h2>
+                        <h2>양식 관리</h2>
                         <p style="color:#6b7280;font-size:0.9em;margin-bottom:16px;">
                             Word 파일에 <code>{{변수명}}</code> 형식으로 자리표시자를 넣으면 출력 시 자동 치환됩니다.<br>
-                            사용 가능 변수: {{주문번호}} {{고객명}} {{수령인}} {{연락처}} {{주소}} {{주소상세}} {{우편번호}} {{상품명}} {{옵션명}} {{수량}} {{주문금액}} {{주문일}} {{기타}}
+                            사용 가능 변수: {{주문번호}} {{고객명}} {{이메일}} {{수령인}} {{연락처}} {{주소}} {{주소상세}} {{우편번호}} {{상품명}} {{옵션명}} {{수량}} {{최종주문금액}} {{주문금액}} {{매출금액}} {{주문일}} {{기타}}
                         </p>
                         <div class="button-group" style="margin-bottom:16px;">
                             <input type="file" id="templateFileInput" accept=".docx" style="display:none;">

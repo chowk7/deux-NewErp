@@ -495,6 +495,7 @@ window.SalesManagementModule = {
         }
 
         this.updateOrderBulkDeleteBtn();
+        window.Utils.initResizableColumns(table);
     },
 
     renderPagination() {
@@ -1112,15 +1113,15 @@ window.SalesManagementModule = {
 
         if (checkedCount > 0) {
             const printOrderBtn = mkBtn('printOrderBtn', 'btn-success');
-            printOrderBtn.textContent = `🖨️ 주문서 출력 (${checkedCount}개)`;
+            printOrderBtn.textContent = `🖨️ 주문서 (${checkedCount})`;
             printOrderBtn.onclick = () => this.printOrders();
 
             const printValexBtn = mkBtn('printValexFormBtn', 'btn-success');
-            printValexBtn.textContent = `📦 발렉스 양식 출력 (${checkedCount}개)`;
+            printValexBtn.textContent = `📦 발렉스 (${checkedCount})`;
             printValexBtn.onclick = () => this.printValexForm();
 
             const shippingDocBtn = mkBtn('shippingDocOrderBtn', 'btn-secondary');
-            shippingDocBtn.textContent = `📦 배송표 출력 (${checkedCount}개)`;
+            shippingDocBtn.textContent = `📦 배송표 (${checkedCount})`;
             shippingDocBtn.onclick = () => this.generateShippingDocument();
 
             const bulkDeleteBtn = mkBtn('bulkDeleteOrderBtn', 'btn-danger');
@@ -1617,10 +1618,10 @@ window.SalesManagementModule = {
     },
 
     printOrders() {
-        // SheetJS 라이브러리 확인
+        // SheetJS 라이브러리 로드 대기
         if (typeof XLSX === 'undefined') {
-            window.Utils.showNotification('라이브러리를 로드하는 중입니다. 잠시 후 다시 시도해주세요.', 'warning');
-            console.error('XLSX is not loaded');
+            window.Utils.showNotification('라이브러리를 로드하는 중입니다...', 'warning');
+            window.Utils.ensureXLSX(() => this.printOrders());
             return;
         }
 
@@ -1701,7 +1702,8 @@ window.SalesManagementModule = {
 
     printValexForm() {
         if (typeof XLSX === 'undefined') {
-            window.Utils.showNotification('라이브러리를 로드하는 중입니다. 잠시 후 다시 시도해주세요.', 'warning');
+            window.Utils.showNotification('라이브러리를 로드하는 중입니다...', 'warning');
+            window.Utils.ensureXLSX(() => this.printValexForm());
             return;
         }
 

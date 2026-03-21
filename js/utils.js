@@ -629,5 +629,68 @@ window.Utils = {
         });
 
         return container;
-    }
+    },
+
+    /**
+     * XLSX 라이브러리가 로드될 때까지 대기했다가 콜백을 실행합니다.
+     * @param {Function} callback - XLSX 로드 후 실행할 함수
+     * @param {number} timeout - 타임아웃 (ms)
+     */
+    async ensureXLSX(callback, timeout = 30000) {
+        const startTime = Date.now();
+        while (typeof XLSX === 'undefined') {
+            if (Date.now() - startTime > timeout) {
+                this.showNotification('라이브러리 로드 실패. 페이지를 새로고침해주세요.', 'error');
+                return;
+            }
+            await new Promise(r => setTimeout(r, 100));
+        }
+        callback();
+    },
+
+    /**
+     * 테이블 헤더에 열 크기 조절 핸들을 추가합니다.
+     * @param {HTMLTableElement} table
+     */
+    initResizableColumns(table) {
+        if (!table) return;
+        const ths = table.querySelectorAll('thead th');
+        ths.forEach(th => {
+            // 체크박스 컬럼 제외
+            if (th.querySelector('input[type="checkbox"]')) return;
+
+            th.classList.add('resizable');
+            // 이미 핸들이 있으면 추가하지 않음
+            if (th.querySelector('.col-resize-handle')) return;
+
+            const handle = document.createElement('span');
+            handle.className = 'col-resize-handle';
+            th.appendChild(handle);
+
+            let startX, startWidth;
+
+            handle.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                startX = e.pageX;
+                startWidth = th.offsetWidth;
+                handle.classList.add('dragging');
+
+                const onMouseMove = (moveEvent) => {
+                    const newWidth = Math.max(40, startWidth + (moveEvent.pageX - startX));
+                    th.style.width = newWidth + 'px';
+                    th.style.minWidth = newWidth + 'px';
+                };
+
+                const onMouseUp = () => {
+                    handle.classList.remove('dragging');
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                };
+
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            });
+        });
+    },
 };

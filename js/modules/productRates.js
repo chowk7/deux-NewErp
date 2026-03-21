@@ -317,6 +317,7 @@ window.ProductRatesModule = {
         });
 
         this.updateBulkDeleteBtn();
+        window.Utils.initResizableColumns(table);
     },
 
     updateBulkDeleteBtn() {
