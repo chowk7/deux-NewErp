@@ -1,8 +1,8 @@
 /**
  * 주문관리 모듈
  * - 주문 상태 추적 (나석신청 → 공방신청 → 제작완료 → 배송준비 → 배송완료)
- * - 이미지 4종 업로드: 나석매입전표, 공방매입전표, 주문서, 영수증
- *   → GCP Storage에 이미지 저장, Firestore에 경로(path)만 저장
+ * - 이미지 4종 다중 업로드: 나석매입전표, 공방매입전표, 주문서, 영수증
+ *   → GCP Storage에 이미지 저장, Firestore에 경로 배열([path1, path2, ...])로 저장
  */
 window.OrderManagementModule = {
 
@@ -26,14 +26,11 @@ window.OrderManagementModule = {
     ],
 
     items: [],
-    allItems: [], // 필터링 전 전체 데이터
+    allItems: [],
     pageSize: 50,
     currentPage: 1,
 
     async init() {
-        // 신규 입력 기능 삭제 - 매출표에서만 신규 입력 가능
-
-        // 표시항목 설정
         document.getElementById('orderMgmtDisplaySettingsBtn')
             ?.addEventListener('click', () => this.openDisplaySettings());
     },
@@ -50,7 +47,6 @@ window.OrderManagementModule = {
         try {
             this.currentPage = page || 1;
 
-            // 처음 로드일 때만 Firebase에서 전체 데이터 조회
             if (this.allItems.length === 0) {
                 const snap = await window.firebaseDb
                     .collection('sales').doc('orders').collection('items')
@@ -59,10 +55,8 @@ window.OrderManagementModule = {
                 this.allItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             }
 
-            // 페이지에 맞는 데이터만 추출
             const startIdx = (this.currentPage - 1) * this.pageSize;
-            const endIdx = startIdx + this.pageSize;
-            this.items = this.allItems.slice(startIdx, endIdx);
+            this.items = this.allItems.slice(startIdx, startIdx + this.pageSize);
 
             this.renderTable();
             this.renderPagination();
@@ -70,6 +64,14 @@ window.OrderManagementModule = {
             console.error('[OrderManagement] load 실패:', error);
             window.Utils.showNotification('주문관리 로드 실패', 'error');
         }
+    },
+
+    // 이미지 경로 배열 정규화 (기존 단일 문자열 → 배열로 변환)
+    _imagePaths(item, typeKey) {
+        const val = item?.images?.[typeKey];
+        if (!val) return [];
+        if (Array.isArray(val)) return val;
+        return [val]; // 기존 단일 문자열 데이터 호환
     },
 
     _statusBadge(checked) {
@@ -83,22 +85,16 @@ window.OrderManagementModule = {
         const tbody = table?.querySelector('tbody');
         if (!tbody) return;
 
-        // 기본 표시 필드
         const defaultDisplayFields = ['orderNumber', 'customerName', 'productName', 'stoneRequested', 'workshopRequested', 'productionComplete', 'shippingReady', 'delivered'];
-
-        // sessionStorage에서 선택된 필드 로드
         const displayFieldKeys = window.Utils.getDisplayFields('orderManagement', defaultDisplayFields);
 
-        // 동적 필드 추가 (orderNumber, customerName, productName, orderDate)
         const dynamicFields = [
-            { key: 'orderNumber',    label: '주문번호',    type: 'text' },
-            { key: 'customerName',   label: '고객명',      type: 'text' },
-            { key: 'productName',    label: '상품명',      type: 'text' },
-            { key: 'orderDate',      label: '주문일',      type: 'date' }
+            { key: 'orderNumber',  label: '주문번호', type: 'text' },
+            { key: 'customerName', label: '고객명',   type: 'text' },
+            { key: 'productName',  label: '상품명',   type: 'text' },
+            { key: 'orderDate',    label: '주문일',   type: 'date' }
         ];
         const displayFields = [...this.STATUS_FIELDS, ...dynamicFields];
-
-        // 필드 객체 매핑
         const fieldMap = {};
         displayFields.forEach(f => fieldMap[f.key] = f);
 
@@ -108,102 +104,84 @@ window.OrderManagementModule = {
         }
 
         tbody.innerHTML = this.items.map(item => {
-            // 선택된 필드에 따라 행 생성
             const cells = displayFieldKeys.map(key => {
                 const field = fieldMap[key];
                 if (!field) return '<td>-</td>';
-
-                // 상태 필드는 배지로 표시
                 if (field.type === 'checkbox') {
-                    const label = field.label.replace('여부', '');
-                    return `<td>${this._statusBadge(item[key])} ${label}</td>`;
+                    return `<td>${this._statusBadge(item[key])} ${field.label.replace('여부', '')}</td>`;
                 }
-
-                // 날짜 필드
                 if (field.type === 'date') {
                     let val = item[key];
-                    if (val) {
-                        val = val.toDate ? new Date(val.toDate()).toLocaleDateString('ko-KR') : val;
-                    }
+                    if (val?.toDate) val = val.toDate().toLocaleDateString('ko-KR');
                     return `<td>${val || '-'}</td>`;
                 }
-
                 return `<td>${item[key] || '-'}</td>`;
+            }).join('');
+
+            // 이미지 첨부 컬럼: 각 타입별 이미지 개수 배지
+            const imageLinks = this.IMAGE_TYPES.map(t => {
+                const paths = this._imagePaths(item, t.key);
+                if (paths.length === 0) {
+                    return `<span style="color:#d1d5db;font-size:0.75rem;margin-right:4px;">${t.label}</span>`;
+                }
+                return `<a href="#" class="image-link"
+                    data-action="openImageViewer" data-id="${item.id}" data-type="${t.key}"
+                    style="font-size:0.75rem;margin-right:4px;text-decoration:none;">
+                    📎${t.label}(${paths.length})</a>`;
             }).join('');
 
             return `
                 <tr data-id="${item.id}">
                     <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${item.id}"></td>
                     ${cells}
+                    <td>${imageLinks}</td>
                     <td>
-                        ${this.IMAGE_TYPES.map(t =>
-                            item.images?.[t.key]
-                                ? `<a href="#" class="image-link" style="font-size:0.75rem;"
-                                    data-action="viewImage" data-id="${item.id}" data-type="${t.key}">
-                                    📎${t.label}</a> `
-                                : `<span style="color:#d1d5db;font-size:0.75rem">${t.label}</span> `
-                        ).join('')}
-                    </td>
-                    <td>
-                        <button class="btn btn-sm btn-primary"
-                            data-action="showForm" data-id="${item.id}">수정</button>
+                        <button class="btn btn-sm btn-primary" data-action="showForm" data-id="${item.id}">수정</button>
                     </td>
                 </tr>`;
         }).join('');
 
-        // 테이블 헤더 업데이트
+        // 헤더 재구성
         const thead = table?.querySelector('thead tr');
         if (thead) {
             const checkboxTh = document.createElement('th');
             checkboxTh.style.textAlign = 'center';
             checkboxTh.className = 'header-checkbox-th';
             checkboxTh.innerHTML = '<input type="checkbox" class="header-checkbox">';
-
             const statusHeaders = displayFieldKeys.map(key => {
                 const field = fieldMap[key];
-                const label = field ? field.label.replace('여부', '') : key;
-                return `<th>${label}</th>`;
+                return `<th>${field ? field.label.replace('여부', '') : key}</th>`;
             }).join('');
             thead.innerHTML = statusHeaders + '<th>첨부이미지</th><th>관리</th>';
             thead.insertBefore(checkboxTh, thead.firstChild);
         }
 
-        // Event delegation for action buttons
         if (table) {
             table.removeEventListener('click', this._tableHandler);
             this._tableHandler = (e) => {
-                // Handle image links
-                if (e.target.classList.contains('image-link')) {
+                const link = e.target.closest('a.image-link');
+                if (link) {
                     e.preventDefault();
-                    const action = e.target.dataset.action;
-                    const id = e.target.dataset.id;
-                    const type = e.target.dataset.type;
+                    const action = link.dataset.action;
                     if (typeof this[action] === 'function') {
-                        this[action](id, type);
+                        this[action](link.dataset.id, link.dataset.type);
                     }
                     return;
                 }
-                // Handle buttons
                 const btn = e.target.closest('button[data-action]');
                 if (!btn) return;
                 const action = btn.dataset.action;
-                const id = btn.dataset.id;
-                if (typeof this[action] === 'function') {
-                    this[action](id);
-                }
+                if (typeof this[action] === 'function') this[action](btn.dataset.id);
             };
             table.addEventListener('click', this._tableHandler);
 
-            // 헤더 체크박스 이벤트
             const headerCheckbox = table.querySelector('thead .header-checkbox');
             if (headerCheckbox) {
                 headerCheckbox.addEventListener('change', (e) => {
-                    const allCheckboxes = table.querySelectorAll('tbody .row-checkbox');
-                    allCheckboxes.forEach(cb => cb.checked = e.target.checked);
-                    this.updateBulkDeleteBtn();
+                    table.querySelectorAll('tbody .row-checkbox').forEach(cb => cb.checked = e.target.checked);
+                    this.updateBulkDeleteBtn?.();
                 });
             }
-
         }
     },
 
@@ -214,67 +192,55 @@ window.OrderManagementModule = {
         const totalCount = this.allItems.length;
         const totalPages = Math.ceil(totalCount / this.pageSize);
         const maxPageButtons = 5;
-
         let startPage = Math.max(1, this.currentPage - Math.floor(maxPageButtons / 2));
         let endPage = Math.min(totalPages, startPage + maxPageButtons - 1);
-
         if (endPage - startPage + 1 < maxPageButtons) {
             startPage = Math.max(1, endPage - maxPageButtons + 1);
         }
 
         let html = `
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 16px; background: #f9fafb; border-radius: 6px;">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <label for="orderMgmtPageSizeSelect" style="margin: 0;">페이지당 행:</label>
-                    <select id="orderMgmtPageSizeSelect" style="padding: 6px 12px; border: 1px solid #d1d5db; border-radius: 4px;">
-                        <option value="10" ${this.pageSize === 10 ? 'selected' : ''}>10개</option>
-                        <option value="50" ${this.pageSize === 50 ? 'selected' : ''}>50개</option>
-                        <option value="100" ${this.pageSize === 100 ? 'selected' : ''}>100개</option>
-                        <option value="200" ${this.pageSize === 200 ? 'selected' : ''}>200개</option>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;padding:16px;background:#f9fafb;border-radius:6px;">
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <label for="orderMgmtPageSizeSelect" style="margin:0;">페이지당 행:</label>
+                    <select id="orderMgmtPageSizeSelect" style="padding:6px 12px;border:1px solid #d1d5db;border-radius:4px;">
+                        <option value="10" ${this.pageSize===10?'selected':''}>10개</option>
+                        <option value="50" ${this.pageSize===50?'selected':''}>50개</option>
+                        <option value="100" ${this.pageSize===100?'selected':''}>100개</option>
+                        <option value="200" ${this.pageSize===200?'selected':''}>200개</option>
                     </select>
                 </div>
-
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <button class="btn btn-sm" id="orderMgmtPrevPageBtn" ${this.currentPage === 1 ? 'disabled' : ''}>이전</button>`;
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <button class="btn btn-sm" id="orderMgmtPrevPageBtn" ${this.currentPage===1?'disabled':''}>이전</button>`;
 
         for (let i = startPage; i <= endPage; i++) {
-            const isActive = i === this.currentPage;
-            html += `<button class="btn btn-sm orderMgmt-page-btn" data-page="${i}" style="min-width: 36px; ${isActive ? 'background: #3b82f6; color: white;' : ''}">${i}</button>`;
+            html += `<button class="btn btn-sm orderMgmt-page-btn" data-page="${i}"
+                style="min-width:36px;${i===this.currentPage?'background:#3b82f6;color:white;':''}">${i}</button>`;
         }
 
         html += `
-                    <button class="btn btn-sm" id="orderMgmtNextPageBtn" ${this.currentPage === totalPages ? 'disabled' : ''}>다음</button>
+                    <button class="btn btn-sm" id="orderMgmtNextPageBtn" ${this.currentPage===totalPages?'disabled':''}>다음</button>
                 </div>
-
-                <div style="color: #6b7280; font-size: 0.875rem;">
-                    ${(this.currentPage - 1) * this.pageSize + 1} - ${Math.min(this.currentPage * this.pageSize, totalCount)} / 총 ${totalCount}개
+                <div style="color:#6b7280;font-size:0.875rem;">
+                    ${(this.currentPage-1)*this.pageSize+1} - ${Math.min(this.currentPage*this.pageSize, totalCount)} / 총 ${totalCount}개
                 </div>
             </div>`;
 
         paginationContainer.innerHTML = html;
 
-        // 이벤트 리스너
         document.getElementById('orderMgmtPageSizeSelect')?.addEventListener('change', (e) => {
             this.pageSize = parseInt(e.target.value);
             this.currentPage = 1;
             this.load(1);
         });
-
         document.getElementById('orderMgmtPrevPageBtn')?.addEventListener('click', () => {
             if (this.currentPage > 1) this.load(this.currentPage - 1);
         });
-
         document.getElementById('orderMgmtNextPageBtn')?.addEventListener('click', () => {
-            const totalCount = this.allItems.length;
-            const totalPages = Math.ceil(totalCount / this.pageSize);
+            const totalPages = Math.ceil(this.allItems.length / this.pageSize);
             if (this.currentPage < totalPages) this.load(this.currentPage + 1);
         });
-
         document.querySelectorAll('.orderMgmt-page-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const page = parseInt(btn.dataset.page);
-                this.load(page);
-            });
+            btn.addEventListener('click', () => this.load(parseInt(btn.dataset.page)));
         });
     },
 
@@ -286,9 +252,8 @@ window.OrderManagementModule = {
             if (f.type === 'checkbox') {
                 return `
                     <div class="form-group" style="flex-direction:row;align-items:center;gap:10px;">
-                        <input type="checkbox" name="${f.key}" id="${f.key}"
-                            ${item?.[f.key] ? 'checked' : ''} style="width:auto;">
-                        <label for="${f.key}" style="margin:0;">${f.label}</label>
+                        <input type="checkbox" name="${f.key}" id="om_${f.key}" ${item?.[f.key]?'checked':''} style="width:auto;">
+                        <label for="om_${f.key}" style="margin:0;">${f.label}</label>
                     </div>`;
             }
             return `
@@ -298,27 +263,37 @@ window.OrderManagementModule = {
                 </div>`;
         }).join('');
 
-        // 이미지 업로드 섹션
+        // 이미지 섹션 (타입별 다중 이미지)
         const imageSection = `
-            <div style="grid-column:1/-1; border-top:1px solid #e5e7eb; padding-top:16px; margin-top:8px;">
-                <p style="font-weight:600;margin-bottom:12px;">이미지 첨부 (GCP Storage 저장)</p>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-                    ${this.IMAGE_TYPES.map(t => `
-                        <div class="form-group">
-                            <label>${t.label}</label>
-                            ${item?.images?.[t.key]
-                                ? `<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
-                                    <span style="font-size:0.8rem;color:#6b7280;">📎 저장됨</span>
-                                    <button type="button" class="btn btn-sm btn-outline"
-                                        data-action="viewImage" data-id="${itemId}" data-type="${t.key}"
-                                        data-path="${item.images[t.key]}">보기</button>
-                                    <button type="button" class="btn btn-sm btn-danger"
-                                        data-action="removeImage" data-id="${itemId}" data-type="${t.key}"
-                                        data-path="${item.images[t.key]}">삭제</button>
-                                  </div>` : ''}
-                            <input type="file" name="img_${t.key}" accept="image/*,.pdf"
-                                style="font-size:0.875rem;">
-                        </div>`).join('')}
+            <div style="grid-column:1/-1;border-top:1px solid #e5e7eb;padding-top:16px;margin-top:8px;">
+                <p style="font-weight:600;margin-bottom:12px;">이미지 첨부 (GCP Storage — 타입별 여러 장 저장 가능)</p>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                    ${this.IMAGE_TYPES.map(t => {
+                        const paths = this._imagePaths(item, t.key);
+                        const existingHtml = paths.length > 0
+                            ? `<div class="img-list" data-type="${t.key}" style="margin-bottom:6px;">
+                                ${paths.map((p, idx) => `
+                                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;padding:4px 6px;background:#f9fafb;border-radius:4px;">
+                                        <span style="font-size:0.78rem;color:#374151;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${p}">
+                                            📄 ${p.split('/').pop()}
+                                        </span>
+                                        <button type="button" class="btn btn-sm btn-outline"
+                                            data-img-view data-path="${p}" style="padding:2px 8px;font-size:0.75rem;">보기</button>
+                                        <button type="button" class="btn btn-sm btn-danger"
+                                            data-img-remove data-type="${t.key}" data-path="${p}" data-item-id="${itemId||''}"
+                                            style="padding:2px 8px;font-size:0.75rem;">삭제</button>
+                                    </div>`).join('')}
+                               </div>`
+                            : '';
+                        return `
+                            <div class="form-group">
+                                <label style="font-weight:600;">${t.label}</label>
+                                ${existingHtml}
+                                <input type="file" name="img_${t.key}" accept="image/*,.pdf" multiple
+                                    style="font-size:0.875rem;">
+                                <span style="font-size:0.75rem;color:#9ca3af;">여러 파일 동시 선택 가능</span>
+                            </div>`;
+                    }).join('')}
                 </div>
             </div>`;
 
@@ -335,13 +310,45 @@ window.OrderManagementModule = {
         const wrapper = window.Utils.openModal(
             itemId ? '주문관리 수정' : '주문관리 추가', body,
             async (data, w) => {
-                // 체크박스는 FormData에서 누락되면 false
                 this.STATUS_FIELDS.filter(f => f.type === 'checkbox').forEach(f => {
                     data[f.key] = !!data[f.key];
                 });
 
+                // 기존 이미지 배열 복사 (정규화 포함)
+                const images = {};
+                this.IMAGE_TYPES.forEach(t => {
+                    images[t.key] = this._imagePaths(item, t.key);
+                });
+
+                // 새 파일 업로드 (타입별 여러 파일)
+                const token = await window.firebaseAuth.currentUser.getIdToken();
+                for (const t of this.IMAGE_TYPES) {
+                    const fileInput = wrapper.querySelector(`[name="img_${t.key}"]`);
+                    if (!fileInput?.files?.length) continue;
+
+                    const docId = itemId || 'new_' + Date.now();
+                    for (const file of fileInput.files) {
+                        const folder = `orders/${docId}/${t.key}`;
+                        const formData = new FormData();
+                        formData.append('file', file);
+                        formData.append('folder', folder);
+
+                        const uploadRes = await fetch('/api/upload', {
+                            method: 'POST',
+                            headers: { 'Authorization': `Bearer ${token}` },
+                            body: formData,
+                        });
+                        if (!uploadRes.ok) {
+                            const err = await uploadRes.json();
+                            throw new Error(err.error || '이미지 업로드 실패');
+                        }
+                        const { path } = await uploadRes.json();
+                        images[t.key].push(path);
+                    }
+                }
+
                 const docData = {
-                    orderId: data.orderId || '',
+                    orderId:             data.orderId || '',
                     stoneRequestDate:    data.stoneRequestDate    || null,
                     workshopRequestDate: data.workshopRequestDate || null,
                     completionDate:      data.completionDate      || null,
@@ -351,39 +358,9 @@ window.OrderManagementModule = {
                     productionComplete:  data.productionComplete,
                     shippingReady:       data.shippingReady,
                     delivered:           data.delivered,
-                    images:              item?.images || {},
-                    updatedAt:           new Date(),
+                    images,
+                    updatedAt: new Date(),
                 };
-
-                // 이미지 업로드 처리 (GCP new_erp 버킷)
-                for (const t of this.IMAGE_TYPES) {
-                    const fileInput = wrapper.querySelector(`[name="img_${t.key}"]`);
-                    if (fileInput?.files?.length > 0) {
-                        const file = fileInput.files[0];
-                        const docId = itemId || 'new_' + Date.now();
-                        const folder = `orders/${docId}/${t.key}`;
-
-                        const formData = new FormData();
-                        formData.append('file', file);
-                        formData.append('folder', folder);
-
-                        const token = await window.firebaseAuth.currentUser.getIdToken();
-                        const uploadRes = await fetch('/api/upload', {
-                            method: 'POST',
-                            headers: { 'Authorization': `Bearer ${token}` },
-                            body: formData,
-                        });
-
-                        if (!uploadRes.ok) {
-                            const err = await uploadRes.json();
-                            throw new Error(err.error || '이미지 업로드 실패');
-                        }
-
-                        const { path } = await uploadRes.json();
-                        // Firestore에는 GCS 경로만 저장
-                        docData.images[t.key] = path;
-                    }
-                }
 
                 if (itemId) {
                     await window.firebaseDb.collection('sales').doc('orders')
@@ -402,30 +379,46 @@ window.OrderManagementModule = {
             }
         );
 
-        // Event delegation for image buttons in form
-        wrapper.addEventListener('click', (e) => {
-            const btn = e.target.closest('button[data-action]');
-            if (!btn) return;
-            const action = btn.dataset.action;
-            const id = btn.dataset.id;
-            const type = btn.dataset.type;
-            const path = btn.dataset.path || null;
-            if (typeof this[action] === 'function') {
-                if (type) {
-                    this[action](id, type, path);
+        // 폼 내 이미지 버튼 이벤트
+        wrapper.addEventListener('click', async (e) => {
+            // 보기 버튼
+            const viewBtn = e.target.closest('[data-img-view]');
+            if (viewBtn) {
+                e.preventDefault();
+                await this.viewImage(null, null, viewBtn.dataset.path);
+                return;
+            }
+            // 삭제 버튼 (저장된 이미지 즉시 삭제)
+            const removeBtn = e.target.closest('[data-img-remove]');
+            if (removeBtn) {
+                e.preventDefault();
+                const path     = removeBtn.dataset.path;
+                const typeKey  = removeBtn.dataset.type;
+                const targetId = removeBtn.dataset.itemId;
+                if (targetId) {
+                    await this.removeImage(targetId, typeKey, path);
+                    // 폼 내 해당 항목 DOM 제거
+                    removeBtn.closest('div[style]').remove();
+                    // allItems 내 캐시 갱신
+                    const cached = this.allItems.find(i => i.id === targetId);
+                    if (cached) {
+                        cached.images = cached.images || {};
+                        cached.images[typeKey] = this._imagePaths(cached, typeKey).filter(p => p !== path);
+                    }
                 } else {
-                    this[action](id);
+                    // 미저장 항목 — DOM만 제거
+                    removeBtn.closest('div[style]').remove();
                 }
+                return;
             }
         });
     },
 
     // 이미지 보기 (GCP 서명된 URL, 15분 유효)
-    // knownPath: 폼 버튼의 data-path 속성에서 직접 전달된 경로 (allItems 재조회 불필요)
     async viewImage(itemId, imageType, knownPath = null) {
-        const filePath = knownPath || this.allItems.find(i => i.id === itemId)?.images?.[imageType];
+        const filePath = knownPath
+            || (imageType ? this._imagePaths(this.allItems.find(i => i.id === itemId), imageType)[0] : null);
         if (!filePath) return alert('이미지가 없습니다.');
-
         try {
             const token = await window.firebaseAuth.currentUser.getIdToken();
             const res = await fetch(`/api/signed-url?path=${encodeURIComponent(filePath)}`, {
@@ -439,29 +432,77 @@ window.OrderManagementModule = {
         }
     },
 
-    // 이미지 삭제 (GCP new_erp 버킷)
-    // knownPath: 폼 버튼의 data-path 속성에서 직접 전달된 경로
-    async removeImage(itemId, imageType, knownPath = null) {
+    // 테이블 행 이미지 클릭 → 해당 타입 이미지 목록 팝업
+    openImageViewer(itemId, typeKey) {
+        const item = this.allItems.find(i => i.id === itemId);
+        const paths = this._imagePaths(item, typeKey);
+        if (paths.length === 0) return alert('이미지가 없습니다.');
+
+        const typeLabel = this.IMAGE_TYPES.find(t => t.key === typeKey)?.label || typeKey;
+        const listHtml = paths.map((p, idx) => `
+            <div style="display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid #f3f4f6;">
+                <span style="font-size:0.82rem;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${p}">
+                    📄 ${p.split('/').pop()}
+                </span>
+                <button class="btn btn-sm btn-outline viewer-view-btn" data-path="${p}">보기</button>
+                <button class="btn btn-sm btn-danger viewer-del-btn" data-path="${p}" data-type="${typeKey}" data-item-id="${itemId}">삭제</button>
+            </div>`).join('');
+
+        const wrapper = window.Utils.openModal(
+            `${typeLabel} (${paths.length}장)`,
+            `<div>${listHtml}</div>`,
+            null, null
+        );
+
+        wrapper.addEventListener('click', async (e) => {
+            const viewBtn = e.target.closest('.viewer-view-btn');
+            const delBtn  = e.target.closest('.viewer-del-btn');
+            if (viewBtn) {
+                e.preventDefault();
+                await this.viewImage(null, null, viewBtn.dataset.path);
+            }
+            if (delBtn) {
+                e.preventDefault();
+                const { path, type, itemId: id } = delBtn.dataset;
+                await this.removeImage(id, type, path);
+                delBtn.closest('div[style]').remove();
+                // 남은 항목 없으면 모달 닫기
+                if (!wrapper.querySelectorAll('.viewer-del-btn').length) wrapper.remove();
+            }
+        });
+    },
+
+    // 이미지 삭제 (GCP + Firestore 배열에서 제거)
+    async removeImage(itemId, imageType, pathToRemove) {
         if (!(await window.Utils.confirm('이미지를 삭제하시겠습니까?'))) return;
-        const filePath = knownPath || this.allItems.find(i => i.id === itemId)?.images?.[imageType];
-        if (filePath) {
+
+        // GCS에서 삭제
+        if (pathToRemove) {
             try {
                 const token = await window.firebaseAuth.currentUser.getIdToken();
-                await fetch(`/api/files?path=${encodeURIComponent(filePath)}`, {
+                await fetch(`/api/files?path=${encodeURIComponent(pathToRemove)}`, {
                     method: 'DELETE',
                     headers: { 'Authorization': `Bearer ${token}` },
                 });
             } catch (e) { /* 이미 없음 */ }
         }
-        // Firestore에서 해당 이미지 키 제거
+
+        if (!itemId) return;
+
+        // Firestore 배열에서 해당 경로 제거
         const item = this.allItems.find(i => i.id === itemId);
+        const updatedPaths = this._imagePaths(item, imageType).filter(p => p !== pathToRemove);
         const updatedImages = { ...(item?.images || {}) };
-        delete updatedImages[imageType];
+        updatedImages[imageType] = updatedPaths;
+
         await window.firebaseDb.collection('sales').doc('orders')
             .collection('items').doc(itemId)
             .update({ images: updatedImages, updatedAt: new Date() });
-        this.allItems = [];
-        this.load();
+
+        // 캐시 갱신
+        if (item) item.images = updatedImages;
+
+        window.Utils.showNotification('이미지가 삭제되었습니다.', 'success');
     },
 
 };
