@@ -276,35 +276,42 @@ window.NewProductPricingModule = {
             console.error('[NewProductPricing] 제품가격표 로드 실패:', e);
         }
 
-        const listHtml = refProducts.length === 0
+        const renderRows = (list) => list.map(p => `
+            <tr>
+                <td style="text-align:center;">
+                    <button type="button" class="btn btn-sm btn-primary ref-select-btn" data-ref-id="${p.id}">선택</button>
+                </td>
+                <td>${p.ownCode || '-'}</td>
+                <td>${p.productCode || '-'}</td>
+                <td>${p.productName || '-'}</td>
+                <td>${p.category || '-'}</td>
+                <td>${window.Utils.formatNumber(Math.round(p.finalPrice || 0))}</td>
+            </tr>`).join('');
+
+        const tableHtml = refProducts.length === 0
             ? '<p style="color:#9ca3af;text-align:center;padding:16px;">제품가격표에 항목이 없습니다.</p>'
             : `<div style="max-height:340px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:6px;">
                 <table class="data-table" style="margin:0;">
                     <thead><tr>
-                        <th>자체상품코드</th><th>상품코드</th><th>상품명</th><th>종류</th><th>최종소비자가</th><th></th>
+                        <th style="width:56px;"></th>
+                        <th>자체상품코드</th><th>상품코드</th><th>상품명</th><th>종류</th><th>최종소비자가</th>
                     </tr></thead>
-                    <tbody>
-                        ${refProducts.map(p => `
-                            <tr>
-                                <td>${p.ownCode || '-'}</td>
-                                <td>${p.productCode || '-'}</td>
-                                <td>${p.productName || '-'}</td>
-                                <td>${p.category || '-'}</td>
-                                <td>${window.Utils.formatNumber(Math.round(p.finalPrice || 0))}</td>
-                                <td><button type="button" class="btn btn-sm btn-primary ref-select-btn" data-ref-id="${p.id}">선택</button></td>
-                            </tr>`).join('')}
-                    </tbody>
+                    <tbody id="refProductTbody">${renderRows(refProducts)}</tbody>
                 </table>
                </div>`;
 
         const body = `
             <div style="margin-bottom:12px;">
                 <p style="color:#374151;margin-bottom:10px;">기존 제품가격표에서 참조할 제품을 선택하거나, 새 제품으로 시작하세요.</p>
-                <button type="button" id="startFreshBtn" class="btn btn-secondary" style="margin-bottom:12px;">
-                    ✏️ 새 제품으로 시작 (빈 폼)
-                </button>
+                <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+                    <input id="refProductSearch" type="text" placeholder="상품명 또는 상품코드로 검색..."
+                        style="padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:0.9rem;flex:1;max-width:320px;">
+                    <button type="button" id="startFreshBtn" class="btn btn-secondary">
+                        ✏️ 새 제품으로 시작 (빈 폼)
+                    </button>
+                </div>
             </div>
-            ${listHtml}`;
+            ${tableHtml}`;
 
         const modalWrapper = window.Utils.openModal('참조 제품 선택', body, null);
 
@@ -314,17 +321,37 @@ window.NewProductPricingModule = {
             this._openEditForm({}, null);
         });
 
-        // 제품 선택
-        modalWrapper.querySelectorAll('.ref-select-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const refId = btn.dataset.refId;
-                const selected = refProducts.find(p => p.id === refId);
-                if (!selected) return;
-                modalWrapper.remove();
-                // id를 null로 전달 → 신규 저장
-                this._openEditForm(selected, null);
-            });
+        // 검색 필터
+        modalWrapper.querySelector('#refProductSearch')?.addEventListener('input', (e) => {
+            const q = e.target.value.trim().toLowerCase();
+            const filtered = q
+                ? refProducts.filter(p =>
+                    (p.productName || '').toLowerCase().includes(q) ||
+                    (p.productCode || '').toLowerCase().includes(q) ||
+                    (p.ownCode || '').toLowerCase().includes(q))
+                : refProducts;
+            const tbody = modalWrapper.querySelector('#refProductTbody');
+            if (tbody) {
+                tbody.innerHTML = filtered.length > 0
+                    ? renderRows(filtered)
+                    : `<tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:12px;">검색 결과가 없습니다.</td></tr>`;
+                attachSelectBtns();
+            }
         });
+
+        // 제품 선택 버튼 이벤트 위임
+        const attachSelectBtns = () => {
+            modalWrapper.querySelectorAll('.ref-select-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const refId = btn.dataset.refId;
+                    const selected = refProducts.find(p => p.id === refId);
+                    if (!selected) return;
+                    modalWrapper.remove();
+                    this._openEditForm(selected, null);
+                });
+            });
+        };
+        attachSelectBtns();
     },
 
     // ── 편집 폼 열기 ──────────────────────────────────────────────────────────
