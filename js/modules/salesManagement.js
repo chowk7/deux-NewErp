@@ -1171,7 +1171,7 @@ window.SalesManagementModule = {
         return new Promise((resolve, reject) => {
             if (window.docx) return resolve(window.docx);
             const script = document.createElement('script');
-            script.src = 'https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.js';
+            script.src = '/js/lib/docx.umd.js';
             script.onload = () => window.docx ? resolve(window.docx) : reject(new Error('docx 로드 실패'));
             script.onerror = () => reject(new Error('docx 스크립트 로드 실패'));
             document.head.appendChild(script);
