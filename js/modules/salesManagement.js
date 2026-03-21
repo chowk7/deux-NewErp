@@ -133,13 +133,6 @@ window.SalesManagementModule = {
         document.getElementById('ordersDisplaySettingsBtn')
             ?.addEventListener('click', () => this.openOrderDisplaySettings());
 
-        // 주문서 출력 버튼
-        document.getElementById('printOrderBtn')
-            ?.addEventListener('click', () => this.printOrders());
-
-        // 발렉스 양식 출력 버튼
-        document.getElementById('printValexFormBtn')
-            ?.addEventListener('click', () => this.printValexForm());
     },
 
     openOrderDisplaySettings() {
@@ -1104,32 +1097,40 @@ window.SalesManagementModule = {
         const table = document.querySelector('#ordersTable');
         const checkedCount = table?.querySelectorAll('tbody .row-checkbox:checked').length || 0;
         const buttonGroup = document.querySelector('#ordersContent .button-group');
-        let shippingDocBtn = document.getElementById('shippingDocOrderBtn');
-        let bulkDeleteBtn  = document.getElementById('bulkDeleteOrderBtn');
+
+        const mkBtn = (id, className, marginLeft = '8px') => {
+            let btn = document.getElementById(id);
+            if (!btn) {
+                btn = document.createElement('button');
+                btn.id = id;
+                btn.className = `btn ${className}`;
+                btn.style.marginLeft = marginLeft;
+                if (buttonGroup) buttonGroup.appendChild(btn);
+            }
+            return btn;
+        };
 
         if (checkedCount > 0) {
-            if (!shippingDocBtn) {
-                shippingDocBtn = document.createElement('button');
-                shippingDocBtn.id = 'shippingDocOrderBtn';
-                shippingDocBtn.className = 'btn btn-secondary';
-                shippingDocBtn.style.marginLeft = '8px';
-                if (buttonGroup) buttonGroup.appendChild(shippingDocBtn);
-            }
+            const printOrderBtn = mkBtn('printOrderBtn', 'btn-success');
+            printOrderBtn.textContent = `🖨️ 주문서 출력 (${checkedCount}개)`;
+            printOrderBtn.onclick = () => this.printOrders();
+
+            const printValexBtn = mkBtn('printValexFormBtn', 'btn-success');
+            printValexBtn.textContent = `📦 발렉스 양식 출력 (${checkedCount}개)`;
+            printValexBtn.onclick = () => this.printValexForm();
+
+            const shippingDocBtn = mkBtn('shippingDocOrderBtn', 'btn-secondary');
             shippingDocBtn.textContent = `📦 배송표 출력 (${checkedCount}개)`;
             shippingDocBtn.onclick = () => this.generateShippingDocument();
 
-            if (!bulkDeleteBtn) {
-                bulkDeleteBtn = document.createElement('button');
-                bulkDeleteBtn.id = 'bulkDeleteOrderBtn';
-                bulkDeleteBtn.className = 'btn btn-danger';
-                bulkDeleteBtn.style.marginLeft = '8px';
-                if (buttonGroup) buttonGroup.appendChild(bulkDeleteBtn);
-            }
+            const bulkDeleteBtn = mkBtn('bulkDeleteOrderBtn', 'btn-danger');
             bulkDeleteBtn.textContent = `🗑️ ${checkedCount}개 삭제`;
             bulkDeleteBtn.onclick = () => this.bulkDeleteOrders();
         } else {
-            shippingDocBtn?.remove();
-            bulkDeleteBtn?.remove();
+            document.getElementById('printOrderBtn')?.remove();
+            document.getElementById('printValexFormBtn')?.remove();
+            document.getElementById('shippingDocOrderBtn')?.remove();
+            document.getElementById('bulkDeleteOrderBtn')?.remove();
         }
     },
 
