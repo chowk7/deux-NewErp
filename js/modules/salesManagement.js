@@ -1134,6 +1134,10 @@ window.SalesManagementModule = {
             warrantyCardBtn.textContent = `🎁 게런티 카드 (${checkedCount})`;
             warrantyCardBtn.onclick = () => this.printWarrantyCards();
 
+            const invoiceBtn = mkBtn('invoiceBtn', 'btn-secondary');
+            invoiceBtn.textContent = `🧾 인보이스 (${checkedCount})`;
+            invoiceBtn.onclick = () => this.printInvoice();
+
             const bulkDeleteBtn = mkBtn('bulkDeleteOrderBtn', 'btn-danger');
             bulkDeleteBtn.textContent = `🗑️ ${checkedCount}개 삭제`;
             bulkDeleteBtn.onclick = () => this.bulkDeleteOrders();
@@ -1142,6 +1146,7 @@ window.SalesManagementModule = {
             document.getElementById('printValexFormBtn')?.remove();
             document.getElementById('shippingDocOrderBtn')?.remove();
             document.getElementById('warrantyCardBtn')?.remove();
+            document.getElementById('invoiceBtn')?.remove();
             document.getElementById('bulkDeleteOrderBtn')?.remove();
         }
     },
@@ -1219,6 +1224,49 @@ window.SalesManagementModule = {
 
             box.querySelector('#_templateBuiltin').onclick = () => close('builtin');
             box.querySelector('#_templateCancel').onclick = () => close(null);
+            overlay.addEventListener('click', e => { if (e.target === overlay) close(null); });
+
+            overlay.appendChild(box);
+            document.body.appendChild(overlay);
+        });
+    },
+
+    /**
+     * 업로드된 양식만 선택 (기본 양식 없음) - 인보이스 등에 사용
+     * @returns {Promise<string|null>} 선택된 templateId, 또는 null(취소)
+     */
+    _pickTemplateOnly(templates) {
+        return new Promise(resolve => {
+            document.getElementById('_templateOnlyPickerModal')?.remove();
+
+            const overlay = document.createElement('div');
+            overlay.id = '_templateOnlyPickerModal';
+            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;';
+
+            const box = document.createElement('div');
+            box.style.cssText = 'background:#fff;border-radius:8px;padding:24px;min-width:320px;max-width:480px;width:90%;';
+
+            const close = (val) => { overlay.remove(); resolve(val); };
+
+            box.innerHTML = `
+                <h3 style="margin:0 0 12px;font-size:1.1em;">인보이스 양식 선택</h3>
+                <div id="_templateOnlyList" style="display:flex;flex-direction:column;gap:8px;"></div>
+                <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;">
+                    <button id="_templateOnlyCancel" class="btn btn-secondary" style="font-size:.9em;">취소</button>
+                </div>
+            `;
+
+            const list = box.querySelector('#_templateOnlyList');
+            templates.forEach(t => {
+                const btn = document.createElement('button');
+                btn.className = 'btn btn-primary';
+                btn.style.cssText = 'text-align:left;';
+                btn.innerHTML = `<strong>${t.name}</strong>`;
+                btn.onclick = () => close(t.id);
+                list.appendChild(btn);
+            });
+
+            box.querySelector('#_templateOnlyCancel').onclick = () => close(null);
             overlay.addEventListener('click', e => { if (e.target === overlay) close(null); });
 
             overlay.appendChild(box);
@@ -1648,16 +1696,6 @@ window.SalesManagementModule = {
         // 선택된 주문 데이터 수집
         const selectedOrders = this.orders.filter(o => checkedIds.includes(o.id));
 
-        // 나석갯수 계산 함수
-        const getStoneQuantity = (order) => {
-            let totalQty = 0;
-            for (let i = 1; i <= 10; i++) {
-                const qty = order[`stoneQty${i}`];
-                if (qty) totalQty += parseInt(qty) || 0;
-            }
-            return totalQty || '';
-        };
-
         // 엑셀용 데이터 변환
         const excelData = selectedOrders.map(order => {
             const orderDate = order.orderDate?.toDate
@@ -1669,7 +1707,7 @@ window.SalesManagementModule = {
                 '고객명': order.customerName || '',
                 '제품명': order.productName || '',
                 '옵션명': order.optionName || '',
-                '나석갯수': getStoneQuantity(order),
+                '나석정보': order.stoneInfo || '',
                 '기타': order.remark || '',
                 '보증서': order.warranty || ''
             };
@@ -1686,7 +1724,7 @@ window.SalesManagementModule = {
                 { wch: 15 },  // 고객명
                 { wch: 15 },  // 제품명
                 { wch: 15 },  // 옵션명
-                { wch: 12 },  // 나석갯수
+                { wch: 20 },  // 나석정보
                 { wch: 20 },  // 기타
                 { wch: 15 }   // 보증서
             ];
@@ -1860,5 +1898,45 @@ window.SalesManagementModule = {
 
         // 단일 파일로 게런티 카드 생성 ({{변수명-1}}~{{변수명-27}} 배치 치환)
         await window.WordTemplateManager.generateWarrantyCardFromTemplate(templateId, selectedOrders);
+    },
+
+    /**
+     * 인보이스 출력 - 양식 관리에 업로드된 인보이스 양식만 사용 (기본 양식 없음)
+     */
+    async printInvoice() {
+        const table = document.querySelector('#ordersTable');
+        const checkedIds = Array.from(table.querySelectorAll('tbody .row-checkbox:checked'))
+            .map(cb => cb.dataset.id);
+
+        if (checkedIds.length === 0) {
+            window.Utils.showNotification('선택된 주문이 없습니다.', 'warning');
+            return;
+        }
+
+        const selectedOrders = this.allOrders.filter(o => checkedIds.includes(o.id));
+
+        const allTemplates = window.WordTemplateManager
+            ? await window.WordTemplateManager.getTemplateList().catch(() => [])
+            : [];
+
+        const invoiceTemplates = allTemplates.filter(t => t.purpose === '인보이스');
+
+        if (invoiceTemplates.length === 0) {
+            window.Utils.showNotification(
+                '등록된 인보이스 양식이 없습니다. 양식 관리 메뉴에서 인보이스 양식을 먼저 업로드하세요.',
+                'warning'
+            );
+            return;
+        }
+
+        let templateId;
+        if (invoiceTemplates.length === 1) {
+            templateId = invoiceTemplates[0].id;
+        } else {
+            templateId = await this._pickTemplateOnly(invoiceTemplates);
+            if (templateId === null) return;
+        }
+
+        await window.WordTemplateManager.generateBatchFromTemplate(templateId, selectedOrders);
     },
 };
