@@ -317,9 +317,18 @@ window.Utils = {
                 .collection('settings')
                 .doc('requiredFields')
                 .get();
-            return (doc.exists && doc.data()[tableKey]) || [];
+            const fields = (doc.exists && doc.data()[tableKey]) || [];
+            // localStorage에 캐시 (오프라인 폴백용)
+            localStorage.setItem(`requiredFields_${tableKey}`, JSON.stringify(fields));
+            return fields;
         } catch {
-            return [];
+            // Firestore 실패 시 localStorage 폴백
+            try {
+                const saved = localStorage.getItem(`requiredFields_${tableKey}`);
+                return saved ? JSON.parse(saved) : [];
+            } catch {
+                return [];
+            }
         }
     },
 
@@ -327,10 +336,17 @@ window.Utils = {
      * Firestore에 필수항목 설정 저장
      */
     async saveRequiredFields(tableKey, requiredFieldKeys) {
-        await window.firebaseDb
-            .collection('settings')
-            .doc('requiredFields')
-            .set({ [tableKey]: requiredFieldKeys }, { merge: true });
+        // localStorage에 즉시 저장 (항상 성공)
+        localStorage.setItem(`requiredFields_${tableKey}`, JSON.stringify(requiredFieldKeys));
+        // Firestore에도 저장 시도 (실패해도 오류를 throw하지 않음)
+        try {
+            await window.firebaseDb
+                .collection('settings')
+                .doc('requiredFields')
+                .set({ [tableKey]: requiredFieldKeys }, { merge: true });
+        } catch (e) {
+            console.warn('[saveRequiredFields] Firestore 저장 실패, 로컬에만 저장됨:', e);
+        }
     },
 
     /**

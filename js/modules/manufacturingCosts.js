@@ -55,12 +55,14 @@ window.ManufacturingCostsModule = {
         await this.loadDiamondRates();
         // 제품단가표 로드 (나석 정보 참조용)
         await this.loadProductRates();
-        // 신규 입력 기능 삭제 - 매출표에서만 신규 입력 가능
-        // CSV 업로드/다운로드 기능 삭제 - 통합 CSV에서만 사용 가능
 
         // 표시항목 설정
         document.getElementById('mfgDisplaySettingsBtn')
             ?.addEventListener('click', () => this.openDisplaySettings());
+
+        // 필수항목 설정
+        document.getElementById('mfgRequiredSettingsBtn')
+            ?.addEventListener('click', () => this.openRequiredSettings());
     },
 
     async loadDiamondRates() {
@@ -91,6 +93,11 @@ window.ManufacturingCostsModule = {
             [...this.HEADER_FIELDS, ...this.BASE_FIELDS, ...this.STONE_FIELDS],
             () => this.load(),
             defaultKeys);
+    },
+
+    openRequiredSettings() {
+        const editableFields = this.BASE_FIELDS.filter(f => !f.calc && f.key !== 'orderId');
+        window.Utils.openRequiredFieldsModal('manufacturingCosts', editableFields);
     },
 
     getMfgYears() {
@@ -619,13 +626,14 @@ window.ManufacturingCostsModule = {
         return { ...data, goldValue, stoneCostRef, stoneWarrantyFeeTotal, manufacturingCost, salesProfit, salesProfitRate };
     },
 
-    showForm(costId = null) {
+    async showForm(costId = null) {
         // 신규 입력 불가 - costId가 없으면 경고 후 반환
         if (!costId) {
             window.Utils.showNotification('제조원가는 매출표에서 신규 입력됩니다.', 'info');
             return;
         }
 
+        const required = await window.Utils.getRequiredFields('manufacturingCosts');
         const cost = costId ? this.costs.find(c => c.id === costId) : null;
         // productionMonth 필드 제외
         const allFields = [...this.BASE_FIELDS.filter(f => f.key !== 'productionMonth')];
@@ -644,6 +652,7 @@ window.ManufacturingCostsModule = {
             }
             // 주문번호(orderId)와 매출금액(salesAmount)은 수정 불가
             const isReadOnly = f.key === 'orderId' || f.key === 'salesAmount' || f.calc;
+            const isRequired = !isReadOnly && f.type !== 'checkbox' && required.includes(f.key);
 
             // "입력 완료" 체크박스 특별 처리
             if (f.type === 'checkbox') {
@@ -659,9 +668,10 @@ window.ManufacturingCostsModule = {
 
             return `
                 <div class="form-group">
-                    <label>${f.label}${f.calc ? ' <span style="color:#9ca3af;font-size:0.75rem">(자동)</span>' : ''}</label>
+                    <label>${f.label}${f.calc ? ' <span style="color:#9ca3af;font-size:0.75rem">(자동)</span>' : ''}${isRequired ? ' <span style="color:red">*</span>' : ''}</label>
                     <input type="${f.type}" name="${f.key}" value="${val}" step="0.01"
-                        ${isReadOnly ? 'readonly style="background:#f3f4f6;"' : ''}>
+                        ${isReadOnly ? 'readonly style="background:#f3f4f6;"' : ''}
+                        ${isRequired ? 'required' : ''}>
                 </div>`;
         };
 

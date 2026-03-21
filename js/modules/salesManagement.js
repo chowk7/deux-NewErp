@@ -576,7 +576,7 @@ window.SalesManagementModule = {
 
     async showOrderForm(orderId = null) {
         const order = orderId ? this.orders.find(o => o.id === orderId) : null;
-        const req = this.orderRequired;
+        const req = await window.Utils.getRequiredFields('orders');
 
         // 고객목록 로드
         let customerOptions = [];
