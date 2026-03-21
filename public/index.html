@@ -167,7 +167,7 @@
                             <span style="color:#ef4444;">빨간색</span> 으로 표시됩니다.
                         </p>
                         <div id="dashboardLoading" style="color:#6b7280;padding:12px;">불러오는 중...</div>
-                        <div style="overflow-x:auto;">
+                        <div class="table-scroll-wrapper">
                             <table id="dashboardTable" class="data-table" style="display:none;">
                                 <thead>
                                     <tr>
@@ -204,7 +204,7 @@
                             <input id="diamondSearchInput" type="text" placeholder="나석 이름으로 검색..."
                                 style="padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;max-width:360px;font-size:0.9rem;width:100%;">
                         </div>
-                        <div style="overflow-x:auto;">
+                        <div class="table-scroll-wrapper">
                         <table id="diamondRatesTable" class="data-table">
                             <thead>
                                 <tr>
@@ -242,7 +242,7 @@
                                 style="padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;max-width:360px;font-size:0.9rem;">
                             <div id="productCategoryTabs" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
                         </div>
-                        <div style="overflow-x:auto;">
+                        <div class="table-scroll-wrapper">
                         <table id="productRatesTable" class="data-table">
                             <thead><tr></tr></thead>
                             <tbody></tbody>
@@ -267,7 +267,7 @@
                                 placeholder="고객명 · 주소 · 전화번호 · 이메일 검색..."
                                 style="width:320px;max-width:100%;padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
                         </div>
-                        <div style="overflow-x:auto;">
+                        <div class="table-scroll-wrapper">
                         <table id="customersTable" class="data-table">
                             <thead><tr>
                                 <th>ID</th><th>고객명</th><th>이메일</th><th>전화번호</th>
@@ -290,7 +290,7 @@
                             <button id="optionRequiredSettingsBtn" class="btn btn-outline">⚙️ 필수항목 설정</button>
                             <button id="optionDisplaySettingsBtn" class="btn btn-outline">📋 표시항목 설정</button>
                         </div>
-                        <div style="overflow-x:auto;">
+                        <div class="table-scroll-wrapper">
                         <table id="optionChargesTable" class="data-table">
                             <thead>
                                 <tr>
@@ -353,7 +353,7 @@
                             <button id="ordersDisplaySettingsBtn" class="btn btn-outline">📋 표시항목</button>
                         </div>
                         <div id="ordersFilterBar"></div>
-                        <div style="overflow-x:auto;">
+                        <div class="table-scroll-wrapper">
                         <table id="ordersTable" class="data-table">
                             <thead>
                                 <tr>
@@ -382,7 +382,7 @@
                             <button id="mfgBulkFillStoneBtn" class="btn btn-outline" style="display:none;">🪨 나석 일괄 업데이트</button>
                         </div>
                         <div id="mfgFilterBar"></div>
-                        <div style="overflow-x:auto;">
+                        <div class="table-scroll-wrapper">
                         <table id="manufacturingCostsTable" class="data-table">
                             <thead><tr>
                                 <th>주문번호</th><th>제작월</th><th>금값</th>
@@ -406,7 +406,7 @@
                                 style="padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;max-width:360px;font-size:0.9rem;">
                             <div id="newProductPricingCategoryTabs" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
                         </div>
-                        <div style="overflow-x:auto;">
+                        <div class="table-scroll-wrapper">
                         <table id="newProductPricingTable" class="data-table">
                             <thead><tr>
                                 <th><input type="checkbox" id="newProductPricingSelectAll"></th>
@@ -426,7 +426,7 @@
                             <button id="addGoldInventoryBtn" class="btn btn-primary">+ 구매 입력</button>
                             <button id="csvUploadGoldBtn" class="btn btn-outline">📥 CSV 업로드</button>
                         </div>
-                        <div style="overflow-x:auto;">
+                        <div class="table-scroll-wrapper">
                         <table id="goldInventoryTable" class="data-table">
                             <thead>
                                 <tr>
@@ -452,7 +452,7 @@
                         <div class="button-group">
                             <button id="orderMgmtDisplaySettingsBtn" class="btn btn-outline">📋 표시항목 설정</button>
                         </div>
-                        <div style="overflow-x:auto;">
+                        <div class="table-scroll-wrapper">
                         <table id="orderManagementTable" class="data-table">
                             <thead><tr>
                                 <th>주문번호</th><th>나석신청</th><th>공방신청</th>
@@ -499,7 +499,7 @@
                             </label>
                         </div>
                         <div id="expenseSummary" style="margin-bottom:16px;"></div>
-                        <div style="overflow-x:auto;">
+                        <div class="table-scroll-wrapper">
                         <table id="adminExpensesTable" class="data-table">
                             <thead><tr>
                                 <th>날짜</th><th>계정과목</th><th>거래내용</th><th>거래처</th>
@@ -639,5 +639,114 @@
     <script src="/js/modules/promotion.js"></script>
     <script src="/js/modules/wordTemplateManager.js"></script>
     <script src="/js/app.js"></script>
+
+    <!-- 화면 하단 고정 스크롤바 -->
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const mainContent = document.querySelector('main');
+        if (!mainContent) return;
+
+        // 고정 스크롤바 생성
+        const fixedScrollbar = document.createElement('div');
+        fixedScrollbar.id = 'fixed-horizontal-scrollbar';
+        fixedScrollbar.innerHTML = '<div class="scrollbar-track"><div class="scrollbar-thumb"></div></div>';
+        fixedScrollbar.style.cssText = `
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 12px;
+            background: white;
+            border-top: 1px solid #e5e7eb;
+            z-index: 999;
+            display: none;
+            overflow: hidden;
+        `;
+        document.body.appendChild(fixedScrollbar);
+
+        const scrollTrack = fixedScrollbar.querySelector('.scrollbar-track');
+        scrollTrack.style.cssText = `width: 100%; height: 100%; position: relative; background: #f3f4f6;`;
+
+        const scrollThumb = fixedScrollbar.querySelector('.scrollbar-thumb');
+        scrollThumb.style.cssText = `
+            position: absolute;
+            height: 100%;
+            background: #c4b5a0;
+            border-radius: 4px;
+            cursor: pointer;
+            top: 0;
+        `;
+
+        let currentTable = null;
+        let maxScrollLeft = 0;
+
+        // 모든 테이블 래퍼 모니터링
+        const tableWrappers = document.querySelectorAll('.table-scroll-wrapper');
+
+        const updateScrollbar = (wrapper) => {
+            const table = wrapper.querySelector('.data-table');
+            if (!table) return;
+
+            maxScrollLeft = table.scrollWidth - wrapper.clientWidth;
+
+            if (maxScrollLeft > 0) {
+                fixedScrollbar.style.display = 'block';
+                const thumbWidth = Math.max(20, (wrapper.clientWidth / table.scrollWidth) * 100);
+                scrollThumb.style.width = thumbWidth + '%';
+
+                const scrollPercent = (wrapper.scrollLeft / maxScrollLeft) * 100;
+                scrollThumb.style.left = scrollPercent + '%';
+            } else {
+                fixedScrollbar.style.display = 'none';
+            }
+        };
+
+        // 각 테이블에 스크롤 이벤트 추가
+        tableWrappers.forEach((wrapper, index) => {
+            const table = wrapper.querySelector('.data-table');
+            if (!table) return;
+
+            // 테이블을 wrapper 내에서 가로 스크롤 가능하도록 변경
+            wrapper.style.overflowX = 'auto';
+            wrapper.style.overflowY = 'hidden';
+
+            // 현재 테이블로 포커스될 때 고정 스크롤바 업데이트
+            wrapper.addEventListener('mouseenter', () => {
+                currentTable = wrapper;
+                updateScrollbar(wrapper);
+            });
+
+            wrapper.addEventListener('scroll', () => {
+                if (currentTable === wrapper) {
+                    updateScrollbar(wrapper);
+                }
+            });
+        });
+
+        // 고정 스크롤바 클릭 이벤트
+        scrollTrack.addEventListener('click', (e) => {
+            if (!currentTable) return;
+            const rect = scrollTrack.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const scrollPercent = clickX / rect.width;
+            const table = currentTable.querySelector('.data-table');
+            currentTable.scrollLeft = scrollPercent * (table.scrollWidth - currentTable.clientWidth);
+        });
+
+        // 마우스 휠 스크롤 지원
+        document.addEventListener('wheel', (e) => {
+            const hoveredElement = document.elementFromPoint(e.clientX, e.clientY);
+            const tableWrapper = hoveredElement?.closest('.table-scroll-wrapper');
+
+            if (tableWrapper && e.deltaX === 0) {
+                // 수직 휠을 수평 스크롤로 변환 (Shift 키 누른 상태와 동일)
+                if (e.shiftKey) {
+                    tableWrapper.scrollLeft += e.deltaY;
+                    e.preventDefault();
+                }
+            }
+        }, { passive: false });
+    });
+    </script>
 </body>
 </html>

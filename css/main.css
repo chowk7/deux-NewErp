@@ -445,6 +445,11 @@ th.resizable .col-resize-handle.dragging {
 }
 
 /* ===== 테이블 ===== */
+.table-scroll-wrapper {
+    overflow: hidden;
+    position: relative;
+}
+
 .data-table {
     width: 100%;
     border-collapse: collapse;
