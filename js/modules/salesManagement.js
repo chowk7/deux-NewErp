@@ -8,7 +8,6 @@ window.SalesManagementModule = {
         { key: 'orderDate',       label: '주문일',       type: 'date',   defaultRequired: true  },
         { key: 'orderNumber',     label: '주문번호',      type: 'text',   defaultRequired: true  },
         { key: 'customerName',    label: '고객명',        type: 'text',   defaultRequired: true  },
-        { key: 'postalCode',      label: '우편번호',      type: 'text',   defaultRequired: false },
         { key: 'productName',     label: '상품명',        type: 'text',   defaultRequired: true  },
         { key: 'optionName',      label: '옵션명',        type: 'text',   defaultRequired: false },
         { key: 'stoneInfo',       label: '나석정보',      type: 'text',   defaultRequired: false },
@@ -37,8 +36,9 @@ window.SalesManagementModule = {
         { key: 'commissionRate',  label: '수수료율(%)',   type: 'number', defaultRequired: false },
         { key: 'recipient',       label: '수령인',        type: 'text',   defaultRequired: false },
         { key: 'phone',           label: '연락처',        type: 'text',   defaultRequired: false },
-        { key: 'address',         label: '주소',          type: 'text',   defaultRequired: false },
-        { key: 'addressDetail',   label: '주소상세',      type: 'text',   defaultRequired: false },
+        { key: 'postalCode',      label: '우편번호',      type: 'text',   defaultRequired: false },
+        { key: 'address',         label: '주소',          type: 'textarea', defaultRequired: false },
+        { key: 'addressDetail',   label: '주소상세',      type: 'textarea', defaultRequired: false },
         { key: 'stoneRequested',     label: '나석신청', type: 'status', defaultRequired: false },
         { key: 'workshopRequested',  label: '공방신청', type: 'status', defaultRequired: false },
         { key: 'productionComplete', label: '제작완료', type: 'status', defaultRequired: false },
@@ -685,6 +685,9 @@ window.SalesManagementModule = {
                                 placeholder="예) 13호, S, M, L"
                                 step="${f.type === 'number' ? '0.01' : ''}"
                                 ${isRequired ? 'required' : ''}>`;
+                } else if (f.type === 'textarea') {
+                    input = `<textarea name="${f.key}" rows="2" style="resize:vertical;width:100%;box-sizing:border-box;"
+                                ${isRequired ? 'required' : ''}>${val}</textarea>`;
                 } else {
                     input = `<input type="${f.type}" name="${f.key}" value="${val}"
                                 step="${f.type === 'number' ? '0.01' : ''}"
