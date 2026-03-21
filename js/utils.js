@@ -57,11 +57,13 @@ window.Utils = {
                     const formData = new FormData(e.target);
                     const data = Object.fromEntries(formData);
                     await onSubmit(data, wrapper);
+                    // 저장 성공 후 모달이 아직 열려 있으면 닫기
+                    if (wrapper.isConnected) wrapper.remove();
                 } catch (err) {
                     console.error('[openModal] 저장 오류:', err);
                     this.showNotification('저장 중 오류가 발생했습니다: ' + (err?.message || err), 'error', 6000);
                 } finally {
-                    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = origText; }
+                    if (submitBtn && submitBtn.isConnected) { submitBtn.disabled = false; submitBtn.textContent = origText; }
                 }
             });
         }
@@ -358,8 +360,7 @@ window.Utils = {
                     .map(f => f.key)
                     .filter(key => data[`req_${key}`]);
                 await this.saveRequiredFields(tableKey, required);
-                alert('필수 항목 설정이 저장되었습니다.');
-                wrapper.remove();
+                this.showNotification('필수 항목 설정이 저장되었습니다.', 'success');
             },
             '저장'
         );

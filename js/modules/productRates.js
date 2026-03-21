@@ -446,7 +446,8 @@ window.ProductRatesModule = {
             ownMallProfit18k, ownMallProfitRate18k, deptPrice18k, deptProfitRate18k };
     },
 
-    showForm(productId = null) {
+    async showForm(productId = null) {
+        const required = await window.Utils.getRequiredFields('productRates');
         const product = productId ? this.products.find(p => p.id === productId) : null;
         const stones = product?.stones || [];
 
@@ -460,7 +461,7 @@ window.ProductRatesModule = {
                         const stoneOptions = (this.diamondRates || []).map(d => d.diamondType).join(',');
                         return `
                             <div class="form-group" style="grid-column: 1 / -1;">
-                                <label>${f.label}</label>
+                                <label>${f.label}${required.includes(f.key) ? ' <span style="color:red">*</span>' : ''}</label>
                                 <div id="stonesContainer" style="border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px;">
                                     ${stoneRows.map((stone, idx) => `
                                         <div class="stone-row" data-index="${idx}" style="display: flex; gap: 8px; margin-bottom: 8px; align-items: center;">
@@ -482,22 +483,24 @@ window.ProductRatesModule = {
                             </div>`;
                     }
                     const val = product?.[f.key] ?? '';
+                    const isRequired = !f.calc && required.includes(f.key);
                     let input;
                     if (f.type === 'select') {
                         const opts = (f.options || []).map(o =>
                             `<option value="${o}" ${val === o ? 'selected' : ''}>${o}</option>`
                         ).join('');
-                        input = `<select name="${f.key}"><option value="">선택</option>${opts}</select>`;
+                        input = `<select name="${f.key}" ${isRequired ? 'required' : ''}><option value="">선택</option>${opts}</select>`;
                     } else if (f.type !== 'custom') {
                         input = `<input type="${f.type}" name="${f.key}" value="${val !== '' ? val : ''}"
                             step="0.01" class="${f.calc ? 'calc-field' : ''}"
-                            ${f.calc ? 'readonly style="background:#f3f4f6;"' : ''}>`;
+                            ${f.calc ? 'readonly style="background:#f3f4f6;"' : ''}
+                            ${isRequired ? 'required' : ''}>`;
                     } else {
                         return '';
                     }
                     return `
                         <div class="form-group">
-                            <label>${f.label}${f.calc ? ' <span style="color:#9ca3af;font-size:0.75rem">(자동)</span>' : ''}</label>
+                            <label>${f.label}${f.calc ? ' <span style="color:#9ca3af;font-size:0.75rem">(자동)</span>' : ''}${isRequired ? ' <span style="color:red">*</span>' : ''}</label>
                             ${input}
                         </div>`;
                 }).join('')}

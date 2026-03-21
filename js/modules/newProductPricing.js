@@ -195,7 +195,6 @@ window.NewProductPricingModule = {
                 <td>${p.ownMallProfitRate != null ? p.ownMallProfitRate.toFixed(1) + '%' : '-'}</td>
                 <td>
                     <button class="btn btn-sm btn-primary" data-action="editItem" data-id="${p.id}">수정</button>
-                    <button class="btn btn-sm btn-danger" data-action="deleteItem" data-id="${p.id}" style="margin-left:4px;">삭제</button>
                 </td>
             </tr>`).join('');
 
@@ -221,13 +220,53 @@ window.NewProductPricingModule = {
 
     _updateBulkDeleteBtn() {
         const checked = document.querySelectorAll('#newProductPricingTbody .row-checkbox:checked').length;
-        const btn = document.getElementById('bulkDeleteNewProductPricingBtn');
-        if (!btn) return;
+
+        const deleteBtn = document.getElementById('bulkDeleteNewProductPricingBtn');
+        if (deleteBtn) {
+            if (checked > 0) {
+                deleteBtn.style.display = '';
+                deleteBtn.textContent = `🗑️ ${checked}개 삭제`;
+            } else {
+                deleteBtn.style.display = 'none';
+            }
+        }
+
+        // "제품가격표에 추가" 버튼: 선택된 항목이 있을 때만 표시
+        let addToRatesBtn = document.getElementById('addToProductRatesBtn');
+        if (!addToRatesBtn) {
+            addToRatesBtn = document.createElement('button');
+            addToRatesBtn.id = 'addToProductRatesBtn';
+            addToRatesBtn.className = 'btn btn-secondary';
+            addToRatesBtn.style.display = 'none';
+            addToRatesBtn.addEventListener('click', () => this.bulkCopyToProductRates());
+            const buttonGroup = document.querySelector('#newProductPricingContent .button-group');
+            if (buttonGroup) buttonGroup.appendChild(addToRatesBtn);
+        }
         if (checked > 0) {
-            btn.style.display = '';
-            btn.textContent = `🗑️ ${checked}개 삭제`;
+            addToRatesBtn.style.display = '';
+            addToRatesBtn.textContent = `📿 제품가격표에 추가 (${checked})`;
         } else {
-            btn.style.display = 'none';
+            addToRatesBtn.style.display = 'none';
+        }
+    },
+
+    async bulkCopyToProductRates() {
+        const checkedIds = Array.from(
+            document.querySelectorAll('#newProductPricingTbody .row-checkbox:checked')
+        ).map(cb => cb.dataset.id);
+        if (checkedIds.length === 0) return;
+        if (!(await window.Utils.confirm(`선택한 ${checkedIds.length}개 항목을 제품가격표에 추가하시겠습니까?`))) return;
+
+        const col = window.firebaseDb.collection('prices').doc('productRates').collection('items');
+        for (const id of checkedIds) {
+            const item = this.products.find(p => p.id === id);
+            if (!item) continue;
+            const { id: _id, ...docData } = item;
+            await col.add({ ...docData, createdAt: new Date(), updatedAt: new Date() });
+        }
+        window.Utils.showNotification(`${checkedIds.length}개 항목이 제품가격표에 추가되었습니다.`, 'success');
+        if (window.ProductRatesModule?.products !== undefined) {
+            window.ProductRatesModule.load();
         }
     },
 
@@ -444,35 +483,6 @@ window.NewProductPricingModule = {
             },
             '저장'
         );
-
-        // "제품가격표에 추가" 버튼 삽입
-        const footer = wrapper.querySelector('.modal-footer');
-        if (footer) {
-            const copyBtn = document.createElement('button');
-            copyBtn.type = 'button';
-            copyBtn.className = 'btn btn-secondary';
-            copyBtn.textContent = '📿 제품가격표에 추가';
-            copyBtn.style.marginLeft = '8px';
-            copyBtn.addEventListener('click', async () => {
-                const stonesContainer = wrapper.querySelector('#nppStonesContainer');
-                const stoneRows = stonesContainer?.querySelectorAll('.stone-row') || [];
-                const fd = new FormData(wrapper.querySelector('#modalForm'));
-                const data = Object.fromEntries(fd);
-                const newStones = Array.from(stoneRows)
-                    .map(row => ({
-                        type: row.querySelector('.searchable-select-input[name="stoneType"]')?.value || '',
-                        qty: parseFloat(row.querySelector('.stone-qty-input').value) || 0
-                    }))
-                    .filter(s => s.type && s.qty > 0);
-                data.stones = newStones;
-                Object.keys(data).forEach(k => {
-                    const f = this.FIELDS.find(f => f.key === k);
-                    if (f?.type === 'number') data[k] = parseFloat(data[k]) || 0;
-                });
-                await this.copyToProductRates(data);
-            });
-            footer.appendChild(copyBtn);
-        }
 
         // 상품코드 입력 시 종류 자동 추출
         const productCodeInput = wrapper.querySelector('[name="productCode"]');
