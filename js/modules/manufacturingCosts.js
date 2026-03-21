@@ -55,12 +55,14 @@ window.ManufacturingCostsModule = {
         await this.loadDiamondRates();
         // 제품단가표 로드 (나석 정보 참조용)
         await this.loadProductRates();
-        // 신규 입력 기능 삭제 - 매출표에서만 신규 입력 가능
-        // CSV 업로드/다운로드 기능 삭제 - 통합 CSV에서만 사용 가능
 
         // 표시항목 설정
         document.getElementById('mfgDisplaySettingsBtn')
             ?.addEventListener('click', () => this.openDisplaySettings());
+
+        // 필수항목 설정
+        document.getElementById('mfgRequiredSettingsBtn')
+            ?.addEventListener('click', () => this.openRequiredSettings());
     },
 
     async loadDiamondRates() {
@@ -91,6 +93,11 @@ window.ManufacturingCostsModule = {
             [...this.HEADER_FIELDS, ...this.BASE_FIELDS, ...this.STONE_FIELDS],
             () => this.load(),
             defaultKeys);
+    },
+
+    openRequiredSettings() {
+        const editableFields = this.BASE_FIELDS.filter(f => !f.calc && f.key !== 'orderId');
+        window.Utils.openRequiredFieldsModal('manufacturingCosts', editableFields);
     },
 
     getMfgYears() {
@@ -296,7 +303,7 @@ window.ManufacturingCostsModule = {
                     if (key === 'orderDate' && val) {
                         val = val.toDate ? new Date(val.toDate()).toLocaleDateString('ko-KR') : '-';
                     } else if (key === 'salesProfitRate' && val !== undefined && val !== null && val !== '') {
-                        val = val.toFixed(1) + '%';
+                        val = Math.round(val) + '%';
                     } else if (field?.calc && field?.type === 'number' && val !== undefined && val !== null && val !== '') {
                         val = window.Utils.formatNumber(Math.round(val));
                     } else if (field?.type === 'number' && val !== undefined && val !== null && val !== '') {
@@ -394,6 +401,7 @@ window.ManufacturingCostsModule = {
                 });
             });
 
+            window.Utils.initResizableColumns(mfgTable);
         } catch (error) {
             console.error('[ManufacturingCosts] renderTable 오류:', error);
         }
@@ -619,13 +627,14 @@ window.ManufacturingCostsModule = {
         return { ...data, goldValue, stoneCostRef, stoneWarrantyFeeTotal, manufacturingCost, salesProfit, salesProfitRate };
     },
 
-    showForm(costId = null) {
+    async showForm(costId = null) {
         // 신규 입력 불가 - costId가 없으면 경고 후 반환
         if (!costId) {
             window.Utils.showNotification('제조원가는 매출표에서 신규 입력됩니다.', 'info');
             return;
         }
 
+        const required = await window.Utils.getRequiredFields('manufacturingCosts');
         const cost = costId ? this.costs.find(c => c.id === costId) : null;
         // productionMonth 필드 제외
         const allFields = [...this.BASE_FIELDS.filter(f => f.key !== 'productionMonth')];
@@ -644,6 +653,7 @@ window.ManufacturingCostsModule = {
             }
             // 주문번호(orderId)와 매출금액(salesAmount)은 수정 불가
             const isReadOnly = f.key === 'orderId' || f.key === 'salesAmount' || f.calc;
+            const isRequired = !isReadOnly && f.type !== 'checkbox' && required.includes(f.key);
 
             // "입력 완료" 체크박스 특별 처리
             if (f.type === 'checkbox') {
@@ -659,9 +669,10 @@ window.ManufacturingCostsModule = {
 
             return `
                 <div class="form-group">
-                    <label>${f.label}${f.calc ? ' <span style="color:#9ca3af;font-size:0.75rem">(자동)</span>' : ''}</label>
-                    <input type="${f.type}" name="${f.key}" value="${val}" step="0.01"
-                        ${isReadOnly ? 'readonly style="background:#f3f4f6;"' : ''}>
+                    <label>${f.label}${f.calc ? ' <span style="color:#9ca3af;font-size:0.75rem">(자동)</span>' : ''}${isRequired ? ' <span style="color:red">*</span>' : ''}</label>
+                    <input type="${f.type}" name="${f.key}" value="${f.calc && val !== '' ? Math.round(val) : val}" step="0.01"
+                        ${isReadOnly ? 'readonly style="background:#f3f4f6;"' : ''}
+                        ${isRequired ? 'required' : ''}>
                 </div>`;
         };
 
@@ -751,9 +762,7 @@ window.ManufacturingCostsModule = {
             const calc = this.calculate(data);
             ['goldValue','stoneCostRef','manufacturingCost','salesProfit','salesProfitRate'].forEach(k => {
                 const el = wrapper.querySelector(`[name="${k}"]`);
-                if (el) el.value = k === 'salesProfitRate'
-                    ? parseFloat(calc[k] || 0).toFixed(1)
-                    : Math.round(calc[k] || 0);
+                if (el) el.value = Math.round(calc[k] || 0);
             });
         };
         wrapper.querySelector('#modalForm').addEventListener('input', updateCalculatedFields);
@@ -827,5 +836,107 @@ window.ManufacturingCostsModule = {
                 window.Utils.showNotification('제조원가 정보가 업로드되었습니다. (자동 계산 적용됨)', 'success');
             }
         );
+    },
+
+    /**
+     * 주문ID로부터 제품단가표의 나석정보를 조회하여 자동으로 채워줌
+     * @param {string} orderId - 주문 문서 ID
+     */
+    async autoFillFromProductRates(orderId) {
+        try {
+            // 주문 정보 조회
+            const orderDoc = await window.firebaseDb
+                .collection('sales').doc('orders').collection('items').doc(orderId).get();
+
+            if (!orderDoc.exists) return;
+
+            const order = orderDoc.data();
+            const productName = order.productName || '';
+            const productCode  = order.productCode  || '';
+
+            if (!productName && !productCode) return;
+
+            // 제품단가표 - 캐시 우선, 없으면 Firestore 조회
+            let productRates = this.productRates;
+            if (!productRates || productRates.length === 0) {
+                const snap = await window.firebaseDb
+                    .collection('prices').doc('productRates').collection('items').get();
+                productRates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            }
+
+            const targetProduct = productRates.find(p =>
+                (productName && p.productName === productName) ||
+                (productCode  && p.productCode  === productCode)
+            );
+
+            if (!targetProduct || !targetProduct.stones || targetProduct.stones.length === 0) {
+                window.Utils.showNotification(
+                    `"${productName || productCode}"의 나석정보가 제품가격표에 등록되지 않았습니다.`, 'warning'
+                );
+                return;
+            }
+
+            // 나석 단가표 - 캐시 우선, 없으면 Firestore 조회
+            let diamondRates = this.diamondRates;
+            if (!diamondRates || diamondRates.length === 0) {
+                const snap = await window.firebaseDb
+                    .collection('prices').doc('diamondRates').collection('items').get();
+                diamondRates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            }
+
+            // 제품 stones [{type, qty}] → stoneArray [{stoneType, stoneQty, stonePrice, totalPrice, warrantyFee}]
+            const warranty = targetProduct.stoneWarranty || '없음';
+            const stoneArray = targetProduct.stones
+                .filter(s => s.type && s.qty > 0)
+                .map(s => {
+                    const diamond = diamondRates.find(d => d.diamondType === s.type);
+                    const stonePrice = diamond?.costWithVat || 0;
+                    const totalPrice = stonePrice * s.qty;
+                    const warrantyFee = warranty === 'VS'  ? (diamond?.vsWarrantyFee  || 0)
+                                      : warranty === 'VVS' ? (diamond?.vvsWarrantyFee || 0) : 0;
+                    return { stoneType: s.type, stoneQty: s.qty, stonePrice, totalPrice, warrantyFee };
+                });
+
+            if (stoneArray.length === 0) {
+                window.Utils.showNotification(
+                    `"${productName}"의 나석정보가 제품가격표에 등록되지 않았습니다.`, 'warning'
+                );
+                return;
+            }
+
+            // stoneQty_text 생성
+            const stoneQtyText = stoneArray
+                .map(s => `${s.stoneQty} × ${s.stoneType}`).join(', ');
+
+            // calculate()로 파생 필드 계산 (기존 주문 데이터 + stoneArray 주입)
+            const dataForCalc = {
+                ...order,
+                stoneArray: JSON.stringify(stoneArray),
+                stoneQty_text: stoneQtyText,
+                stoneCostManual: order.stoneCostManual || 0
+            };
+            const calculated = this.calculate(dataForCalc);
+
+            // Firestore 업데이트
+            await window.firebaseDb
+                .collection('sales').doc('orders').collection('items').doc(orderId)
+                .update({
+                    ...calculated,
+                    stoneArray:    JSON.stringify(stoneArray),
+                    stoneQty_text: stoneQtyText,
+                    stones:        targetProduct.stones, // 원본 보관
+                    updatedAt:     new Date()
+                });
+
+            window.Utils.showNotification(
+                `"${productName}"의 나석정보가 자동으로 입력되었습니다.`, 'success'
+            );
+
+        } catch (error) {
+            console.error('[ManufacturingCosts] autoFillFromProductRates error:', error);
+            window.Utils.showNotification(
+                '나석정보 자동입력 중 오류가 발생했습니다: ' + error.message, 'error'
+            );
+        }
     },
 };

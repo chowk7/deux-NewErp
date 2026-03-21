@@ -182,10 +182,10 @@ html, body {
 
 /* ===== 버튼 ===== */
 .btn {
-    padding: var(--spacing-sm) var(--spacing-lg);
+    padding: 0.26rem 0.78rem;
     border: none;
     border-radius: var(--border-radius);
-    font-size: 1rem;
+    font-size: 0.832rem;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s;
@@ -193,7 +193,7 @@ html, body {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: var(--spacing-sm);
+    gap: var(--spacing-xs);
 }
 
 .btn-primary {
@@ -226,8 +226,8 @@ html, body {
 }
 
 .btn-sm {
-    padding: var(--spacing-xs) var(--spacing-md);
-    font-size: 0.875rem;
+    padding: 0.156rem 0.52rem;
+    font-size: 0.78rem;
 }
 
 .btn-block {
@@ -238,6 +238,32 @@ html, body {
     margin-bottom: var(--spacing-lg);
     display: flex;
     gap: var(--spacing-md);
+    align-items: center;
+}
+
+/* 삭제 버튼 제일 오른쪽 */
+.button-group .btn-danger {
+    margin-left: auto;
+}
+
+/* 열 크기 조절 핸들 */
+th.resizable {
+    position: relative;
+    overflow: visible;
+}
+th.resizable .col-resize-handle {
+    position: absolute;
+    right: 0;
+    top: 0;
+    height: 100%;
+    width: 5px;
+    cursor: col-resize;
+    user-select: none;
+    z-index: 1;
+}
+th.resizable .col-resize-handle:hover,
+th.resizable .col-resize-handle.dragging {
+    background: rgba(200, 121, 80, 0.4);
 }
 
 .btn-danger {

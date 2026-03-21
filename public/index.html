@@ -139,6 +139,7 @@
                             <li class="nav-section">가격관리</li>
                             <li><a href="#" data-menu="diamond-rates" class="nav-link">💎 나석단가표</a></li>
                             <li><a href="#" data-menu="product-rates" class="nav-link">📿 제품가격표</a></li>
+                            <li><a href="#" data-menu="new-product-pricing" class="nav-link">✨ 신제품가격산정</a></li>
                             <li><a href="#" data-menu="gold-inventory" class="nav-link">🥇 금재고</a></li>
                             <li><a href="#" data-menu="customers" class="nav-link">👥 고객목록표</a></li>
                             <li><a href="#" data-menu="option-charges" class="nav-link">➕ 각줄추가금액</a></li>
@@ -149,8 +150,10 @@
                             <li><a href="#" data-menu="admin-expenses" class="nav-link">💼 판관비</a></li>
                             <li><a href="#" data-menu="profit-loss" class="nav-link">📈 P&L표</a></li>
                             <li class="nav-section">기타</li>
+                            <li><a href="#" data-menu="promotion" class="nav-link">🏷️ 프로모션</a></li>
                             <li><a href="#" data-menu="notes" class="nav-link">📝 노트</a></li>
                             <li><a href="#" data-menu="images" class="nav-link">🖼️ 이미지 관리</a></li>
+                            <li><a href="#" data-menu="word-templates" class="nav-link">📄 양식 관리</a></li>
                         </ul>
                     </nav>
                 </div>
@@ -239,10 +242,7 @@
                         </div>
                         <div style="overflow-x:auto;">
                         <table id="productRatesTable" class="data-table">
-                            <thead><tr>
-                                <th>자체상품코드</th><th>상품코드</th><th>제품명</th><th>종류</th>
-                                <th>제품원가</th><th>최종소비자가</th><th>자사몰이익률</th><th>관리</th>
-                            </tr></thead>
+                            <thead><tr></tr></thead>
                             <tbody></tbody>
                         </table>
                         </div>
@@ -334,21 +334,19 @@
                         <h2>매출표</h2>
                         <div class="button-group">
                             <button id="addOrderBtn" class="btn btn-primary">+ 새 주문 추가</button>
-                            <button id="importImwebBtn" class="btn btn-success">🌐 아임웹 가져오기</button>
+                            <button id="importImwebBtn" class="btn btn-success">🌐 아임웹 싱크</button>
                             <div id="ordersDownloadBtns" style="display:none;margin-left:8px;">
                                 <button id="downloadOrdersTemplateBtn" class="btn btn-secondary">📥 양식 다운로드</button>
                                 <button id="downloadOrdersDataBtn" class="btn btn-secondary">📊 데이터 다운로드</button>
                             </div>
                             <span style="margin:0 12px;color:#d1d5db;">|</span>
-                            <button id="csvUploadIntegratedBtn" class="btn btn-secondary">📤 통합 CSV 업로드</button>
+                            <button id="csvUploadIntegratedBtn" class="btn btn-secondary">📤 CSV 업로드</button>
                             <div id="integratedDownloadBtns" style="display:none;margin-left:8px;">
                                 <button id="downloadIntegratedCsvTemplateBtn" class="btn btn-secondary">📥 통합 양식</button>
                                 <button id="downloadIntegratedCsvDataBtn" class="btn btn-secondary">📊 통합 데이터</button>
                             </div>
-                            <button id="ordersRequiredSettingsBtn" class="btn btn-outline">⚙️ 필수항목 설정</button>
-                            <button id="ordersDisplaySettingsBtn" class="btn btn-outline">📋 표시항목 설정</button>
-                            <button id="printOrderBtn" class="btn btn-success">🖨️ 주문서 출력</button>
-                            <button id="printValexFormBtn" class="btn btn-success">📦 발렉스 양식 출력</button>
+                            <button id="ordersRequiredSettingsBtn" class="btn btn-outline">⚙️ 필수항목</button>
+                            <button id="ordersDisplaySettingsBtn" class="btn btn-outline">📋 표시항목</button>
                         </div>
                         <div id="ordersFilterBar"></div>
                         <table id="ordersTable" class="data-table">
@@ -373,6 +371,7 @@
                     <section id="manufacturingCostsContent" class="content-section hidden">
                         <h2>제조원가표</h2>
                         <div class="button-group">
+                            <button id="mfgRequiredSettingsBtn" class="btn btn-outline">⚙️ 필수항목 설정</button>
                             <button id="mfgDisplaySettingsBtn" class="btn btn-outline">📋 표시항목 설정</button>
                         </div>
                         <div id="mfgFilterBar"></div>
@@ -386,6 +385,31 @@
                         </table>
                         </div>
                         <div id="manufacturingCostsPagination"></div>
+                    </section>
+
+                    <!-- 신제품가격산정 섹션 -->
+                    <section id="newProductPricingContent" class="content-section hidden">
+                        <h2>신제품가격산정</h2>
+                        <div class="button-group">
+                            <button id="addNewProductPricingBtn" class="btn btn-primary">+ 새 항목 추가</button>
+                            <button id="bulkDeleteNewProductPricingBtn" class="btn btn-danger" style="display:none;">🗑️ 삭제</button>
+                        </div>
+                        <div id="newProductPricingFilters" style="margin:12px 0;display:flex;flex-direction:column;gap:10px;">
+                            <input id="newProductPricingSearch" type="text" placeholder="상품명 또는 상품코드로 검색..."
+                                style="padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;max-width:360px;font-size:0.9rem;">
+                            <div id="newProductPricingCategoryTabs" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+                        </div>
+                        <div style="overflow-x:auto;">
+                        <table id="newProductPricingTable" class="data-table">
+                            <thead><tr>
+                                <th><input type="checkbox" id="newProductPricingSelectAll"></th>
+                                <th>자체상품코드</th><th>상품코드</th><th>제품명</th><th>종류</th>
+                                <th>제품원가</th><th>최종소비자가</th><th>자사몰이익률</th><th>관리</th>
+                            </tr></thead>
+                            <tbody id="newProductPricingTbody"></tbody>
+                        </table>
+                        </div>
+                        <div id="newProductPricingEmpty" style="display:none;color:#6b7280;padding:12px;">항목이 없습니다.</div>
                     </section>
 
                     <!-- 금재고 섹션 -->
@@ -504,6 +528,11 @@
                         </div>
                     </section>
 
+                    <!-- 프로모션 섹션 -->
+                    <section id="promotionContent" class="content-section hidden">
+                        <h2>프로모션</h2>
+                    </section>
+
                     <!-- 노트 섹션 -->
                     <section id="notesContent" class="content-section hidden">
                         <h2>노트</h2>
@@ -536,6 +565,32 @@
                         <h2>이미지 관리</h2>
                         <p>준비 중입니다...</p>
                     </section>
+
+                    <!-- 양식 관리 섹션 -->
+                    <section id="wordTemplatesContent" class="content-section hidden">
+                        <h2>양식 관리</h2>
+                        <p style="color:#6b7280;font-size:0.9em;margin-bottom:16px;">
+                            Word 파일에 <code>{{변수명}}</code> 형식으로 자리표시자를 넣으면 출력 시 자동 치환됩니다.<br>
+                            사용 가능 변수: {{주문번호}} {{고객명}} {{이메일}} {{수령인}} {{연락처}} {{주소}} {{주소상세}} {{우편번호}} {{상품명}} {{옵션명}} {{수량}} {{최종주문금액}} {{주문금액}} {{매출금액}} {{주문일}} {{기타}}
+                        </p>
+                        <div class="button-group" style="margin-bottom:16px;">
+                            <input type="file" id="templateFileInput" accept=".docx" style="display:none;">
+                            <button id="uploadTemplateBtn" class="btn btn-primary">📤 양식 업로드</button>
+                        </div>
+                        <table id="templatesTable" class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>양식명</th>
+                                    <th>용도</th>
+                                    <th>업로드 일시</th>
+                                    <th>관리</th>
+                                </tr>
+                            </thead>
+                            <tbody id="templatesTableBody">
+                                <tr><td colspan="4" style="text-align:center;color:#9ca3af;">양식이 없습니다.</td></tr>
+                            </tbody>
+                        </table>
+                    </section>
                 </main>
             </div>
         </div>
@@ -547,8 +602,13 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage-compat.js"></script>
 
-    <!-- SheetJS for Excel export -->
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- SheetJS for Excel export (local) -->
+    <script src="/js/lib/xlsx.full.min.js"></script>
+    <!-- docx for Word document generation (local) -->
+    <script src="/js/lib/docx.umd.js"></script>
+    <!-- pizzip + docxtemplater for Word template filling -->
+    <script src="/js/lib/pizzip.min.js"></script>
+    <script src="/js/lib/docxtemplater.min.js"></script>
 
     <!-- App Scripts -->
     <script src="/js/utils.js"></script>
@@ -566,6 +626,9 @@
     <script src="/js/modules/notes.js"></script>
     <script src="/js/modules/goldInventory.js"></script>
     <script src="/js/modules/imwebIntegration.js"></script>
+    <script src="/js/modules/newProductPricing.js"></script>
+    <script src="/js/modules/promotion.js"></script>
+    <script src="/js/modules/wordTemplateManager.js"></script>
     <script src="/js/app.js"></script>
 </body>
 </html>

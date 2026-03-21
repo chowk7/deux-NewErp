@@ -57,11 +57,13 @@ window.Utils = {
                     const formData = new FormData(e.target);
                     const data = Object.fromEntries(formData);
                     await onSubmit(data, wrapper);
+                    // 저장 성공 후 모달이 아직 열려 있으면 닫기
+                    if (wrapper.isConnected) wrapper.remove();
                 } catch (err) {
                     console.error('[openModal] 저장 오류:', err);
                     this.showNotification('저장 중 오류가 발생했습니다: ' + (err?.message || err), 'error', 6000);
                 } finally {
-                    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = origText; }
+                    if (submitBtn && submitBtn.isConnected) { submitBtn.disabled = false; submitBtn.textContent = origText; }
                 }
             });
         }
@@ -186,11 +188,27 @@ window.Utils = {
     /**
      * CSV 업로드 모달 표시
      * @param {Array<{key, label, type}>} fields - 필드 정의
-     * @param {Function} onImport - (rows: Object[]) => Promise<void>
+     * @param {Function} onImport - (rows: Object[], mode: 'add'|'replace') => Promise<void>
+     * @param {Object} [options]
+     * @param {boolean} [options.importModeSelector] - 추가/교체 선택 UI 표시 여부
      */
-    openCsvUploadModal(fields, onImport) {
+    openCsvUploadModal(fields, onImport, options = {}) {
         const wrapper = document.createElement('div');
         wrapper.setAttribute('data-modal', '');
+
+        const modeSelectorHtml = options.importModeSelector ? `
+            <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:12px 16px; margin-bottom:16px;">
+                <p style="font-weight:600; margin-bottom:8px; font-size:0.875rem;">업로드 방식 선택</p>
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-bottom:6px;">
+                    <input type="radio" name="importMode" value="add" checked>
+                    <span><strong>추가</strong> — 기존 데이터는 유지하고 CSV 데이터를 추가합니다</span>
+                </label>
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                    <input type="radio" name="importMode" value="replace">
+                    <span><strong>교체</strong> — 기존 데이터를 모두 삭제하고 CSV 데이터로 교체합니다</span>
+                </label>
+            </div>` : '';
+
         wrapper.innerHTML = `
             <div class="modal-overlay">
                 <div class="modal-content" style="max-width:800px;">
@@ -199,6 +217,7 @@ window.Utils = {
                         <button type="button" class="modal-close-btn">✕</button>
                     </div>
                     <div id="csvStep1">
+                        ${modeSelectorHtml}
                         <p style="margin-bottom:12px; color:#6b7280; font-size:0.875rem;">
                             CSV 양식을 먼저 다운로드하여 데이터를 입력한 후 업로드하세요.
                         </p>
@@ -257,10 +276,22 @@ window.Utils = {
         wrapper.querySelector('#csvImportBtn').addEventListener('click', async () => {
             if (parsedData.length === 0) return;
             const btn = wrapper.querySelector('#csvImportBtn');
+            const modeRadio = wrapper.querySelector('input[name="importMode"]:checked');
+            const mode = modeRadio ? modeRadio.value : 'add';
+
+            // 교체 모드일 때 확인
+            if (mode === 'replace') {
+                const confirmed = await this.confirm(
+                    `기존 데이터를 모두 삭제하고 CSV 데이터(${parsedData.length}개)로 교체합니다. 계속하시겠습니까?`,
+                    '교체'
+                );
+                if (!confirmed) return;
+            }
+
             btn.disabled = true;
             btn.textContent = '저장 중...';
             try {
-                await onImport(parsedData);
+                await onImport(parsedData, mode);
                 wrapper.remove();
             } catch (err) {
                 btn.disabled = false;
@@ -273,16 +304,26 @@ window.Utils = {
     },
 
     _mapCsvToObjects(fields, headers, rows) {
-        // 헤더 레이블 → key 매핑
+        // 헤더 레이블 → key 매핑, 숫자 필드 key 집합
         const labelToKey = {};
-        fields.forEach(f => { labelToKey[f.label] = f.key; });
+        const numberKeys = new Set();
+        fields.forEach(f => {
+            labelToKey[f.label] = f.key;
+            if (f.type === 'number') numberKeys.add(f.key);
+        });
 
         const keyIndices = headers.map(h => labelToKey[h] || null);
 
         return rows.filter(r => r.some(v => v)).map(row => {
             const obj = {};
             keyIndices.forEach((key, i) => {
-                if (key) obj[key] = row[i] || '';
+                if (!key) return;
+                let val = row[i] || '';
+                // 숫자 필드: 쉼표 제거
+                if (numberKeys.has(key) && val !== '') {
+                    val = val.replace(/,/g, '');
+                }
+                obj[key] = val;
             });
             return obj;
         });
@@ -315,9 +356,18 @@ window.Utils = {
                 .collection('settings')
                 .doc('requiredFields')
                 .get();
-            return (doc.exists && doc.data()[tableKey]) || [];
+            const fields = (doc.exists && doc.data()[tableKey]) || [];
+            // localStorage에 캐시 (오프라인 폴백용)
+            localStorage.setItem(`requiredFields_${tableKey}`, JSON.stringify(fields));
+            return fields;
         } catch {
-            return [];
+            // Firestore 실패 시 localStorage 폴백
+            try {
+                const saved = localStorage.getItem(`requiredFields_${tableKey}`);
+                return saved ? JSON.parse(saved) : [];
+            } catch {
+                return [];
+            }
         }
     },
 
@@ -325,10 +375,17 @@ window.Utils = {
      * Firestore에 필수항목 설정 저장
      */
     async saveRequiredFields(tableKey, requiredFieldKeys) {
-        await window.firebaseDb
-            .collection('settings')
-            .doc('requiredFields')
-            .set({ [tableKey]: requiredFieldKeys }, { merge: true });
+        // localStorage에 즉시 저장 (항상 성공)
+        localStorage.setItem(`requiredFields_${tableKey}`, JSON.stringify(requiredFieldKeys));
+        // Firestore에도 저장 시도 (실패해도 오류를 throw하지 않음)
+        try {
+            await window.firebaseDb
+                .collection('settings')
+                .doc('requiredFields')
+                .set({ [tableKey]: requiredFieldKeys }, { merge: true });
+        } catch (e) {
+            console.warn('[saveRequiredFields] Firestore 저장 실패, 로컬에만 저장됨:', e);
+        }
     },
 
     /**
@@ -358,8 +415,7 @@ window.Utils = {
                     .map(f => f.key)
                     .filter(key => data[`req_${key}`]);
                 await this.saveRequiredFields(tableKey, required);
-                alert('필수 항목 설정이 저장되었습니다.');
-                wrapper.remove();
+                this.showNotification('필수 항목 설정이 저장되었습니다.', 'success');
             },
             '저장'
         );
@@ -573,5 +629,158 @@ window.Utils = {
         });
 
         return container;
-    }
+    },
+
+    /**
+     * XLSX 라이브러리가 로드될 때까지 대기했다가 콜백을 실행합니다.
+     * @param {Function} callback - XLSX 로드 후 실행할 함수
+     * @param {number} timeout - 타임아웃 (ms)
+     */
+    async ensureXLSX(callback, timeout = 30000) {
+        const startTime = Date.now();
+        while (typeof XLSX === 'undefined') {
+            if (Date.now() - startTime > timeout) {
+                this.showNotification('라이브러리 로드 실패. 페이지를 새로고침해주세요.', 'error');
+                return;
+            }
+            await new Promise(r => setTimeout(r, 100));
+        }
+        callback();
+    },
+
+    /**
+     * 테이블 헤더에 열 크기 조절 핸들을 추가합니다.
+     * @param {HTMLTableElement} table
+     */
+    initResizableColumns(table) {
+        if (!table) return;
+        const ths = table.querySelectorAll('thead th');
+        ths.forEach(th => {
+            // 체크박스 컬럼 제외
+            if (th.querySelector('input[type="checkbox"]')) return;
+
+            th.classList.add('resizable');
+            // 이미 핸들이 있으면 추가하지 않음
+            if (th.querySelector('.col-resize-handle')) return;
+
+            const handle = document.createElement('span');
+            handle.className = 'col-resize-handle';
+            th.appendChild(handle);
+
+            let startX, startWidth;
+
+            handle.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                startX = e.pageX;
+                startWidth = th.offsetWidth;
+                handle.classList.add('dragging');
+
+                const onMouseMove = (moveEvent) => {
+                    const newWidth = Math.max(40, startWidth + (moveEvent.pageX - startX));
+                    th.style.width = newWidth + 'px';
+                    th.style.minWidth = newWidth + 'px';
+                };
+
+                const onMouseUp = () => {
+                    handle.classList.remove('dragging');
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                };
+
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            });
+        });
+    },
+
+    /**
+     * 주문의 추가 정보(구매경로, 수수료율, 보증서) 입력 모달
+     * @param {Object} orderData - 기존 주문 데이터
+     * @returns {Promise<{purchasePath, purchasePathDetail, commissionRate, warranty}>}
+     */
+    showAdditionalOrderModal(orderData = {}) {
+        return new Promise((resolve) => {
+            const onlineOptions = ['듀인피니스 공식몰', '신세계V', 'SSG', '더현대닷컴'];
+            const offlineOptions = ['현대백화점 압구정본점', '현대백화점 무역점', '현대백화점 킨텍스점', '현대백화점 목동점'];
+            const warrantyOptions = ['없음', 'VS', 'VVS'];
+
+            const wrapper = document.createElement('div');
+            wrapper.setAttribute('data-modal', '');
+            wrapper.innerHTML = `
+                <div class="modal-overlay">
+                    <div class="modal-content" style="max-width:480px;">
+                        <div class="modal-header">
+                            <h3>추가 정보 입력</h3>
+                            <button type="button" class="modal-close-btn" aria-label="닫기">✕</button>
+                        </div>
+                        <div style="padding:1.5rem; display:flex; flex-direction:column; gap:0.75rem;">
+                            <div>
+                                <label style="display:block; font-weight:500; margin-bottom:0.25rem;">구매경로</label>
+                                <select id="addl-purchasePath" style="width:100%; padding:0.5rem; border:1px solid #d1d5db; border-radius:0.375rem;">
+                                    <option value="">선택하세요</option>
+                                    <option value="온라인" ${orderData.purchasePath === '온라인' ? 'selected' : ''}>온라인</option>
+                                    <option value="오프라인" ${orderData.purchasePath === '오프라인' ? 'selected' : ''}>오프라인</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display:block; font-weight:500; margin-bottom:0.25rem;">구매경로상세</label>
+                                <select id="addl-purchasePathDetail" style="width:100%; padding:0.5rem; border:1px solid #d1d5db; border-radius:0.375rem;">
+                                    <option value="">선택하세요</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display:block; font-weight:500; margin-bottom:0.25rem;">수수료율(%)</label>
+                                <input id="addl-commissionRate" type="number" min="0" max="100" step="0.1"
+                                    value="${orderData.commissionRate || ''}"
+                                    style="width:100%; padding:0.5rem; border:1px solid #d1d5db; border-radius:0.375rem; box-sizing:border-box;" />
+                            </div>
+                            <div>
+                                <label style="display:block; font-weight:500; margin-bottom:0.25rem;">보증서</label>
+                                <select id="addl-warranty" style="width:100%; padding:0.5rem; border:1px solid #d1d5db; border-radius:0.375rem;">
+                                    <option value="">선택하세요</option>
+                                    ${warrantyOptions.map(opt => `<option value="${opt}" ${orderData.warranty === opt ? 'selected' : ''}>${opt}</option>`).join('')}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" id="addl-confirm" class="btn btn-primary">저장</button>
+                            <button type="button" id="addl-cancel" class="btn btn-secondary">취소</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(wrapper);
+
+            const pathSelect   = wrapper.querySelector('#addl-purchasePath');
+            const detailSelect = wrapper.querySelector('#addl-purchasePathDetail');
+            const commInput    = wrapper.querySelector('#addl-commissionRate');
+            const warrantySelect = wrapper.querySelector('#addl-warranty');
+
+            const updateDetailOptions = () => {
+                const options = pathSelect.value === '온라인' ? onlineOptions
+                              : pathSelect.value === '오프라인' ? offlineOptions : [];
+                detailSelect.innerHTML = '<option value="">선택하세요</option>' +
+                    options.map(opt => `<option value="${opt}" ${orderData.purchasePathDetail === opt ? 'selected' : ''}>${opt}</option>`).join('');
+            };
+
+            pathSelect.addEventListener('change', updateDetailOptions);
+            updateDetailOptions();
+
+            const finish = (useValues) => {
+                wrapper.remove();
+                resolve(useValues ? {
+                    purchasePath:       pathSelect.value,
+                    purchasePathDetail: detailSelect.value,
+                    commissionRate:     commInput.value ? parseFloat(commInput.value) : 0,
+                    warranty:           warrantySelect.value
+                } : { purchasePath: '', purchasePathDetail: '', commissionRate: 0, warranty: '' });
+            };
+
+            wrapper.querySelector('#addl-confirm').addEventListener('click', () => finish(true));
+            wrapper.querySelector('#addl-cancel').addEventListener('click', () => finish(false));
+            wrapper.querySelector('.modal-close-btn').addEventListener('click', () => finish(false));
+        });
+    },
 };

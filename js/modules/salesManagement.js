@@ -11,6 +11,7 @@ window.SalesManagementModule = {
         { key: 'postalCode',      label: '우편번호',      type: 'text',   defaultRequired: false },
         { key: 'productName',     label: '상품명',        type: 'text',   defaultRequired: true  },
         { key: 'optionName',      label: '옵션명',        type: 'text',   defaultRequired: false },
+        { key: 'stoneInfo',       label: '나석정보',      type: 'text',   defaultRequired: false },
         { key: 'remark',          label: '기타',          type: 'text',   defaultRequired: false },
         { key: 'category',        label: '종류',          type: 'select', defaultRequired: false,
           options: ['R(반지)','N(목걸이)','B(팔찌)','E(귀걸이)','기타'] },
@@ -133,13 +134,6 @@ window.SalesManagementModule = {
         document.getElementById('ordersDisplaySettingsBtn')
             ?.addEventListener('click', () => this.openOrderDisplaySettings());
 
-        // 주문서 출력 버튼
-        document.getElementById('printOrderBtn')
-            ?.addEventListener('click', () => this.printOrders());
-
-        // 발렉스 양식 출력 버튼
-        document.getElementById('printValexFormBtn')
-            ?.addEventListener('click', () => this.printValexForm());
     },
 
     openOrderDisplaySettings() {
@@ -502,6 +496,7 @@ window.SalesManagementModule = {
         }
 
         this.updateOrderBulkDeleteBtn();
+        window.Utils.initResizableColumns(table);
     },
 
     renderPagination() {
@@ -576,7 +571,7 @@ window.SalesManagementModule = {
 
     async showOrderForm(orderId = null) {
         const order = orderId ? this.orders.find(o => o.id === orderId) : null;
-        const req = this.orderRequired;
+        const req = await window.Utils.getRequiredFields('orders');
 
         // 고객목록 로드
         let customerOptions = [];
@@ -656,8 +651,8 @@ window.SalesManagementModule = {
                              </datalist>`;
                 } else if (f.key === 'purchasePathDetail') {
                     // 구매경로상세: purchasePath에 따라 동적으로 변경
-                    const onlineOptions = ['자사몰','신세계V','SSG','현대몰'];
-                    const offlineOptions = ['백화점(현대본점)','백화점(현대무역점)','백화점(현대킨텍스)','백화점(현대목동점)'];
+                    const onlineOptions = ['듀인피니스 공식몰','신세계V','SSG','더현대닷컴'];
+                    const offlineOptions = ['현대백화점 압구정본점','현대백화점 무역점','현대백화점 킨텍스점','현대백화점 목동점'];
                     const opts = (order?.purchasePath === '오프라인' ? offlineOptions : onlineOptions).map(opt =>
                         `<option value="${opt}" ${val === opt ? 'selected' : ''}>${opt}</option>`
                     ).join('');
@@ -838,9 +833,14 @@ window.SalesManagementModule = {
                         updatedAt: new Date()
                     };
 
-                    await window.firebaseDb
+                    const docRef = await window.firebaseDb
                         .collection('sales').doc('orders').collection('items')
                         .add(fullData);
+
+                    // 제조원가표 자동 입력 - 제품단가표의 나석정보 복사
+                    if (window.ManufacturingCostsModule) {
+                        await window.ManufacturingCostsModule.autoFillFromProductRates(docRef.id);
+                    }
                 }
                 w.remove();
                 this.loadOrders();
@@ -1050,8 +1050,8 @@ window.SalesManagementModule = {
             purchaseSelect.addEventListener('change', (e) => {
                 const detailSelect = wrapper.querySelector('[name="purchasePathDetail"]');
                 if (detailSelect) {
-                    const onlineOptions = ['자사몰','신세계V','SSG','현대몰'];
-                    const offlineOptions = ['백화점(현대본점)','백화점(현대무역점)','백화점(현대킨텍스)','백화점(현대목동점)'];
+                    const onlineOptions = ['듀인피니스 공식몰','신세계V','SSG','더현대닷컴'];
+                    const offlineOptions = ['현대백화점 압구정본점','현대백화점 무역점','현대백화점 킨텍스점','현대백화점 목동점'];
                     const options = e.target.value === '오프라인' ? offlineOptions : onlineOptions;
                     detailSelect.innerHTML = `<option value="">선택</option>` +
                         options.map(opt => `<option value="${opt}">${opt}</option>`).join('') +
@@ -1103,21 +1103,51 @@ window.SalesManagementModule = {
     updateOrderBulkDeleteBtn() {
         const table = document.querySelector('#ordersTable');
         const checkedCount = table?.querySelectorAll('tbody .row-checkbox:checked').length || 0;
-        let bulkDeleteBtn = document.getElementById('bulkDeleteOrderBtn');
+        const buttonGroup = document.querySelector('#ordersContent .button-group');
+
+        const mkBtn = (id, className, marginLeft = '8px') => {
+            let btn = document.getElementById(id);
+            if (!btn) {
+                btn = document.createElement('button');
+                btn.id = id;
+                btn.className = `btn ${className}`;
+                btn.style.marginLeft = marginLeft;
+                if (buttonGroup) buttonGroup.appendChild(btn);
+            }
+            return btn;
+        };
 
         if (checkedCount > 0) {
-            if (!bulkDeleteBtn) {
-                bulkDeleteBtn = document.createElement('button');
-                bulkDeleteBtn.id = 'bulkDeleteOrderBtn';
-                bulkDeleteBtn.className = 'btn btn-danger';
-                bulkDeleteBtn.style.marginLeft = '8px';
-                const buttonGroup = document.querySelector('#ordersContent .button-group');
-                if (buttonGroup) buttonGroup.appendChild(bulkDeleteBtn);
-            }
+            const printOrderBtn = mkBtn('printOrderBtn', 'btn-success');
+            printOrderBtn.textContent = `🖨️ 주문서 (${checkedCount})`;
+            printOrderBtn.onclick = () => this.printOrders();
+
+            const printValexBtn = mkBtn('printValexFormBtn', 'btn-success');
+            printValexBtn.textContent = `📦 발렉스 (${checkedCount})`;
+            printValexBtn.onclick = () => this.printValexForm();
+
+            const shippingDocBtn = mkBtn('shippingDocOrderBtn', 'btn-secondary');
+            shippingDocBtn.textContent = `📦 배송표 (${checkedCount})`;
+            shippingDocBtn.onclick = () => this.generateShippingDocument();
+
+            const warrantyCardBtn = mkBtn('warrantyCardBtn', 'btn-secondary');
+            warrantyCardBtn.textContent = `🎁 게런티 카드 (${checkedCount})`;
+            warrantyCardBtn.onclick = () => this.printWarrantyCards();
+
+            const invoiceBtn = mkBtn('invoiceBtn', 'btn-secondary');
+            invoiceBtn.textContent = `🧾 인보이스 (${checkedCount})`;
+            invoiceBtn.onclick = () => this.printInvoice();
+
+            const bulkDeleteBtn = mkBtn('bulkDeleteOrderBtn', 'btn-danger');
             bulkDeleteBtn.textContent = `🗑️ ${checkedCount}개 삭제`;
             bulkDeleteBtn.onclick = () => this.bulkDeleteOrders();
-        } else if (bulkDeleteBtn) {
-            bulkDeleteBtn.remove();
+        } else {
+            document.getElementById('printOrderBtn')?.remove();
+            document.getElementById('printValexFormBtn')?.remove();
+            document.getElementById('shippingDocOrderBtn')?.remove();
+            document.getElementById('warrantyCardBtn')?.remove();
+            document.getElementById('invoiceBtn')?.remove();
+            document.getElementById('bulkDeleteOrderBtn')?.remove();
         }
     },
 
@@ -1152,6 +1182,286 @@ window.SalesManagementModule = {
         this.allOrders = [];
         this.loadOrders();
         window.Utils.showNotification(`${checkedIds.length}개 주문이 삭제되었습니다.`, 'success');
+    },
+
+    /**
+     * 템플릿 선택 모달 (간단한 confirm 방식)
+     * @returns {Promise<string|null>} 선택된 templateId, 'builtin', 또는 null(취소)
+     */
+    _pickTemplate(templates) {
+        return new Promise(resolve => {
+            // 기존 모달 제거
+            document.getElementById('_templatePickerModal')?.remove();
+
+            const overlay = document.createElement('div');
+            overlay.id = '_templatePickerModal';
+            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;';
+
+            const box = document.createElement('div');
+            box.style.cssText = 'background:#fff;border-radius:8px;padding:24px;min-width:320px;max-width:480px;width:90%;';
+
+            const close = (val) => { overlay.remove(); resolve(val); };
+
+            box.innerHTML = `
+                <h3 style="margin:0 0 12px;font-size:1.1em;">출력 양식 선택</h3>
+                <p style="color:#6b7280;font-size:.85em;margin:0 0 16px;">사용할 Word 양식을 선택하거나 기본 양식을 사용하세요.</p>
+                <div id="_templateList" style="display:flex;flex-direction:column;gap:8px;"></div>
+                <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;">
+                    <button id="_templateBuiltin" class="btn btn-outline" style="font-size:.9em;">📋 기본 양식 사용</button>
+                    <button id="_templateCancel" class="btn btn-secondary" style="font-size:.9em;">취소</button>
+                </div>
+            `;
+
+            const list = box.querySelector('#_templateList');
+            templates.forEach(t => {
+                const btn = document.createElement('button');
+                btn.className = 'btn btn-primary';
+                btn.style.cssText = 'text-align:left;';
+                btn.innerHTML = `<strong>${t.name}</strong> <span style="font-weight:normal;color:#e0f2fe;font-size:.85em;">${t.purpose || ''}</span>`;
+                btn.onclick = () => close(t.id);
+                list.appendChild(btn);
+            });
+
+            box.querySelector('#_templateBuiltin').onclick = () => close('builtin');
+            box.querySelector('#_templateCancel').onclick = () => close(null);
+            overlay.addEventListener('click', e => { if (e.target === overlay) close(null); });
+
+            overlay.appendChild(box);
+            document.body.appendChild(overlay);
+        });
+    },
+
+    /**
+     * 업로드된 양식만 선택 (기본 양식 없음) - 인보이스 등에 사용
+     * @returns {Promise<string|null>} 선택된 templateId, 또는 null(취소)
+     */
+    _pickTemplateOnly(templates) {
+        return new Promise(resolve => {
+            document.getElementById('_templateOnlyPickerModal')?.remove();
+
+            const overlay = document.createElement('div');
+            overlay.id = '_templateOnlyPickerModal';
+            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;';
+
+            const box = document.createElement('div');
+            box.style.cssText = 'background:#fff;border-radius:8px;padding:24px;min-width:320px;max-width:480px;width:90%;';
+
+            const close = (val) => { overlay.remove(); resolve(val); };
+
+            box.innerHTML = `
+                <h3 style="margin:0 0 12px;font-size:1.1em;">인보이스 양식 선택</h3>
+                <div id="_templateOnlyList" style="display:flex;flex-direction:column;gap:8px;"></div>
+                <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;">
+                    <button id="_templateOnlyCancel" class="btn btn-secondary" style="font-size:.9em;">취소</button>
+                </div>
+            `;
+
+            const list = box.querySelector('#_templateOnlyList');
+            templates.forEach(t => {
+                const btn = document.createElement('button');
+                btn.className = 'btn btn-primary';
+                btn.style.cssText = 'text-align:left;';
+                btn.innerHTML = `<strong>${t.name}</strong>`;
+                btn.onclick = () => close(t.id);
+                list.appendChild(btn);
+            });
+
+            box.querySelector('#_templateOnlyCancel').onclick = () => close(null);
+            overlay.addEventListener('click', e => { if (e.target === overlay) close(null); });
+
+            overlay.appendChild(box);
+            document.body.appendChild(overlay);
+        });
+    },
+
+    _loadDocxLibrary() {
+        return new Promise((resolve, reject) => {
+            if (window.docx) return resolve(window.docx);
+            const script = document.createElement('script');
+            script.src = '/js/lib/docx.umd.js';
+            script.onload = () => window.docx ? resolve(window.docx) : reject(new Error('docx 로드 실패'));
+            script.onerror = () => reject(new Error('docx 스크립트 로드 실패'));
+            document.head.appendChild(script);
+        });
+    },
+
+    async generateShippingDocument() {
+        const table = document.querySelector('#ordersTable');
+        const checkedIds = Array.from(table.querySelectorAll('tbody .row-checkbox:checked'))
+            .map(cb => cb.dataset.id);
+        if (checkedIds.length === 0) {
+            window.Utils.showNotification('선택된 주문이 없습니다.', 'warning');
+            return;
+        }
+
+        const selectedOrders = this.allOrders.filter(o => checkedIds.includes(o.id));
+
+        // 등록된 Word 양식이 있으면 선택지를 제공
+        const templates = window.WordTemplateManager
+            ? await window.WordTemplateManager.getTemplateList().catch(() => [])
+            : [];
+
+        if (templates.length > 0) {
+            const chosen = await this._pickTemplate(templates);
+            if (chosen === null) return; // 취소
+            if (chosen !== 'builtin') {
+                // 선택한 템플릿으로 일괄 생성
+                await window.WordTemplateManager.generateBatchFromTemplate(chosen, selectedOrders);
+                return;
+            }
+        }
+
+        // 기본 내장 양식으로 생성
+        let D;
+        try {
+            D = await this._loadDocxLibrary();
+        } catch (e) {
+            window.Utils.showNotification('Word 라이브러리 로드에 실패했습니다: ' + e.message, 'error');
+            return;
+        }
+
+        const {
+            Document, Paragraph, TextRun, Table, TableRow, TableCell,
+            Packer, AlignmentType, BorderStyle, WidthType, ShadingType,
+            VerticalAlign, convertInchesToTwip,
+        } = D;
+
+        const fmt = n => (parseFloat(n) || 0).toLocaleString('ko-KR');
+
+        const border = (style = BorderStyle.SINGLE, size = 4, color = '999999') =>
+            ({ style, size, color });
+        const solidBorders = {
+            top: border(), bottom: border(), left: border(), right: border(),
+        };
+
+        const p = (text, opts = {}) => new Paragraph({
+            children: [new TextRun({ text: String(text ?? ''), size: opts.size ?? 20, bold: opts.bold, color: opts.color })],
+            alignment: opts.align || AlignmentType.LEFT,
+            spacing: { after: opts.spaceAfter ?? 60 },
+        });
+
+        const cell = (children, opts = {}) => new TableCell({
+            children: Array.isArray(children) ? children : [children],
+            borders: opts.borders ?? solidBorders,
+            shading: opts.shading,
+            columnSpan: opts.columnSpan,
+            rowSpan: opts.rowSpan,
+            verticalAlign: VerticalAlign.CENTER,
+            width: opts.width,
+            margins: { top: 60, bottom: 60, left: 120, right: 120 },
+        });
+
+        const shadeGray  = { type: ShadingType.SOLID, fill: 'F3F4F6' };
+        const shadeBlue  = { type: ShadingType.SOLID, fill: 'EFF6FF' };
+
+        // 각 주문을 하나의 배송표 섹션으로 생성
+        const sections = [];
+        for (let i = 0; i < selectedOrders.length; i++) {
+            const o = selectedOrders[i];
+            const isLast = i === selectedOrders.length - 1;
+
+            const titlePara = new Paragraph({
+                children: [new TextRun({ text: '배송표', bold: true, size: 40 })],
+                alignment: AlignmentType.CENTER,
+                spacing: { after: 200 },
+            });
+
+            const shippingTable = new Table({
+                width: { size: 100, type: WidthType.PERCENTAGE },
+                rows: [
+                    // 헤더
+                    new TableRow({
+                        children: [
+                            cell(p('항목', { bold: true }), { shading: shadeBlue, width: { size: 25, type: WidthType.PERCENTAGE } }),
+                            cell(p('내용', { bold: true }), { shading: shadeBlue, width: { size: 75, type: WidthType.PERCENTAGE } }),
+                        ],
+                    }),
+                    new TableRow({ children: [
+                        cell(p('주문번호', { bold: true }), { shading: shadeGray }),
+                        cell(p(o.orderNumber || '')),
+                    ]}),
+                    new TableRow({ children: [
+                        cell(p('상품명', { bold: true }), { shading: shadeGray }),
+                        cell(p(o.productName || '')),
+                    ]}),
+                    new TableRow({ children: [
+                        cell(p('옵션명', { bold: true }), { shading: shadeGray }),
+                        cell(p(o.optionName || '')),
+                    ]}),
+                    new TableRow({ children: [
+                        cell(p('수령인', { bold: true }), { shading: shadeGray }),
+                        cell(p(o.recipient || o.customerName || '')),
+                    ]}),
+                    new TableRow({ children: [
+                        cell(p('연락처', { bold: true }), { shading: shadeGray }),
+                        cell(p(o.phone || '')),
+                    ]}),
+                    new TableRow({ children: [
+                        cell(p('우편번호', { bold: true }), { shading: shadeGray }),
+                        cell(p(o.postalCode || '')),
+                    ]}),
+                    new TableRow({ children: [
+                        cell(p('주소', { bold: true }), { shading: shadeGray }),
+                        cell(p(o.address || '')),
+                    ]}),
+                    new TableRow({ children: [
+                        cell(p('주소상세', { bold: true }), { shading: shadeGray }),
+                        cell(p(o.addressDetail || '')),
+                    ]}),
+                    new TableRow({ children: [
+                        cell(p('주문금액', { bold: true }), { shading: shadeGray }),
+                        cell(p(`${fmt(o.orderAmount)} 원`)),
+                    ]}),
+                    new TableRow({ children: [
+                        cell(p('기타', { bold: true }), { shading: shadeGray }),
+                        cell(p(o.remark || '')),
+                    ]}),
+                ],
+            });
+
+            const children = [titlePara, shippingTable];
+            if (!isLast) {
+                children.push(new Paragraph({ children: [], pageBreakBefore: true }));
+            }
+
+            sections.push({ children, isLast });
+        }
+
+        // 페이지 나누기: 마지막 섹션 제외하고 각 섹션 뒤에 pageBreak 삽입
+        const allChildren = [];
+        sections.forEach(({ children, isLast }) => {
+            allChildren.push(...children);
+        });
+
+        const doc = new Document({
+            sections: [{
+                properties: {
+                    page: {
+                        margin: {
+                            top:    convertInchesToTwip(0.8),
+                            right:  convertInchesToTwip(0.8),
+                            bottom: convertInchesToTwip(0.8),
+                            left:   convertInchesToTwip(0.8),
+                        },
+                    },
+                },
+                children: allChildren,
+            }],
+        });
+
+        try {
+            const blob = await Packer.toBlob(doc);
+            const url  = URL.createObjectURL(blob);
+            const a    = document.createElement('a');
+            a.href     = url;
+            a.download = `배송표_${selectedOrders.length}건_${new Date().toLocaleDateString('ko-KR').replace(/\. /g, '-').replace('.', '')}.docx`;
+            a.click();
+            URL.revokeObjectURL(url);
+            window.Utils.showNotification('배송표가 다운로드되었습니다.', 'success');
+        } catch (err) {
+            console.error('[generateShippingDocument]', err);
+            window.Utils.showNotification('배송표 생성에 실패했습니다: ' + err.message, 'error');
+        }
     },
 
     // CSV - 매출표 (날짜 등 복잡한 타입 제외하고 text 기반으로 처리)
@@ -1367,10 +1677,10 @@ window.SalesManagementModule = {
     },
 
     printOrders() {
-        // SheetJS 라이브러리 확인
+        // SheetJS 라이브러리 로드 대기
         if (typeof XLSX === 'undefined') {
-            window.Utils.showNotification('라이브러리를 로드하는 중입니다. 잠시 후 다시 시도해주세요.', 'warning');
-            console.error('XLSX is not loaded');
+            window.Utils.showNotification('라이브러리를 로드하는 중입니다...', 'warning');
+            window.Utils.ensureXLSX(() => this.printOrders());
             return;
         }
 
@@ -1386,16 +1696,6 @@ window.SalesManagementModule = {
         // 선택된 주문 데이터 수집
         const selectedOrders = this.orders.filter(o => checkedIds.includes(o.id));
 
-        // 나석갯수 계산 함수
-        const getStoneQuantity = (order) => {
-            let totalQty = 0;
-            for (let i = 1; i <= 10; i++) {
-                const qty = order[`stoneQty${i}`];
-                if (qty) totalQty += parseInt(qty) || 0;
-            }
-            return totalQty || '';
-        };
-
         // 엑셀용 데이터 변환
         const excelData = selectedOrders.map(order => {
             const orderDate = order.orderDate?.toDate
@@ -1407,7 +1707,7 @@ window.SalesManagementModule = {
                 '고객명': order.customerName || '',
                 '제품명': order.productName || '',
                 '옵션명': order.optionName || '',
-                '나석갯수': getStoneQuantity(order),
+                '나석정보': order.stoneInfo || '',
                 '기타': order.remark || '',
                 '보증서': order.warranty || ''
             };
@@ -1424,7 +1724,7 @@ window.SalesManagementModule = {
                 { wch: 15 },  // 고객명
                 { wch: 15 },  // 제품명
                 { wch: 15 },  // 옵션명
-                { wch: 12 },  // 나석갯수
+                { wch: 20 },  // 나석정보
                 { wch: 20 },  // 기타
                 { wch: 15 }   // 보증서
             ];
@@ -1451,7 +1751,8 @@ window.SalesManagementModule = {
 
     printValexForm() {
         if (typeof XLSX === 'undefined') {
-            window.Utils.showNotification('라이브러리를 로드하는 중입니다. 잠시 후 다시 시도해주세요.', 'warning');
+            window.Utils.showNotification('라이브러리를 로드하는 중입니다...', 'warning');
+            window.Utils.ensureXLSX(() => this.printValexForm());
             return;
         }
 
@@ -1549,5 +1850,93 @@ window.SalesManagementModule = {
             console.error('Failed to generate Valex Excel file:', error);
             window.Utils.showNotification('발렉스 양식 출력에 실패했습니다.', 'error');
         }
+    },
+
+    async printWarrantyCards() {
+        const table = document.querySelector('#ordersTable');
+        const checkedIds = Array.from(table.querySelectorAll('tbody .row-checkbox:checked'))
+            .map(cb => cb.dataset.id);
+
+        if (checkedIds.length === 0) {
+            window.Utils.showNotification('선택된 주문이 없습니다.', 'warning');
+            return;
+        }
+
+        // 3×9 테이블 한 페이지 최대 27개 제한
+        if (checkedIds.length > 27) {
+            window.Utils.showNotification(
+                `게런티 카드는 한 파일에 최대 27개까지 출력 가능합니다. 선택된 주문: ${checkedIds.length}개`,
+                'warning'
+            );
+            return;
+        }
+
+        const selectedOrders = this.allOrders.filter(o => checkedIds.includes(o.id));
+
+        // 게런티 카드 양식 템플릿 조회
+        const allTemplates = window.WordTemplateManager
+            ? await window.WordTemplateManager.getTemplateList().catch(() => [])
+            : [];
+
+        const warrantyCardTemplates = allTemplates.filter(t => t.purpose === '게런티카드');
+
+        if (warrantyCardTemplates.length === 0) {
+            window.Utils.showNotification(
+                '등록된 게런티 카드 양식이 없습니다. 양식 관리 메뉴에서 게런티 카드 양식을 먼저 업로드하세요.',
+                'warning'
+            );
+            return;
+        }
+
+        let templateId;
+        if (warrantyCardTemplates.length === 1) {
+            templateId = warrantyCardTemplates[0].id;
+        } else {
+            templateId = await this._pickTemplate(warrantyCardTemplates);
+            if (templateId === null || templateId === 'builtin') return;
+        }
+
+        // 단일 파일로 게런티 카드 생성 ({{변수명-1}}~{{변수명-27}} 배치 치환)
+        await window.WordTemplateManager.generateWarrantyCardFromTemplate(templateId, selectedOrders);
+    },
+
+    /**
+     * 인보이스 출력 - 양식 관리에 업로드된 인보이스 양식만 사용 (기본 양식 없음)
+     */
+    async printInvoice() {
+        const table = document.querySelector('#ordersTable');
+        const checkedIds = Array.from(table.querySelectorAll('tbody .row-checkbox:checked'))
+            .map(cb => cb.dataset.id);
+
+        if (checkedIds.length === 0) {
+            window.Utils.showNotification('선택된 주문이 없습니다.', 'warning');
+            return;
+        }
+
+        const selectedOrders = this.allOrders.filter(o => checkedIds.includes(o.id));
+
+        const allTemplates = window.WordTemplateManager
+            ? await window.WordTemplateManager.getTemplateList().catch(() => [])
+            : [];
+
+        const invoiceTemplates = allTemplates.filter(t => t.purpose === '인보이스');
+
+        if (invoiceTemplates.length === 0) {
+            window.Utils.showNotification(
+                '등록된 인보이스 양식이 없습니다. 양식 관리 메뉴에서 인보이스 양식을 먼저 업로드하세요.',
+                'warning'
+            );
+            return;
+        }
+
+        let templateId;
+        if (invoiceTemplates.length === 1) {
+            templateId = invoiceTemplates[0].id;
+        } else {
+            templateId = await this._pickTemplateOnly(invoiceTemplates);
+            if (templateId === null) return;
+        }
+
+        await window.WordTemplateManager.generateBatchFromTemplate(templateId, selectedOrders);
     },
 };

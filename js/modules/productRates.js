@@ -228,128 +228,178 @@ window.ProductRatesModule = {
         });
     },
 
+    _formatCell(field, value) {
+        if (value == null || value === '') return '-';
+        if (field.type === 'number') {
+            const num = parseFloat(value);
+            if (isNaN(num)) return '-';
+            if (field.label.includes('%') || field.key.toLowerCase().includes('rate')) {
+                return Math.round(num) + '%';
+            }
+            return window.Utils.formatNumber(Math.round(num));
+        }
+        return value || '-';
+    },
+
     renderTable() {
-        const tbody = document.querySelector('#productRatesTable tbody');
+        const table = document.querySelector('#productRatesTable');
+        const tbody = table?.querySelector('tbody');
         if (!tbody) return;
 
+        const defaultDisplayFields = ['ownCode', 'productCode', 'productName', 'category', 'productCost', 'finalPrice', 'ownMallProfitRate'];
+        const displayKeys = window.Utils.getDisplayFields('productRates', defaultDisplayFields);
+        const fieldMap = {};
+        this.FIELDS.forEach(f => fieldMap[f.key] = f);
+        const displayFields = displayKeys.map(k => fieldMap[k]).filter(f => f && f.type !== 'custom');
+
+        // thead 동적 재구성
+        const thead = table.querySelector('thead');
+        if (thead) {
+            thead.innerHTML = `<tr>
+                <th style="text-align:center;width:40px;"><input type="checkbox" class="header-checkbox"></th>
+                ${displayFields.map(f => `<th data-column="${f.key}" style="cursor:pointer;user-select:none;">${f.label}${this.sortState?.column === f.key ? (this.sortState.direction === 'asc' ? ' ▲' : ' ▼') : ''}</th>`).join('')}
+                <th>관리</th>
+            </tr>`;
+        }
+
         const filtered = this._filteredProducts();
+        const colSpan = displayFields.length + 2;
 
         if (this.products.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="9" style="text-align:center">데이터가 없습니다.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="${colSpan}" style="text-align:center">데이터가 없습니다.</td></tr>`;
             return;
         }
         if (filtered.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#9ca3af;">검색 결과가 없습니다.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="${colSpan}" style="text-align:center;color:#9ca3af;">검색 결과가 없습니다.</td></tr>`;
             return;
         }
-        tbody.innerHTML = filtered.map((p, idx) => `
+
+        tbody.innerHTML = filtered.map(p => `
             <tr data-id="${p.id}">
                 <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${p.id}"></td>
-                <td>${p.ownCode || '-'}</td>
-                <td>${p.productCode || '-'}</td>
-                <td>${p.productName || '-'}</td>
-                <td>${p.category || '-'}</td>
-                <td>${window.Utils.formatNumber(Math.round(p.productCost || 0))}</td>
-                <td>${window.Utils.formatNumber(Math.round(p.finalPrice || 0))}</td>
-                <td>${p.ownMallProfitRate != null ? p.ownMallProfitRate.toFixed(1) + '%' : '-'}</td>
+                ${displayFields.map(f => `<td>${this._formatCell(f, p[f.key])}</td>`).join('')}
                 <td>
                     <button class="btn btn-sm btn-primary"
                         data-action="showForm" data-id="${p.id}">수정</button>
                 </td>
             </tr>`).join('');
 
-        // Event delegation for action buttons
-        const table = document.querySelector('#productRatesTable');
-        if (table) {
-            table.removeEventListener('click', this._tableHandler);
-            this._tableHandler = (e) => {
-                const btn = e.target.closest('[data-action]');
-                if (!btn) return;
-                const action = btn.dataset.action;
-                const id = btn.dataset.id;
-                if (typeof this[action] === 'function') {
-                    this[action](id);
-                }
-            };
-            table.addEventListener('click', this._tableHandler);
-
-            // 테이블 헤더 정렬 기능 추가
-            const theadRow = table.querySelector('thead tr');
-            if (theadRow) {
-                // 기존 클릭 이벤트 제거
-                const thElements = theadRow.querySelectorAll('th');
-                thElements.forEach(th => {
-                    if (th.dataset.column) {
-                        const newTh = th.cloneNode(true);
-                        th.parentNode.replaceChild(newTh, th);
-                    }
-                });
-
-                // 새로운 클릭 이벤트 추가
-                const columns = ['ownCode', 'productCode', 'productName', 'category', 'productCost', 'finalPrice', 'ownMallProfitRate'];
-                theadRow.querySelectorAll('th').forEach((th, idx) => {
-                    if (idx > 0 && idx < columns.length + 1) { // 체크박스 제외, 관리 제외
-                        const column = columns[idx - 1];
-                        // 기존 화살표 제거
-                        const label = th.textContent.trim().replace(/\s*[▲▼]\s*$/, '');
-                        const isSorted = this.sortState.column === column;
-                        const arrow = isSorted ? (this.sortState.direction === 'asc' ? ' ▲' : ' ▼') : '';
-                        th.textContent = label + arrow;
-                        th.setAttribute('data-column', column);
-                        th.style.cursor = 'pointer';
-                        th.style.userSelect = 'none';
-                        th.addEventListener('click', () => this.sortProducts(column));
-                    }
-                });
+        // 액션 버튼 이벤트
+        table.removeEventListener('click', this._tableHandler);
+        this._tableHandler = (e) => {
+            const btn = e.target.closest('[data-action]');
+            if (!btn) return;
+            const action = btn.dataset.action;
+            const id = btn.dataset.id;
+            if (typeof this[action] === 'function') {
+                this[action](id);
             }
+        };
+        table.addEventListener('click', this._tableHandler);
 
-            // 테이블 헤더에 체크박스 추가
-            const thead = table?.querySelector('thead tr');
-            if (thead && !thead.querySelector('.header-checkbox')) {
-                const checkboxTh = document.createElement('th');
-                checkboxTh.style.textAlign = 'center';
-                checkboxTh.innerHTML = '<input type="checkbox" class="header-checkbox">';
-                thead.insertBefore(checkboxTh, thead.firstChild);
+        // 헤더 정렬 이벤트
+        thead.querySelectorAll('th[data-column]').forEach(th => {
+            th.addEventListener('click', () => this.sortProducts(th.dataset.column));
+        });
 
-                // 헤더 체크박스 이벤트
-                const headerCheckbox = checkboxTh.querySelector('.header-checkbox');
-                headerCheckbox.addEventListener('change', (e) => {
-                    const allCheckboxes = table.querySelectorAll('tbody .row-checkbox');
-                    allCheckboxes.forEach(cb => cb.checked = e.target.checked);
-                    this.updateBulkDeleteBtn();
-                });
-            }
-
-            // 각 행의 체크박스 이벤트
-            const checkboxes = table.querySelectorAll('tbody .row-checkbox');
-            checkboxes.forEach(cb => {
-                cb.addEventListener('change', () => this.updateBulkDeleteBtn());
+        // 헤더 체크박스 이벤트
+        const headerCheckbox = thead.querySelector('.header-checkbox');
+        if (headerCheckbox) {
+            headerCheckbox.addEventListener('change', (e) => {
+                table.querySelectorAll('tbody .row-checkbox').forEach(cb => cb.checked = e.target.checked);
+                this.updateBulkDeleteBtn();
             });
         }
 
+        // 행 체크박스 이벤트
+        table.querySelectorAll('tbody .row-checkbox').forEach(cb => {
+            cb.addEventListener('change', () => this.updateBulkDeleteBtn());
+        });
+
         this.updateBulkDeleteBtn();
+        window.Utils.initResizableColumns(table);
     },
 
     updateBulkDeleteBtn() {
         const table = document.querySelector('#productRatesTable');
         const checkedCount = table?.querySelectorAll('tbody .row-checkbox:checked').length || 0;
+        const buttonGroup = document.querySelector('#productRatesContent .button-group');
         let bulkDeleteBtn = document.getElementById('bulkDeleteProductBtn');
+        let bulkDiscountBtn = document.getElementById('bulkDiscountProductBtn');
 
         if (checkedCount > 0) {
+            if (!bulkDiscountBtn) {
+                bulkDiscountBtn = document.createElement('button');
+                bulkDiscountBtn.id = 'bulkDiscountProductBtn';
+                bulkDiscountBtn.className = 'btn btn-secondary';
+                bulkDiscountBtn.style.marginLeft = '8px';
+                if (buttonGroup) buttonGroup.appendChild(bulkDiscountBtn);
+            }
+            bulkDiscountBtn.textContent = `할인율 일괄변경 (${checkedCount}개)`;
+            bulkDiscountBtn.onclick = () => this.bulkChangeDiscountRate();
+
             if (!bulkDeleteBtn) {
                 bulkDeleteBtn = document.createElement('button');
                 bulkDeleteBtn.id = 'bulkDeleteProductBtn';
                 bulkDeleteBtn.className = 'btn btn-danger';
                 bulkDeleteBtn.style.marginLeft = '8px';
-                const buttonGroup = document.querySelector('#productRatesContent .button-group') ||
-                                  document.querySelector('.button-group');
                 if (buttonGroup) buttonGroup.appendChild(bulkDeleteBtn);
             }
             bulkDeleteBtn.textContent = `🗑️ ${checkedCount}개 삭제`;
             bulkDeleteBtn.onclick = () => this.bulkDelete();
-        } else if (bulkDeleteBtn) {
-            bulkDeleteBtn.remove();
+        } else {
+            bulkDiscountBtn?.remove();
+            bulkDeleteBtn?.remove();
         }
+    },
+
+    async bulkChangeDiscountRate() {
+        const table = document.querySelector('#productRatesTable');
+        const checkedIds = Array.from(table.querySelectorAll('tbody .row-checkbox:checked'))
+            .map(cb => cb.dataset.id);
+        if (checkedIds.length === 0) return;
+
+        const body = `
+            <div class="form-group">
+                <label>새 할인율 (%)</label>
+                <input type="number" id="bulkDiscountRateInput" min="0" max="100" step="0.1"
+                    style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:4px;font-size:1rem;"
+                    placeholder="예: 10">
+            </div>
+            <p style="font-size:0.85rem;color:#6b7280;margin-top:8px;">
+                선택한 <strong>${checkedIds.length}개</strong> 항목의 할인율을 일괄 변경합니다.<br>
+                할인가 등 관련 계산값도 자동으로 재계산됩니다.
+            </p>`;
+
+        const wrapper = window.Utils.openModal(
+            '할인율 일괄변경',
+            body,
+            async (data, w) => {
+                const newRate = parseFloat(document.getElementById('bulkDiscountRateInput').value);
+                if (isNaN(newRate) || newRate < 0 || newRate > 100) {
+                    window.Utils.showNotification('0~100 사이의 유효한 할인율을 입력하세요.', 'error');
+                    return false;
+                }
+
+                const batch = window.firebaseDb.batch();
+                const collection = window.firebaseDb.collection('prices').doc('productRates').collection('items');
+
+                for (const id of checkedIds) {
+                    const product = this.products.find(p => p.id === id);
+                    if (!product) continue;
+                    const updated = { ...product, discountRate: newRate };
+                    const calculated = this.calculate(updated);
+                    batch.update(collection.doc(id), { ...calculated, updatedAt: new Date() });
+                }
+
+                await batch.commit();
+                w.remove();
+                this.load();
+                window.Utils.showNotification(`${checkedIds.length}개 항목의 할인율이 ${newRate}%로 변경되었습니다.`, 'success');
+            }
+        );
+
+        setTimeout(() => wrapper.querySelector('#bulkDiscountRateInput')?.focus(), 100);
     },
 
     async bulkDelete() {
@@ -417,13 +467,13 @@ window.ProductRatesModule = {
         const vatCost     = productCost * 1.1;
         const salesCost   = vatCost + n('shipping');
         const marginPrice = ownMargin > 0 ? salesCost / (1 - ownMargin / 100) : salesCost;
-        const expectedPrice = marginPrice + n('priceAdj');
-        const finalPrice  = (n('finalPrice') || Math.ceil(expectedPrice / 1000) * 1000) + n('sizeAddFee') + stoneWarrantyFee;
+        const expectedPrice = Math.round((marginPrice + n('priceAdj')) / 1000) * 1000;
+        const finalPrice  = (n('finalPrice') || expectedPrice) + n('sizeAddFee') + stoneWarrantyFee;
         const discountPrice = finalPrice * (1 - n('discountRate') / 100);
-        const ownMallProfit = discountPrice * (1 - ownMallFee / 100) - vatCost;
+        const ownMallProfit = discountPrice * (1 - ownMallFee / 100) - salesCost;
         const ownMallProfitRate = discountPrice > 0 ? (ownMallProfit / discountPrice) * 100 : 0;
         const deptPrice   = finalPrice * (1 - deptFee / 100);
-        const deptProfitRate = deptPrice > 0 ? ((deptPrice - vatCost) / deptPrice) * 100 : 0;
+        const deptProfitRate = deptPrice > 0 ? ((deptPrice - salesCost) / deptPrice) * 100 : 0;
 
         // 18K 계산
         const goldWeight18k = n('goldWeight14k') * weight18kRate;
@@ -432,12 +482,13 @@ window.ProductRatesModule = {
         const vatCost18k    = productCost18k * 1.1;
         const salesCost18k  = vatCost18k + n('shipping');
         const marginPrice18k= ownMargin > 0 ? salesCost18k / (1 - ownMargin / 100) : salesCost18k;
-        const finalPrice18k = (n('finalPrice18k') || Math.ceil(marginPrice18k / 1000) * 1000) + n('sizeAddFee') + stoneWarrantyFee;
+        const expectedPrice18k = Math.round(marginPrice18k / 1000) * 1000;
+        const finalPrice18k = (n('finalPrice18k') || expectedPrice18k) + n('sizeAddFee') + stoneWarrantyFee;
         const discountPrice18k = finalPrice18k * (1 - n('discountRate') / 100);
-        const ownMallProfit18k = discountPrice18k * (1 - ownMallFee / 100) - vatCost18k;
+        const ownMallProfit18k = discountPrice18k * (1 - ownMallFee / 100) - salesCost18k;
         const ownMallProfitRate18k = discountPrice18k > 0 ? (ownMallProfit18k / discountPrice18k) * 100 : 0;
         const deptPrice18k  = finalPrice18k * (1 - deptFee / 100);
-        const deptProfitRate18k = deptPrice18k > 0 ? ((deptPrice18k - vatCost18k) / deptPrice18k) * 100 : 0;
+        const deptProfitRate18k = deptPrice18k > 0 ? ((deptPrice18k - salesCost18k) / deptPrice18k) * 100 : 0;
 
         return { ...data, goldValue, productCost, vatCost, salesCost, marginPrice, expectedPrice,
             stoneCost, stoneWarrantyFee,
@@ -446,7 +497,8 @@ window.ProductRatesModule = {
             ownMallProfit18k, ownMallProfitRate18k, deptPrice18k, deptProfitRate18k };
     },
 
-    showForm(productId = null) {
+    async showForm(productId = null) {
+        const required = await window.Utils.getRequiredFields('productRates');
         const product = productId ? this.products.find(p => p.id === productId) : null;
         const stones = product?.stones || [];
 
@@ -460,7 +512,7 @@ window.ProductRatesModule = {
                         const stoneOptions = (this.diamondRates || []).map(d => d.diamondType).join(',');
                         return `
                             <div class="form-group" style="grid-column: 1 / -1;">
-                                <label>${f.label}</label>
+                                <label>${f.label}${required.includes(f.key) ? ' <span style="color:red">*</span>' : ''}</label>
                                 <div id="stonesContainer" style="border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px;">
                                     ${stoneRows.map((stone, idx) => `
                                         <div class="stone-row" data-index="${idx}" style="display: flex; gap: 8px; margin-bottom: 8px; align-items: center;">
@@ -482,22 +534,24 @@ window.ProductRatesModule = {
                             </div>`;
                     }
                     const val = product?.[f.key] ?? '';
+                    const isRequired = !f.calc && required.includes(f.key);
                     let input;
                     if (f.type === 'select') {
                         const opts = (f.options || []).map(o =>
                             `<option value="${o}" ${val === o ? 'selected' : ''}>${o}</option>`
                         ).join('');
-                        input = `<select name="${f.key}"><option value="">선택</option>${opts}</select>`;
+                        input = `<select name="${f.key}" ${isRequired ? 'required' : ''}><option value="">선택</option>${opts}</select>`;
                     } else if (f.type !== 'custom') {
-                        input = `<input type="${f.type}" name="${f.key}" value="${val !== '' ? val : ''}"
+                        input = `<input type="${f.type}" name="${f.key}" value="${f.calc && val !== '' ? Math.round(val) : val !== '' ? val : ''}"
                             step="0.01" class="${f.calc ? 'calc-field' : ''}"
-                            ${f.calc ? 'readonly style="background:#f3f4f6;"' : ''}>`;
+                            ${f.calc ? 'readonly style="background:#f3f4f6;"' : ''}
+                            ${isRequired ? 'required' : ''}>`;
                     } else {
                         return '';
                     }
                     return `
                         <div class="form-group">
-                            <label>${f.label}${f.calc ? ' <span style="color:#9ca3af;font-size:0.75rem">(자동)</span>' : ''}</label>
+                            <label>${f.label}${f.calc ? ' <span style="color:#9ca3af;font-size:0.75rem">(자동)</span>' : ''}${isRequired ? ' <span style="color:red">*</span>' : ''}</label>
                             ${input}
                         </div>`;
                 }).join('')}
@@ -836,9 +890,7 @@ window.ProductRatesModule = {
             this.FIELDS.filter(f => f.calc).forEach(f => {
                 const el = wrapper.querySelector(`[name="${f.key}"]`);
                 if (!el) return;
-                el.value = RATE_KEYS.has(f.key)
-                    ? parseFloat(calc[f.key] || 0).toFixed(1)
-                    : Math.round(calc[f.key] || 0);
+                el.value = Math.round(calc[f.key] || 0);
             });
         };
 
@@ -950,37 +1002,46 @@ window.ProductRatesModule = {
             { key: 'stoneQty10', label: '나석갯수10' }
         ];
 
-        window.Utils.openCsvUploadModal(fieldsForCsv, async (rows) => {
-            const batch = window.firebaseDb.batch();
-            rows.forEach(r => {
-                // stoneType1~10과 stoneQty1~10을 stones 배열로 변환
-                const stones = [];
-                for (let i = 1; i <= 10; i++) {
-                    const type = r[`stoneType${i}`];
-                    const qty = r[`stoneQty${i}`];
-                    if (type && qty) {
-                        stones.push({
-                            type: type,
-                            qty: parseFloat(qty) || 0
-                        });
+        window.Utils.openCsvUploadModal(fieldsForCsv, async (rows, mode) => {
+            const col = window.firebaseDb.collection('prices').doc('productRates').collection('items');
+
+            // 교체 모드: 기존 데이터 전체 삭제
+            if (mode === 'replace') {
+                const existing = await col.get();
+                const delBatch = window.firebaseDb.batch();
+                existing.docs.forEach(d => delBatch.delete(d.ref));
+                await delBatch.commit();
+            }
+
+            // 새 데이터 추가 (500개 단위 batch)
+            const BATCH_LIMIT = 500;
+            for (let start = 0; start < rows.length; start += BATCH_LIMIT) {
+                const chunk = rows.slice(start, start + BATCH_LIMIT);
+                const batch = window.firebaseDb.batch();
+                chunk.forEach(r => {
+                    // stoneType1~10과 stoneQty1~10을 stones 배열로 변환
+                    const stones = [];
+                    for (let i = 1; i <= 10; i++) {
+                        const type = r[`stoneType${i}`];
+                        const qty = r[`stoneQty${i}`];
+                        if (type && qty) stones.push({ type, qty: parseFloat(qty) || 0 });
                     }
-                }
-                r.stones = stones;
+                    r.stones = stones;
+                    for (let i = 1; i <= 10; i++) {
+                        delete r[`stoneType${i}`];
+                        delete r[`stoneQty${i}`];
+                    }
+                    const calculated = this.calculate(r);
+                    const ref = col.doc();
+                    batch.set(ref, { ...calculated, createdAt: new Date(), updatedAt: new Date() });
+                });
+                await batch.commit();
+            }
 
-                // 개별 필드 제거
-                for (let i = 1; i <= 10; i++) {
-                    delete r[`stoneType${i}`];
-                    delete r[`stoneQty${i}`];
-                }
-
-                const calculated = this.calculate(r);
-                const ref = window.firebaseDb.collection('prices').doc('productRates').collection('items').doc();
-                batch.set(ref, { ...calculated, createdAt: new Date(), updatedAt: new Date() });
-            });
-            await batch.commit();
-            window.Utils.showNotification(`${rows.length}개 항목이 저장되었습니다.`, 'success');
+            const modeLabel = mode === 'replace' ? '교체' : '추가';
+            window.Utils.showNotification(`${rows.length}개 항목이 ${modeLabel}되었습니다.`, 'success');
             this.load();
-        });
+        }, { importModeSelector: true });
     },
     openRequiredSettings() { window.Utils.openRequiredFieldsModal('productRates', this.FIELDS.filter(f => !f.calc)); },
 };
