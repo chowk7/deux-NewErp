@@ -216,6 +216,8 @@ window.NewProductPricingModule = {
         });
 
         this._updateBulkDeleteBtn();
+        const table = document.getElementById('newProductPricingTable');
+        if (table) window.Utils.initResizableColumns(table);
     },
 
     _updateBulkDeleteBtn() {

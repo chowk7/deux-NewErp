@@ -401,6 +401,7 @@ window.ManufacturingCostsModule = {
                 });
             });
 
+            window.Utils.initResizableColumns(mfgTable);
         } catch (error) {
             console.error('[ManufacturingCosts] renderTable 오류:', error);
         }
