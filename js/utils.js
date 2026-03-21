@@ -715,6 +715,15 @@ window.Utils = {
                             <button type="button" class="modal-close-btn" aria-label="닫기">✕</button>
                         </div>
                         <div style="padding:1.5rem; display:flex; flex-direction:column; gap:0.75rem;">
+                            ${(orderData.orderDate || orderData.customerName || orderData.productName || orderData.optionName) ? `
+                            <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:0.5rem; padding:0.625rem 0.875rem; font-size:0.875rem; color:#0369a1; line-height:1.5;">
+                                ${[
+                                    orderData.orderDate ? new Date(orderData.orderDate).toLocaleDateString('ko-KR') : '',
+                                    orderData.customerName || '',
+                                    orderData.productName  || '',
+                                    orderData.optionName   || ''
+                                ].filter(Boolean).join(', ')}
+                            </div>` : ''}
                             <div>
                                 <label style="display:block; font-weight:500; margin-bottom:0.25rem;">구매경로</label>
                                 <select id="addl-purchasePath" style="width:100%; padding:0.5rem; border:1px solid #d1d5db; border-radius:0.375rem;">
