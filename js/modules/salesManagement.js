@@ -1823,6 +1823,15 @@ window.SalesManagementModule = {
             return;
         }
 
+        // 3×9 테이블 한 페이지 최대 27개 제한
+        if (checkedIds.length > 27) {
+            window.Utils.showNotification(
+                `게런티 카드는 한 파일에 최대 27개까지 출력 가능합니다. 선택된 주문: ${checkedIds.length}개`,
+                'warning'
+            );
+            return;
+        }
+
         const selectedOrders = this.allOrders.filter(o => checkedIds.includes(o.id));
 
         // 게런티 카드 양식 템플릿 조회
@@ -1830,7 +1839,6 @@ window.SalesManagementModule = {
             ? await window.WordTemplateManager.getTemplateList().catch(() => [])
             : [];
 
-        // 게런티 카드 양식만 필터링
         const warrantyCardTemplates = allTemplates.filter(t => t.purpose === '게런티카드');
 
         if (warrantyCardTemplates.length === 0) {
@@ -1841,24 +1849,15 @@ window.SalesManagementModule = {
             return;
         }
 
-        // 템플릿 선택 (단일 or 다중)
         let templateId;
         if (warrantyCardTemplates.length === 1) {
             templateId = warrantyCardTemplates[0].id;
         } else {
-            // 다중 선택인 경우 선택 대화상자
             templateId = await this._pickTemplate(warrantyCardTemplates);
-            if (templateId === null || templateId === 'builtin') {
-                return; // 취소
-            }
+            if (templateId === null || templateId === 'builtin') return;
         }
 
-        // Word 템플릿으로 게런티 카드 일괄 생성
-        try {
-            await window.WordTemplateManager.generateBatchFromTemplate(templateId, selectedOrders);
-        } catch (error) {
-            console.error('게런티 카드 생성 오류:', error);
-            window.Utils.showNotification('게런티 카드 생성에 실패했습니다: ' + error.message, 'error');
-        }
+        // 단일 파일로 게런티 카드 생성 ({{변수명-1}}~{{변수명-27}} 배치 치환)
+        await window.WordTemplateManager.generateWarrantyCardFromTemplate(templateId, selectedOrders);
     },
 };

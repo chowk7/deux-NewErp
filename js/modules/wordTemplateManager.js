@@ -379,6 +379,65 @@ window.WordTemplateManager = {
         };
     },
 
+    /**
+     * 여러 주문을 슬롯 번호 붙인 배치 변수 맵으로 변환
+     * 슬롯 순서: 왼쪽→오른쪽→아래 (3열 기준, 1~27)
+     * 빈 슬롯은 모든 키를 빈 문자열로 채움
+     */
+    _buildBatchVariables(orders) {
+        const KEYS = ['주문번호','고객명','이메일','수령인','연락처','우편번호','주소','주소상세',
+                      '상품명','옵션명','수량','주문금액','최종주문금액','매출금액',
+                      '주문일','기타','색상','제품중량','구매월','구매경로상세','보증서'];
+        const result = {};
+        for (let i = 1; i <= 27; i++) {
+            const order = orders[i - 1];
+            const vars = order ? this._buildVariables(order) : {};
+            for (const key of KEYS) {
+                result[`${key}-${i}`] = vars[key] ?? '';
+            }
+        }
+        return result;
+    },
+
+    /**
+     * 게런티 카드 전용 - 최대 27개 주문을 단일 파일로 출력
+     * {{변수명-1}} ~ {{변수명-27}} 형식의 배치 변수를 한 번에 치환
+     */
+    async generateWarrantyCardFromTemplate(docId, orders) {
+        if (!window.PizZip) {
+            window.Utils.showNotification('PizZip 라이브러리가 로드되지 않았습니다.', 'error');
+            return;
+        }
+        try {
+            const templateDoc = await window.firebaseDb.collection(this.COLLECTION).doc(docId).get();
+            if (!templateDoc.exists) throw new Error('템플릿을 찾을 수 없습니다.');
+            const { storagePath, fileName } = templateDoc.data();
+
+            const token = await window.firebaseAuth.currentUser.getIdToken();
+            const resp = await fetch(`/api/file-content?path=${encodeURIComponent(storagePath)}`, {
+                headers: { 'Authorization': `Bearer ${token}` },
+            });
+            if (!resp.ok) throw new Error('템플릿 파일 다운로드 실패');
+            const arrayBuffer = await resp.arrayBuffer();
+
+            const batchVariables = this._buildBatchVariables(orders);
+            const blob = this._renderTemplate(arrayBuffer, batchVariables);
+
+            const dateStr = new Date().toLocaleDateString('ko-KR').replace(/\. /g, '-').replace('.', '');
+            const outName = `게런티카드_${orders.length}건_${dateStr}.docx`;
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = outName;
+            a.click();
+            URL.revokeObjectURL(a.href);
+
+            window.Utils.showNotification(`게런티 카드 ${orders.length}건 생성 완료`, 'success');
+        } catch (err) {
+            console.error('게런티 카드 생성 오류:', err);
+            window.Utils.showNotification('게런티 카드 생성 실패: ' + (err.message || err), 'error');
+        }
+    },
+
     /** 등록된 모든 템플릿 목록 반환 (salesManagement 등에서 사용) */
     async getTemplateList() {
         const snap = await window.firebaseDb
