@@ -112,6 +112,7 @@ class DiamonJewelryApp {
             'profit-loss': 'profitLossContent',
             'gold-inventory': 'goldInventoryContent',
             'new-product-pricing': 'newProductPricingContent',
+            'promotion': 'promotionContent',
             'notes': 'notesContent',
             'images': 'imagesContent'
         };
@@ -145,6 +146,8 @@ class DiamonJewelryApp {
                         await window.GoldInventoryModule.load();
                     } else if (window.NewProductPricingModule && menuId === 'new-product-pricing') {
                         await window.NewProductPricingModule.load();
+                    } else if (window.PromotionModule && menuId === 'promotion') {
+                        await window.PromotionModule.load();
                     } else if (menuId === 'notes') {
                         notes.loadNotes().then(() => notes.renderNotes());
                     }
@@ -243,6 +246,7 @@ class DiamonJewelryApp {
         if (window.ProfitLossModule) window.ProfitLossModule.init();
         if (window.GoldInventoryModule) window.GoldInventoryModule.init();
         if (window.NewProductPricingModule) window.NewProductPricingModule.init();
+        if (window.PromotionModule) window.PromotionModule.init();
         if (window.notes) window.notes.init();
     }
 
