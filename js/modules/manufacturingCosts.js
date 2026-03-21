@@ -652,8 +652,11 @@ window.ManufacturingCostsModule = {
             // 금시세는 금재고의 최신 평단가로 자동 반영 (수정 가능)
             let val = cost?.[f.key] ?? '';
             if (f.key === 'goldMarketPrice') {
-                const latestAvg = window.GoldInventoryModule?.getLatestAvgPrice?.();
-                if (latestAvg) val = Math.round(latestAvg);
+                // 저장된 값이 없을 때만 최신 평단가 사용
+                if (!val) {
+                    const latestAvg = window.GoldInventoryModule?.getLatestAvgPrice?.();
+                    if (latestAvg) val = Math.round(latestAvg);
+                }
             }
             // 주문번호(orderId)와 매출금액(salesAmount)은 수정 불가
             const isReadOnly = f.key === 'orderId' || f.key === 'salesAmount' || f.calc;
