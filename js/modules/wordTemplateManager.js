@@ -6,7 +6,8 @@
  *
  * 템플릿 변수 문법: {{변수명}}
  * 지원 변수: 주문번호, 고객명, 수령인, 연락처, 주소, 주소상세, 우편번호,
- *            상품명, 옵션명, 수량, 주문금액, 주문일, 기타
+ *            상품명, 옵션명, 수량, 주문금액, 주문일, 기타,
+ *            색상, 제품중량, 구매월, 구매경로상세, 보증서
  */
 window.WordTemplateManager = {
     COLLECTION: 'wordTemplates',
@@ -37,45 +38,92 @@ window.WordTemplateManager = {
         const name = prompt('이 양식의 이름을 입력하세요 (예: 배송표, 주문확인서):', file.name.replace('.docx', ''));
         if (!name) return;
 
-        const purpose = prompt('용도를 입력하세요 (예: 배송표 출력, 주문확인서 출력):', '배송표 출력');
+        // 용도 선택 모달
+        return new Promise((resolve) => {
+            const modal = document.createElement('div');
+            modal.setAttribute('data-modal', '');
+            modal.innerHTML = `
+                <div class="modal-overlay">
+                    <div class="modal-content" style="max-width:400px;">
+                        <div class="modal-header">
+                            <h3>양식 용도 선택</h3>
+                            <button type="button" class="modal-close-btn" aria-label="닫기">✕</button>
+                        </div>
+                        <div style="padding:1.5rem;">
+                            <label style="display:block; font-weight:500; margin-bottom:0.5rem;">용도를 선택하세요:</label>
+                            <select id="purposeSelect" style="width:100%; padding:0.5rem; border:1px solid #d1d5db; border-radius:0.375rem; margin-bottom:1.5rem;">
+                                <option value="">선택하세요</option>
+                                <option value="인보이스">인보이스</option>
+                                <option value="게런티카드">게런티 카드</option>
+                            </select>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" id="purposeConfirm" class="btn btn-primary">확인</button>
+                            <button type="button" id="purposeCancel" class="btn btn-secondary">취소</button>
+                        </div>
+                    </div>
+                </div>
+            `;
 
-        try {
-            window.Utils.showNotification('양식 업로드 중...', 'info', 30000);
+            document.body.appendChild(modal);
 
-            // 서버 /api/upload 엔드포인트 사용 (GCS 서버사이드 업로드)
-            const token = await window.firebaseAuth.currentUser.getIdToken();
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('folder', this.STORAGE_FOLDER);
+            const selectEl = modal.querySelector('#purposeSelect');
+            const confirmBtn = modal.querySelector('#purposeConfirm');
+            const cancelBtn = modal.querySelector('#purposeCancel');
+            const closeBtn = modal.querySelector('.modal-close-btn');
 
-            const uploadRes = await fetch('/api/upload', {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
-                body: formData,
-            });
+            const proceed = async (purpose) => {
+                modal.remove();
+                if (!purpose) {
+                    resolve();
+                    return;
+                }
 
-            if (!uploadRes.ok) {
-                const err = await uploadRes.json();
-                throw new Error(err.error || '업로드 실패');
-            }
+                try {
+                    window.Utils.showNotification('양식 업로드 중...', 'info', 30000);
 
-            const { path: storagePath } = await uploadRes.json();
+                    // 서버 /api/upload 엔드포인트 사용 (GCS 서버사이드 업로드)
+                    const token = await window.firebaseAuth.currentUser.getIdToken();
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    formData.append('folder', this.STORAGE_FOLDER);
 
-            // Firestore에 메타데이터 저장
-            await window.firebaseDb.collection(this.COLLECTION).add({
-                name,
-                purpose: purpose || '',
-                storagePath,
-                fileName: file.name,
-                uploadedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            });
+                    const uploadRes = await fetch('/api/upload', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` },
+                        body: formData,
+                    });
 
-            window.Utils.showNotification(`"${name}" 양식이 업로드되었습니다.`, 'success');
-            await this.loadTemplates();
-        } catch (err) {
-            console.error('템플릿 업로드 오류:', err);
-            window.Utils.showNotification('업로드 실패: ' + (err.message || err), 'error');
-        }
+                    if (!uploadRes.ok) {
+                        const err = await uploadRes.json();
+                        throw new Error(err.error || '업로드 실패');
+                    }
+
+                    const { path: storagePath } = await uploadRes.json();
+
+                    // Firestore에 메타데이터 저장
+                    await window.firebaseDb.collection(this.COLLECTION).add({
+                        name,
+                        purpose: purpose || '',
+                        storagePath,
+                        fileName: file.name,
+                        uploadedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    });
+
+                    window.Utils.showNotification(`"${name}" 양식이 업로드되었습니다.`, 'success');
+                    await this.loadTemplates();
+                    resolve();
+                } catch (err) {
+                    console.error('템플릿 업로드 오류:', err);
+                    window.Utils.showNotification('업로드 실패: ' + (err.message || err), 'error');
+                    resolve();
+                }
+            };
+
+            confirmBtn.addEventListener('click', () => proceed(selectEl.value));
+            cancelBtn.addEventListener('click', () => { modal.remove(); resolve(); });
+            closeBtn.addEventListener('click', () => { modal.remove(); resolve(); });
+        });
     },
 
     async loadTemplates() {
@@ -288,6 +336,23 @@ window.WordTemplateManager = {
             ? Number(v).toLocaleString('ko-KR') + '원'
             : '';
         const orderAmountStr = amountFmt(order.orderAmount);
+
+        // 구매월 (주문일에서 연도.월만 추출: 예: 2026. 1)
+        let purchaseMonth = '';
+        if (order.orderDate) {
+            const date = order.orderDate && typeof order.orderDate.toDate === 'function'
+                ? order.orderDate.toDate()
+                : new Date(order.orderDate);
+            if (!isNaN(date)) {
+                const year = date.getFullYear();
+                const month = date.getMonth() + 1;
+                purchaseMonth = `${year}. ${month}`;
+            }
+        }
+
+        // 보증서 (없으면 공백)
+        const warranty = order.warranty && order.warranty !== '없음' ? order.warranty : '';
+
         return {
             주문번호: order.orderNumber || order.주문번호 || '',
             고객명: order.customerName || order.고객명 || '',
@@ -305,6 +370,12 @@ window.WordTemplateManager = {
             매출금액: amountFmt(order.salesAmount),
             주문일: this._formatDate(order.orderDate || order.주문일),
             기타: order.remark || order.memo || order.기타 || '',
+            // 게런티 카드용 새 변수
+            색상: order.color || order.색상 || '',
+            제품중량: String(order.productWeight || order.제품중량 || ''),
+            구매월: purchaseMonth,
+            구매경로상세: order.purchasePathDetail || order.구매경로상세 || '',
+            보증서: warranty,
         };
     },
 

@@ -1129,6 +1129,10 @@ window.SalesManagementModule = {
             shippingDocBtn.textContent = `📦 배송표 (${checkedCount})`;
             shippingDocBtn.onclick = () => this.generateShippingDocument();
 
+            const warrantyCardBtn = mkBtn('warrantyCardBtn', 'btn-secondary');
+            warrantyCardBtn.textContent = `🎁 게런티 카드 (${checkedCount})`;
+            warrantyCardBtn.onclick = () => this.printWarrantyCards();
+
             const bulkDeleteBtn = mkBtn('bulkDeleteOrderBtn', 'btn-danger');
             bulkDeleteBtn.textContent = `🗑️ ${checkedCount}개 삭제`;
             bulkDeleteBtn.onclick = () => this.bulkDeleteOrders();
@@ -1136,6 +1140,7 @@ window.SalesManagementModule = {
             document.getElementById('printOrderBtn')?.remove();
             document.getElementById('printValexFormBtn')?.remove();
             document.getElementById('shippingDocOrderBtn')?.remove();
+            document.getElementById('warrantyCardBtn')?.remove();
             document.getElementById('bulkDeleteOrderBtn')?.remove();
         }
     },
@@ -1805,6 +1810,55 @@ window.SalesManagementModule = {
         } catch (error) {
             console.error('Failed to generate Valex Excel file:', error);
             window.Utils.showNotification('발렉스 양식 출력에 실패했습니다.', 'error');
+        }
+    },
+
+    async printWarrantyCards() {
+        const table = document.querySelector('#ordersTable');
+        const checkedIds = Array.from(table.querySelectorAll('tbody .row-checkbox:checked'))
+            .map(cb => cb.dataset.id);
+
+        if (checkedIds.length === 0) {
+            window.Utils.showNotification('선택된 주문이 없습니다.', 'warning');
+            return;
+        }
+
+        const selectedOrders = this.allOrders.filter(o => checkedIds.includes(o.id));
+
+        // 게런티 카드 양식 템플릿 조회
+        const allTemplates = window.WordTemplateManager
+            ? await window.WordTemplateManager.getTemplateList().catch(() => [])
+            : [];
+
+        // 게런티 카드 양식만 필터링
+        const warrantyCardTemplates = allTemplates.filter(t => t.purpose === '게런티카드');
+
+        if (warrantyCardTemplates.length === 0) {
+            window.Utils.showNotification(
+                '등록된 게런티 카드 양식이 없습니다. 양식 관리 메뉴에서 게런티 카드 양식을 먼저 업로드하세요.',
+                'warning'
+            );
+            return;
+        }
+
+        // 템플릿 선택 (단일 or 다중)
+        let templateId;
+        if (warrantyCardTemplates.length === 1) {
+            templateId = warrantyCardTemplates[0].id;
+        } else {
+            // 다중 선택인 경우 선택 대화상자
+            templateId = await this._pickTemplate(warrantyCardTemplates);
+            if (templateId === null || templateId === 'builtin') {
+                return; // 취소
+            }
+        }
+
+        // Word 템플릿으로 게런티 카드 일괄 생성
+        try {
+            await window.WordTemplateManager.generateBatchFromTemplate(templateId, selectedOrders);
+        } catch (error) {
+            console.error('게런티 카드 생성 오류:', error);
+            window.Utils.showNotification('게런티 카드 생성에 실패했습니다: ' + error.message, 'error');
         }
     },
 };
