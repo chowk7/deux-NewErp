@@ -192,7 +192,7 @@ window.NewProductPricingModule = {
                 <td>${p.category || '-'}</td>
                 <td>${window.Utils.formatNumber(Math.round(p.productCost || 0))}</td>
                 <td>${window.Utils.formatNumber(Math.round(p.finalPrice || 0))}</td>
-                <td>${p.ownMallProfitRate != null ? p.ownMallProfitRate.toFixed(1) + '%' : '-'}</td>
+                <td>${p.ownMallProfitRate != null ? Math.round(p.ownMallProfitRate) + '%' : '-'}</td>
                 <td>
                     <button class="btn btn-sm btn-primary" data-action="editItem" data-id="${p.id}">수정</button>
                 </td>
@@ -601,9 +601,7 @@ window.NewProductPricingModule = {
             this.FIELDS.filter(f => f.calc).forEach(f => {
                 const el = wrapper.querySelector(`[name="${f.key}"]`);
                 if (!el) return;
-                el.value = RATE_KEYS.has(f.key)
-                    ? parseFloat(calc[f.key] || 0).toFixed(1)
-                    : Math.round(calc[f.key] || 0);
+                el.value = Math.round(calc[f.key] || 0);
             });
         };
 

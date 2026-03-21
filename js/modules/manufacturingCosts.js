@@ -303,7 +303,7 @@ window.ManufacturingCostsModule = {
                     if (key === 'orderDate' && val) {
                         val = val.toDate ? new Date(val.toDate()).toLocaleDateString('ko-KR') : '-';
                     } else if (key === 'salesProfitRate' && val !== undefined && val !== null && val !== '') {
-                        val = val.toFixed(1) + '%';
+                        val = Math.round(val) + '%';
                     } else if (field?.calc && field?.type === 'number' && val !== undefined && val !== null && val !== '') {
                         val = window.Utils.formatNumber(Math.round(val));
                     } else if (field?.type === 'number' && val !== undefined && val !== null && val !== '') {
@@ -761,9 +761,7 @@ window.ManufacturingCostsModule = {
             const calc = this.calculate(data);
             ['goldValue','stoneCostRef','manufacturingCost','salesProfit','salesProfitRate'].forEach(k => {
                 const el = wrapper.querySelector(`[name="${k}"]`);
-                if (el) el.value = k === 'salesProfitRate'
-                    ? parseFloat(calc[k] || 0).toFixed(1)
-                    : Math.round(calc[k] || 0);
+                if (el) el.value = Math.round(calc[k] || 0);
             });
         };
         wrapper.querySelector('#modalForm').addEventListener('input', updateCalculatedFields);

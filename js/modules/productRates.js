@@ -234,7 +234,7 @@ window.ProductRatesModule = {
             const num = parseFloat(value);
             if (isNaN(num)) return '-';
             if (field.label.includes('%') || field.key.toLowerCase().includes('rate')) {
-                return num.toFixed(1) + '%';
+                return Math.round(num) + '%';
             }
             return window.Utils.formatNumber(Math.round(num));
         }
@@ -828,9 +828,7 @@ window.ProductRatesModule = {
             this.FIELDS.filter(f => f.calc).forEach(f => {
                 const el = wrapper.querySelector(`[name="${f.key}"]`);
                 if (!el) return;
-                el.value = RATE_KEYS.has(f.key)
-                    ? parseFloat(calc[f.key] || 0).toFixed(1)
-                    : Math.round(calc[f.key] || 0);
+                el.value = Math.round(calc[f.key] || 0);
             });
         };
 
