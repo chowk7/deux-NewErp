@@ -98,7 +98,7 @@ window.PromotionModule = {
         window.Utils.openDisplayFieldsModal(
             'promotionTable',
             this.DISPLAY_FIELDS,
-            () => this._renderTable(this.currentMode, this._currentRate()),
+            () => this._renderTable(this._fixedRate(), this._addRate()),
             this._defaultDisplayKeys
         );
     },
@@ -123,7 +123,7 @@ window.PromotionModule = {
         body.innerHTML = this._buildControlsHTML() + this._buildSavedListHTML();
         this._attachControlEvents();
         this._renderCategoryTabs();
-        this._renderTable(this.currentMode, 0);
+        this._renderTable(0, 0);
     },
 
     _buildControlsHTML() {
@@ -134,40 +134,52 @@ window.PromotionModule = {
                 <div>
                     <label style="font-size:0.8rem;color:#6b7280;display:block;margin-bottom:4px;">프로모션명</label>
                     <input id="promoNameInput" type="text" placeholder="예: 봄 세일 20%"
-                        style="padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;width:200px;">
+                        style="padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;width:180px;">
                 </div>
-                <div>
-                    <label style="font-size:0.8rem;color:#6b7280;display:block;margin-bottom:4px;">할인 방식</label>
+                <div style="border-left:2px solid #e5e7eb;padding-left:12px;">
+                    <label style="font-size:0.8rem;color:#374151;font-weight:600;display:block;margin-bottom:4px;">
+                        전체 할인율 설정 <span style="font-size:0.75rem;color:#6b7280;font-weight:400;">(현재 할인율 교체)</span>
+                    </label>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <input id="promoFixedRateInput" type="number" min="0" max="100" step="0.5" value="0"
+                            style="padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;width:90px;">
+                        <span style="color:#6b7280;font-size:0.85rem;">%</span>
+                    </div>
+                </div>
+                <div style="border-left:2px solid #e5e7eb;padding-left:12px;">
+                    <label style="font-size:0.8rem;color:#374151;font-weight:600;display:block;margin-bottom:4px;">
+                        추가 할인 <span style="font-size:0.75rem;color:#6b7280;font-weight:400;">(현재 할인율 + 추가%)</span>
+                    </label>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <input id="promoAddRateInput" type="number" min="0" max="100" step="0.5" value="0"
+                            style="padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;width:90px;">
+                        <span style="color:#6b7280;font-size:0.85rem;">%</span>
+                    </div>
+                </div>
+                <button id="promoCalcBtn" class="btn btn-primary" style="height:34px;">🔍 시뮬레이션</button>
+                <div style="border-left:2px solid #e5e7eb;padding-left:12px;">
+                    <label style="font-size:0.8rem;color:#6b7280;display:block;margin-bottom:4px;">저장 방식</label>
                     <div style="display:flex;">
                         <button id="promoModeFixed"
-                            style="padding:7px 14px;border:1px solid ${fixedActive?'#3b82f6':'#d1d5db'};border-radius:6px 0 0 6px;
-                                   background:${fixedActive?'#3b82f6':'#fff'};color:${fixedActive?'#fff':'#374151'};
-                                   cursor:pointer;font-size:0.85rem;">
-                            전체 할인율 설정
+                            style="padding:5px 10px;border:1px solid ${fixedActive?'#10b981':'#d1d5db'};border-radius:6px 0 0 6px;
+                                   background:${fixedActive?'#10b981':'#fff'};color:${fixedActive?'#fff':'#374151'};
+                                   cursor:pointer;font-size:0.8rem;">
+                            전체 할인율
                         </button>
                         <button id="promoModeAdd"
-                            style="padding:7px 14px;border:1px solid ${!fixedActive?'#3b82f6':'#d1d5db'};border-left:none;border-radius:0 6px 6px 0;
-                                   background:${!fixedActive?'#3b82f6':'#fff'};color:${!fixedActive?'#fff':'#374151'};
-                                   cursor:pointer;font-size:0.85rem;">
+                            style="padding:5px 10px;border:1px solid ${!fixedActive?'#10b981':'#d1d5db'};border-left:none;border-radius:0 6px 6px 0;
+                                   background:${!fixedActive?'#10b981':'#fff'};color:${!fixedActive?'#fff':'#374151'};
+                                   cursor:pointer;font-size:0.8rem;">
                             추가 할인
                         </button>
                     </div>
                 </div>
-                <div>
-                    <label id="promoRateLabel" style="font-size:0.8rem;color:#6b7280;display:block;margin-bottom:4px;">
-                        ${fixedActive ? '변경할 할인율 (%)' : '추가 할인율 (%)'}
-                    </label>
-                    <input id="promoRateInput" type="number" min="0" max="100" step="0.5" value="0"
-                        style="padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;width:100px;">
-                </div>
-                <button id="promoCalcBtn" class="btn btn-primary" style="height:34px;">🔍 시뮬레이션</button>
                 <button id="promoSaveBtn" class="btn btn-success" style="height:34px;">💾 저장</button>
                 <button id="promoDisplaySettingsBtn" class="btn btn-outline" style="height:34px;">📋 표시항목 설정</button>
             </div>
-            <p id="promoModeDesc" style="font-size:0.8rem;color:#6b7280;margin:8px 0 0;">
-                ${fixedActive
-                    ? '※ <b>전체 할인율 설정</b>: 현재 할인율을 입력한 %로 교체합니다. 테이블에 <b>변경할인율 / 변경할인가</b>로 표시됩니다.'
-                    : '※ <b>추가 할인</b>: 현재 할인율에 추가 %를 더한 <b>프로모션할인율 / 프로모션할인가</b>를 표시합니다.'}
+            <p style="font-size:0.78rem;color:#6b7280;margin:8px 0 0;">
+                ※ 두 값을 동시에 입력 후 <b>시뮬레이션</b>하면 테이블에 변경할인율과 프로모션할인율을 함께 비교할 수 있습니다.
+                저장 시 <b>저장 방식</b>에서 선택한 방식으로 저장됩니다.
             </p>
         </div>
         <div id="promoCategoryTabs" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;"></div>
@@ -217,38 +229,33 @@ window.PromotionModule = {
         const body = document.querySelector('.promo-body');
         if (!body) return;
 
-        const applyModeUI = (mode) => {
+        // 저장 방식 토글 (시뮬레이션 결과와 독립)
+        const applySaveModeUI = (mode) => {
             this.currentMode = mode;
-            const fixedBtn  = body.querySelector('#promoModeFixed');
-            const addBtn    = body.querySelector('#promoModeAdd');
-            const desc      = body.querySelector('#promoModeDesc');
-            const rateLabel = body.querySelector('#promoRateLabel');
-            const isFixed   = mode === 'fixed';
-
-            fixedBtn.style.background   = isFixed ? '#3b82f6' : '#fff';
-            fixedBtn.style.color        = isFixed ? '#fff' : '#374151';
-            fixedBtn.style.borderColor  = isFixed ? '#3b82f6' : '#d1d5db';
-            addBtn.style.background     = isFixed ? '#fff' : '#3b82f6';
-            addBtn.style.color          = isFixed ? '#374151' : '#fff';
-            addBtn.style.borderColor    = isFixed ? '#d1d5db' : '#3b82f6';
-            rateLabel.textContent       = isFixed ? '변경할 할인율 (%)' : '추가 할인율 (%)';
-            desc.innerHTML = isFixed
-                ? '※ <b>전체 할인율 설정</b>: 현재 할인율을 입력한 %로 교체합니다. 테이블에 <b>변경할인율 / 변경할인가</b>로 표시됩니다.'
-                : '※ <b>추가 할인</b>: 현재 할인율에 추가 %를 더한 <b>프로모션할인율 / 프로모션할인가</b>를 표시합니다.';
+            const fixedBtn = body.querySelector('#promoModeFixed');
+            const addBtn   = body.querySelector('#promoModeAdd');
+            const isFixed  = mode === 'fixed';
+            fixedBtn.style.background  = isFixed ? '#10b981' : '#fff';
+            fixedBtn.style.color       = isFixed ? '#fff' : '#374151';
+            fixedBtn.style.borderColor = isFixed ? '#10b981' : '#d1d5db';
+            addBtn.style.background    = isFixed ? '#fff' : '#10b981';
+            addBtn.style.color         = isFixed ? '#374151' : '#fff';
+            addBtn.style.borderColor   = isFixed ? '#d1d5db' : '#10b981';
         };
 
-        body.querySelector('#promoModeFixed').addEventListener('click', () => applyModeUI('fixed'));
-        body.querySelector('#promoModeAdd').addEventListener('click',   () => applyModeUI('additional'));
+        body.querySelector('#promoModeFixed').addEventListener('click', () => applySaveModeUI('fixed'));
+        body.querySelector('#promoModeAdd').addEventListener('click',   () => applySaveModeUI('additional'));
 
         body.querySelector('#promoCalcBtn').addEventListener('click', () => {
-            this._renderTable(this.currentMode, this._currentRate());
+            this._renderTable(this._fixedRate(), this._addRate());
         });
 
         body.querySelector('#promoSaveBtn').addEventListener('click', () => {
+            const rate = this.currentMode === 'fixed' ? this._fixedRate() : this._addRate();
             this._savePromotion(
                 body.querySelector('#promoNameInput').value.trim(),
                 this.currentMode,
-                this._currentRate()
+                rate
             );
         });
 
@@ -291,16 +298,20 @@ window.PromotionModule = {
             btn.addEventListener('click', () => {
                 this.activeCategory = btn.dataset.cat;
                 this._renderCategoryTabs();
-                this._renderTable(this.currentMode, this._currentRate());
+                this._renderTable(this._fixedRate(), this._addRate());
             });
         });
     },
 
-    _currentRate() {
-        return parseFloat(document.getElementById('promoRateInput')?.value) || 0;
+    _fixedRate() {
+        return parseFloat(document.getElementById('promoFixedRateInput')?.value) || 0;
     },
 
-    _renderTable(mode, rate) {
+    _addRate() {
+        return parseFloat(document.getElementById('promoAddRateInput')?.value) || 0;
+    },
+
+    _renderTable(fixedRate, additionalRate) {
         const wrap = document.getElementById('promoTableWrap');
         if (!wrap) return;
 
@@ -310,63 +321,73 @@ window.PromotionModule = {
             return;
         }
 
-        const isFixed  = mode === 'fixed';
-        const fmt      = n => window.Utils.formatNumber(Math.round(n));
-        const fmtRate  = n => (Math.round(n * 10) / 10) + '%';
+        const fmt        = n => window.Utils.formatNumber(Math.round(n));
+        const fmtRate    = n => (Math.round(n * 10) / 10) + '%';
         const colorStyle = v => v >= 0 ? 'color:#16a34a;font-weight:500;' : 'color:#dc2626;font-weight:500;';
+        const diffSpan   = (v, fmtFn) => v !== 0
+            ? `<span style="${colorStyle(v)}font-size:0.75rem;margin-left:3px;">(${v>=0?'+':''}${fmtFn(v)})</span>`
+            : '';
 
-        // 표시항목 설정에서 선택된 기본 컬럼
         const displayKeys = this._getDisplayKeys();
         const fieldMap    = {};
         this.DISPLAY_FIELDS.forEach(f => fieldMap[f.key] = f);
 
-        // 프로모션 결과 컬럼 헤더 (모드에 따라 다름)
-        const promoColHeaders = isFixed
-            ? ['변경할인율', '변경할인가', '변경이익(자사몰)', '변경이익률']
-            : ['프로모션할인율', '프로모션할인가', '프로모션이익(자사몰)', '프로모션이익률'];
+        // 컬럼 그룹 헤더 (colspan)
+        const groupHeader = `<tr>
+            <th colspan="${displayKeys.length}" style="background:#f9fafb;"></th>
+            <th colspan="4" style="text-align:center;background:#faf5ff;color:#7c3aed;border-left:2px solid #c4b5fd;">
+                전체 할인율 설정 (${fixedRate}%)
+            </th>
+            <th colspan="4" style="text-align:center;background:#fff7ed;color:#ea580c;border-left:2px solid #fdba74;">
+                추가 할인 (+${additionalRate}%)
+            </th>
+        </tr>`;
 
-        const thead = `<tr>
+        const colHeader = `<tr>
             ${displayKeys.map(k => `<th>${fieldMap[k]?.label || k}</th>`).join('')}
-            <th style="text-align:center;color:#7c3aed;">${promoColHeaders[0]}</th>
-            <th style="text-align:right;color:#7c3aed;">${promoColHeaders[1]}</th>
-            <th style="text-align:right;color:#7c3aed;">${promoColHeaders[2]}</th>
-            <th style="text-align:center;color:#7c3aed;">${promoColHeaders[3]}</th>
+            <th style="text-align:center;background:#faf5ff;color:#7c3aed;border-left:2px solid #c4b5fd;">변경할인율</th>
+            <th style="text-align:right;background:#faf5ff;color:#7c3aed;">변경할인가</th>
+            <th style="text-align:right;background:#faf5ff;color:#7c3aed;">변경이익</th>
+            <th style="text-align:center;background:#faf5ff;color:#7c3aed;">변경이익률</th>
+            <th style="text-align:center;background:#fff7ed;color:#ea580c;border-left:2px solid #fdba74;">프로모션할인율</th>
+            <th style="text-align:right;background:#fff7ed;color:#ea580c;">프로모션할인가</th>
+            <th style="text-align:right;background:#fff7ed;color:#ea580c;">프로모션이익</th>
+            <th style="text-align:center;background:#fff7ed;color:#ea580c;">프로모션이익률</th>
         </tr>`;
 
         const rows = filtered.map(p => {
-            const { promoRate, promoPrice, promoProfit, promoProfitRate } = this._calcPromoItem(p, mode, rate);
-            const origPrice      = parseFloat(p.discountPrice) || 0;
-            const origProfit     = parseFloat(p.ownMallProfit) || 0;
-            const priceDiff      = promoPrice - origPrice;
-            const profitDiff     = promoProfit - origProfit;
+            const fixed = this._calcPromoItem(p, 'fixed', fixedRate);
+            const add   = this._calcPromoItem(p, 'additional', additionalRate);
+            const origPrice  = parseFloat(p.discountPrice) || 0;
+            const origProfit = parseFloat(p.ownMallProfit) || 0;
 
             const baseCells = displayKeys.map(k => {
                 const val = p[k];
-                if (k === 'category') return `<td style="text-align:center;">${this._normalizeCategory(val)}</td>`;
-                if (k === 'discountRate') return `<td style="text-align:center;">${fmtRate(parseFloat(val)||0)}</td>`;
+                if (k === 'category')        return `<td style="text-align:center;">${this._normalizeCategory(val)}</td>`;
+                if (k === 'discountRate')    return `<td style="text-align:center;">${fmtRate(parseFloat(val)||0)}</td>`;
                 if (k === 'ownMallProfitRate') return `<td style="text-align:center;">${fmtRate(parseFloat(val)||0)}</td>`;
-                if (typeof val === 'number' || (k !== 'productCode' && k !== 'ownCode' && k !== 'productName')) {
+                if (k !== 'productCode' && k !== 'ownCode' && k !== 'productName') {
                     const n = parseFloat(val);
-                    if (!isNaN(n) && k !== 'discountRate') return `<td style="text-align:right;">${fmt(n)}</td>`;
+                    if (!isNaN(n)) return `<td style="text-align:right;">${fmt(n)}</td>`;
                 }
                 return `<td>${val || '-'}</td>`;
             }).join('');
 
-            const diffSpan = (v, fmtFn) => v !== 0
-                ? `<span style="${colorStyle(v)}font-size:0.75rem;margin-left:4px;">(${v>=0?'+':''}${fmtFn(v)})</span>`
-                : '';
-
             return `<tr>
                 ${baseCells}
-                <td style="text-align:center;font-weight:600;color:#7c3aed;">${fmtRate(promoRate)}</td>
-                <td style="text-align:right;font-weight:600;">${fmt(promoPrice)}${diffSpan(priceDiff, fmt)}</td>
-                <td style="text-align:right;${colorStyle(promoProfit)}">${fmt(promoProfit)}${diffSpan(profitDiff, fmt)}</td>
-                <td style="text-align:center;${colorStyle(promoProfitRate)}">${fmtRate(promoProfitRate)}</td>
+                <td style="text-align:center;font-weight:600;color:#7c3aed;background:#faf5ff;border-left:2px solid #c4b5fd;">${fmtRate(fixed.promoRate)}</td>
+                <td style="text-align:right;background:#faf5ff;">${fmt(fixed.promoPrice)}${diffSpan(fixed.promoPrice - origPrice, fmt)}</td>
+                <td style="text-align:right;background:#faf5ff;${colorStyle(fixed.promoProfit)}">${fmt(fixed.promoProfit)}${diffSpan(fixed.promoProfit - origProfit, fmt)}</td>
+                <td style="text-align:center;background:#faf5ff;${colorStyle(fixed.promoProfitRate)}">${fmtRate(fixed.promoProfitRate)}</td>
+                <td style="text-align:center;font-weight:600;color:#ea580c;background:#fff7ed;border-left:2px solid #fdba74;">${fmtRate(add.promoRate)}</td>
+                <td style="text-align:right;background:#fff7ed;">${fmt(add.promoPrice)}${diffSpan(add.promoPrice - origPrice, fmt)}</td>
+                <td style="text-align:right;background:#fff7ed;${colorStyle(add.promoProfit)}">${fmt(add.promoProfit)}${diffSpan(add.promoProfit - origProfit, fmt)}</td>
+                <td style="text-align:center;background:#fff7ed;${colorStyle(add.promoProfitRate)}">${fmtRate(add.promoProfitRate)}</td>
             </tr>`;
         }).join('');
 
-        wrap.innerHTML = `<table class="data-table" style="min-width:800px;">
-            <thead>${thead}</thead>
+        wrap.innerHTML = `<table class="data-table" style="min-width:1100px;">
+            <thead>${groupHeader}${colHeader}</thead>
             <tbody>${rows}</tbody>
         </table>`;
     },
@@ -477,29 +498,23 @@ window.PromotionModule = {
         const body = document.querySelector('.promo-body');
         if (!body) return;
 
-        body.querySelector('#promoNameInput').value  = promo.name || '';
-        body.querySelector('#promoRateInput').value  = promo.mode === 'fixed' ? promo.discountRate : promo.additionalRate;
+        body.querySelector('#promoNameInput').value      = promo.name || '';
+        body.querySelector('#promoFixedRateInput').value = promo.mode === 'fixed' ? promo.discountRate : 0;
+        body.querySelector('#promoAddRateInput').value   = promo.mode === 'additional' ? promo.additionalRate : 0;
 
-        // 모드 버튼 UI 동기화
-        const fixedBtn  = body.querySelector('#promoModeFixed');
-        const addBtn    = body.querySelector('#promoModeAdd');
-        const desc      = body.querySelector('#promoModeDesc');
-        const rateLabel = body.querySelector('#promoRateLabel');
-        const isFixed   = this.currentMode === 'fixed';
-
-        fixedBtn.style.background = isFixed ? '#3b82f6' : '#fff';
-        fixedBtn.style.color      = isFixed ? '#fff' : '#374151';
-        fixedBtn.style.borderColor= isFixed ? '#3b82f6' : '#d1d5db';
-        addBtn.style.background   = isFixed ? '#fff' : '#3b82f6';
-        addBtn.style.color        = isFixed ? '#374151' : '#fff';
-        addBtn.style.borderColor  = isFixed ? '#d1d5db' : '#3b82f6';
-        rateLabel.textContent     = isFixed ? '변경할 할인율 (%)' : '추가 할인율 (%)';
-        desc.innerHTML = isFixed
-            ? '※ <b>전체 할인율 설정</b>: 현재 할인율을 입력한 %로 교체합니다. 테이블에 <b>변경할인율 / 변경할인가</b>로 표시됩니다.'
-            : '※ <b>추가 할인</b>: 현재 할인율에 추가 %를 더한 <b>프로모션할인율 / 프로모션할인가</b>를 표시합니다.';
+        // 저장 방식 토글 UI 동기화
+        const fixedBtn = body.querySelector('#promoModeFixed');
+        const addBtn   = body.querySelector('#promoModeAdd');
+        const isFixed  = this.currentMode === 'fixed';
+        fixedBtn.style.background  = isFixed ? '#10b981' : '#fff';
+        fixedBtn.style.color       = isFixed ? '#fff' : '#374151';
+        fixedBtn.style.borderColor = isFixed ? '#10b981' : '#d1d5db';
+        addBtn.style.background    = isFixed ? '#fff' : '#10b981';
+        addBtn.style.color         = isFixed ? '#374151' : '#fff';
+        addBtn.style.borderColor   = isFixed ? '#d1d5db' : '#10b981';
 
         this._renderCategoryTabs();
-        this._renderTable(this.currentMode, promo.mode === 'fixed' ? promo.discountRate : promo.additionalRate);
+        this._renderTable(this._fixedRate(), this._addRate());
         window.Utils.showNotification(`"${promo.name}" 프로모션을 불러왔습니다.`, 'success');
     },
 
