@@ -1137,7 +1137,7 @@ window.SalesManagementModule = {
             invoiceBtn.textContent = `🧾 인보이스 (${checkedCount})`;
             invoiceBtn.onclick = () => this.printInvoice();
 
-            const bulkDeleteBtn = mkBtn('bulkDeleteOrderBtn', 'btn-danger');
+            const bulkDeleteBtn = mkBtn('bulkDeleteOrderBtn', 'btn-danger', 'auto');
             bulkDeleteBtn.textContent = `🗑️ ${checkedCount}개 삭제`;
             bulkDeleteBtn.onclick = () => this.bulkDeleteOrders();
         } else {

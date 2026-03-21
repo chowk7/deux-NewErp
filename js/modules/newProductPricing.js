@@ -546,6 +546,9 @@ window.NewProductPricingModule = {
             qtyInput.step = '0.01';
             qtyInput.placeholder = '수량';
             qtyInput.style.cssText = 'width:80px;padding:6px;border:1px solid #d1d5db;border-radius:4px;';
+            // 나석 수량 변경 시 실시간 계산
+            qtyInput.addEventListener('input', updateCalc);
+            qtyInput.addEventListener('change', updateCalc);
 
             const removeBtn = document.createElement('button');
             removeBtn.type = 'button';
@@ -568,6 +571,14 @@ window.NewProductPricingModule = {
             const searchableSelect = window.Utils.createSearchableSelect(
                 stoneOptions, '', null, '나석 종류 검색...', 'stoneType'
             );
+            // 나석 종류 변경 시 실시간 계산
+            if (searchableSelect) {
+                const inputEl = searchableSelect.querySelector('input');
+                if (inputEl) {
+                    inputEl.addEventListener('change', updateCalc);
+                    inputEl.addEventListener('input', updateCalc);
+                }
+            }
             const wrapDiv = document.createElement('div');
             wrapDiv.style.cssText = 'display:flex;gap:4px;align-items:flex-start;';
             wrapDiv.appendChild(searchableSelect);

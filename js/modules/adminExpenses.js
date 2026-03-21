@@ -106,11 +106,11 @@ window.AdminExpensesModule = {
                 <td style="text-align:right;">${window.Utils.formatNumber(e.amount)}</td>
                 <td>${e.paymentMethod || '-'}</td>
                 <td>${e.isBizExpense || '-'}</td>
-                <td>
+                <td style="display:flex; gap:8px; align-items:center;">
                     <button class="btn btn-sm btn-primary"
                         data-action="showForm" data-id="${e.id}">수정</button>
                     <button class="btn btn-sm btn-danger"
-                        data-action="delete" data-id="${e.id}">삭제</button>
+                        data-action="delete" data-id="${e.id}" style="margin-left:auto;">삭제</button>
                 </td>
             </tr>`;
         }).join('');

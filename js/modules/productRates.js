@@ -342,7 +342,7 @@ window.ProductRatesModule = {
                 bulkDeleteBtn = document.createElement('button');
                 bulkDeleteBtn.id = 'bulkDeleteProductBtn';
                 bulkDeleteBtn.className = 'btn btn-danger';
-                bulkDeleteBtn.style.marginLeft = '8px';
+                bulkDeleteBtn.style.marginLeft = 'auto';
                 if (buttonGroup) buttonGroup.appendChild(bulkDeleteBtn);
             }
             bulkDeleteBtn.textContent = `🗑️ ${checkedCount}개 삭제`;
