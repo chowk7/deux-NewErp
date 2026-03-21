@@ -63,6 +63,10 @@ window.ManufacturingCostsModule = {
         // 필수항목 설정
         document.getElementById('mfgRequiredSettingsBtn')
             ?.addEventListener('click', () => this.openRequiredSettings());
+
+        // 나석 일괄 업데이트
+        document.getElementById('mfgBulkFillStoneBtn')
+            ?.addEventListener('click', () => this.bulkFillStoneFieldsFromProductRates());
     },
 
     async loadDiamondRates() {
@@ -842,6 +846,118 @@ window.ManufacturingCostsModule = {
      * 주문ID로부터 제품단가표의 나석정보를 조회하여 자동으로 채워줌
      * @param {string} orderId - 주문 문서 ID
      */
+    async bulkFillStoneFieldsFromProductRates() {
+        if (!(await window.Utils.confirm(
+            '제품가격표를 참고하여 나석정보가 있는 모든 주문의 stoneType/stoneQty 등 개별 필드를 업데이트합니다.\n계속하시겠습니까?'
+        ))) return;
+
+        try {
+            // 전체 주문 데이터 로드
+            const snap = await window.firebaseDb
+                .collection('sales').doc('orders').collection('items').get();
+            const allOrders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+            // 제품단가표 로드
+            let productRates = this.productRates;
+            if (!productRates || productRates.length === 0) {
+                const pr = await window.firebaseDb
+                    .collection('prices').doc('productRates').collection('items').get();
+                productRates = pr.docs.map(d => ({ id: d.id, ...d.data() }));
+            }
+
+            // 나석단가표 로드
+            let diamondRates = this.diamondRates;
+            if (!diamondRates || diamondRates.length === 0) {
+                const dr = await window.firebaseDb
+                    .collection('prices').doc('diamondRates').collection('items').get();
+                diamondRates = dr.docs.map(d => ({ id: d.id, ...d.data() }));
+            }
+
+            const col = window.firebaseDb.collection('sales').doc('orders').collection('items');
+            let updated = 0;
+            let skipped = 0;
+            const BATCH_SIZE = 400;
+            let batch = window.firebaseDb.batch();
+            let batchCount = 0;
+
+            for (const order of allOrders) {
+                const productName = order.productName || '';
+                const productCode  = order.productCode  || '';
+                if (!productName && !productCode) { skipped++; continue; }
+
+                const targetProduct = productRates.find(p =>
+                    (productName && p.productName === productName) ||
+                    (productCode  && p.productCode  === productCode)
+                );
+                if (!targetProduct || !targetProduct.stones || targetProduct.stones.length === 0) { skipped++; continue; }
+
+                const warranty = targetProduct.stoneWarranty || '없음';
+                const stoneArray = targetProduct.stones
+                    .filter(s => s.type && s.qty > 0)
+                    .map(s => {
+                        const diamond = diamondRates.find(d => d.diamondType === s.type);
+                        const stonePrice = diamond?.costWithVat || 0;
+                        const totalPrice = stonePrice * s.qty;
+                        const warrantyFee = warranty === 'VS'  ? (diamond?.vsWarrantyFee  || 0)
+                                          : warranty === 'VVS' ? (diamond?.vvsWarrantyFee || 0) : 0;
+                        return { stoneType: s.type, stoneQty: s.qty, stonePrice, totalPrice, warrantyFee };
+                    });
+
+                if (stoneArray.length === 0) { skipped++; continue; }
+
+                const stoneQtyText = stoneArray.map(s => `${s.stoneQty} × ${s.stoneType}`).join(', ');
+                const stoneFields = Array.from({length: 10}, (_, i) => {
+                    const s = stoneArray[i];
+                    return {
+                        [`stoneType${i+1}`]:  s ? s.stoneType  : '',
+                        [`stoneQty${i+1}`]:   s ? s.stoneQty   : 0,
+                        [`stoneCert${i+1}`]:  s ? warranty      : '',
+                        [`stonePrice${i+1}`]: s ? s.totalPrice  : 0,
+                    };
+                }).reduce((a, b) => ({...a, ...b}), {});
+
+                const dataForCalc = {
+                    ...order,
+                    stoneArray: JSON.stringify(stoneArray),
+                    stoneQty_text: stoneQtyText,
+                    stoneCostManual: order.stoneCostManual || 0
+                };
+                const calculated = this.calculate(dataForCalc);
+
+                batch.update(col.doc(order.id), {
+                    ...calculated,
+                    stoneArray:    JSON.stringify(stoneArray),
+                    stoneQty_text: stoneQtyText,
+                    stones:        targetProduct.stones,
+                    ...stoneFields,
+                    updatedAt:     new Date()
+                });
+                updated++;
+                batchCount++;
+
+                if (batchCount >= BATCH_SIZE) {
+                    await batch.commit();
+                    batch = window.firebaseDb.batch();
+                    batchCount = 0;
+                }
+            }
+
+            if (batchCount > 0) await batch.commit();
+
+            window.Utils.showNotification(
+                `완료: ${updated}개 주문 업데이트, ${skipped}개 건너뜀`, 'success', 5000
+            );
+
+            // 데이터 새로고침
+            this.allCosts = [];
+            await this.load(1);
+
+        } catch (error) {
+            console.error('[ManufacturingCosts] bulkFillStoneFields error:', error);
+            window.Utils.showNotification('일괄 업데이트 중 오류: ' + error.message, 'error');
+        }
+    },
+
     async autoFillFromProductRates(orderId) {
         try {
             // 주문 정보 조회
@@ -917,6 +1033,17 @@ window.ManufacturingCostsModule = {
             };
             const calculated = this.calculate(dataForCalc);
 
+            // 개별 나석 필드 (stoneType1~10, stoneQty1~10, stoneCert1~10, stonePrice1~10) 생성
+            const stoneFields = Array.from({length: 10}, (_, i) => {
+                const s = stoneArray[i];
+                return {
+                    [`stoneType${i+1}`]:  s ? s.stoneType  : '',
+                    [`stoneQty${i+1}`]:   s ? s.stoneQty   : 0,
+                    [`stoneCert${i+1}`]:  s ? warranty      : '',
+                    [`stonePrice${i+1}`]: s ? s.totalPrice  : 0,
+                };
+            }).reduce((a, b) => ({...a, ...b}), {});
+
             // Firestore 업데이트
             await window.firebaseDb
                 .collection('sales').doc('orders').collection('items').doc(orderId)
@@ -925,6 +1052,7 @@ window.ManufacturingCostsModule = {
                     stoneArray:    JSON.stringify(stoneArray),
                     stoneQty_text: stoneQtyText,
                     stones:        targetProduct.stones, // 원본 보관
+                    ...stoneFields,
                     updatedAt:     new Date()
                 });
 
