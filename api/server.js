@@ -452,6 +452,7 @@ app.get('/api/imweb/orders', verifyToken, async (req, res) => {
         for (const order of recentOrders) {
             const orderNo = order.order_no;
             const buyer         = order.orderer?.name || order.billing?.name || order.member_name || '미상';
+            const email         = safeStr(order.orderer?.email || order.member_email || '');
 
             // 첫 번째 주문의 필드 구조를 로그로 출력 (배송지 필드 파악용)
             if (!debugLogged) {
@@ -526,6 +527,7 @@ app.get('/api/imweb/orders', verifyToken, async (req, res) => {
                         orderNumber:  orderNo,
                         orderDate:    order.order_time * 1000,   // ms timestamp
                         customerName: buyer,
+                        email,
                         recipient,
                         phone,
                         postalCode,

@@ -464,7 +464,7 @@ window.ImwebIntegrationModule = {
                         postalCode:    order.postalCode   || '',
                         address:       order.address      || '',
                         addressDetail: order.addressDetail || '',
-                        email:         '',
+                        email:         order.email        || '',
                         ownMallSignup: false,
                         createdAt:     new Date(),
                         updatedAt:     new Date(),
