@@ -701,8 +701,8 @@ window.Utils = {
      */
     showAdditionalOrderModal(orderData = {}) {
         return new Promise((resolve) => {
-            const onlineOptions = ['자사몰', '신세계V', 'SSG', '현대몰'];
-            const offlineOptions = ['백화점(현대본점)', '백화점(현대무역점)', '백화점(현대킨텍스)', '백화점(현대목동점)'];
+            const onlineOptions = ['듀인피니스 공식몰', '신세계V', 'SSG', '더현대닷컴'];
+            const offlineOptions = ['현대백화점 압구정본점', '현대백화점 무역점', '현대백화점 킨텍스점', '현대백화점 목동점'];
             const warrantyOptions = ['없음', 'VS', 'VVS'];
 
             const wrapper = document.createElement('div');

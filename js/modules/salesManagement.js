@@ -11,6 +11,7 @@ window.SalesManagementModule = {
         { key: 'postalCode',      label: '우편번호',      type: 'text',   defaultRequired: false },
         { key: 'productName',     label: '상품명',        type: 'text',   defaultRequired: true  },
         { key: 'optionName',      label: '옵션명',        type: 'text',   defaultRequired: false },
+        { key: 'stoneInfo',       label: '나석정보',      type: 'text',   defaultRequired: false },
         { key: 'remark',          label: '기타',          type: 'text',   defaultRequired: false },
         { key: 'category',        label: '종류',          type: 'select', defaultRequired: false,
           options: ['R(반지)','N(목걸이)','B(팔찌)','E(귀걸이)','기타'] },
@@ -650,8 +651,8 @@ window.SalesManagementModule = {
                              </datalist>`;
                 } else if (f.key === 'purchasePathDetail') {
                     // 구매경로상세: purchasePath에 따라 동적으로 변경
-                    const onlineOptions = ['자사몰','신세계V','SSG','현대몰'];
-                    const offlineOptions = ['백화점(현대본점)','백화점(현대무역점)','백화점(현대킨텍스)','백화점(현대목동점)'];
+                    const onlineOptions = ['듀인피니스 공식몰','신세계V','SSG','더현대닷컴'];
+                    const offlineOptions = ['현대백화점 압구정본점','현대백화점 무역점','현대백화점 킨텍스점','현대백화점 목동점'];
                     const opts = (order?.purchasePath === '오프라인' ? offlineOptions : onlineOptions).map(opt =>
                         `<option value="${opt}" ${val === opt ? 'selected' : ''}>${opt}</option>`
                     ).join('');
@@ -1049,8 +1050,8 @@ window.SalesManagementModule = {
             purchaseSelect.addEventListener('change', (e) => {
                 const detailSelect = wrapper.querySelector('[name="purchasePathDetail"]');
                 if (detailSelect) {
-                    const onlineOptions = ['자사몰','신세계V','SSG','현대몰'];
-                    const offlineOptions = ['백화점(현대본점)','백화점(현대무역점)','백화점(현대킨텍스)','백화점(현대목동점)'];
+                    const onlineOptions = ['듀인피니스 공식몰','신세계V','SSG','더현대닷컴'];
+                    const offlineOptions = ['현대백화점 압구정본점','현대백화점 무역점','현대백화점 킨텍스점','현대백화점 목동점'];
                     const options = e.target.value === '오프라인' ? offlineOptions : onlineOptions;
                     detailSelect.innerHTML = `<option value="">선택</option>` +
                         options.map(opt => `<option value="${opt}">${opt}</option>`).join('') +

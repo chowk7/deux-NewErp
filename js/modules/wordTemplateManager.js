@@ -6,7 +6,7 @@
  *
  * 템플릿 변수 문법: {{변수명}}
  * 지원 변수: 주문번호, 고객명, 수령인, 연락처, 주소, 주소상세, 우편번호,
- *            상품명, 옵션명, 수량, 주문금액, 주문일, 기타,
+ *            상품명, 옵션명, 나석정보, 수량, 주문금액, 주문일, 기타,
  *            색상, 제품중량, 구매월, 구매경로상세, 보증서
  */
 window.WordTemplateManager = {
@@ -364,6 +364,7 @@ window.WordTemplateManager = {
             주소상세: order.addressDetail || order.주소상세 || '',
             상품명: order.productName || order.상품명 || '',
             옵션명: order.optionName || order.옵션명 || '',
+            나석정보: order.stoneInfo || order.나석정보 || '',
             수량: String(order.quantity || order.수량 || '1'),
             최종주문금액: orderAmountStr,
             주문금액: orderAmountStr,          // 이전 호환
