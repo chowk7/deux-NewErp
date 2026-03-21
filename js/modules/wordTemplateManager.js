@@ -178,15 +178,11 @@ window.WordTemplateManager = {
             if (!templateDoc.exists) throw new Error('템플릿을 찾을 수 없습니다.');
             const { storagePath, fileName } = templateDoc.data();
 
-            // 서명된 URL로 템플릿 파일 다운로드
+            // 서버 프록시로 템플릿 파일 다운로드 (CORS 우회)
             const token = await window.firebaseAuth.currentUser.getIdToken();
-            const urlRes = await fetch(`/api/signed-url?path=${encodeURIComponent(storagePath)}`, {
+            const resp = await fetch(`/api/file-content?path=${encodeURIComponent(storagePath)}`, {
                 headers: { 'Authorization': `Bearer ${token}` },
             });
-            if (!urlRes.ok) throw new Error('템플릿 URL 생성 실패');
-            const { url } = await urlRes.json();
-
-            const resp = await fetch(url);
             if (!resp.ok) throw new Error('템플릿 파일 다운로드 실패');
             const arrayBuffer = await resp.arrayBuffer();
 

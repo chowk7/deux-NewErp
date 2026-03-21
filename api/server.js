@@ -620,6 +620,26 @@ app.delete('/api/files', verifyToken, async (req, res) => {
     }
 });
 
+/**
+ * GET /api/file-content?path=...
+ * GCP 버킷 파일을 서버에서 읽어 브라우저로 직접 스트리밍 (CORS 우회)
+ */
+app.get('/api/file-content', verifyToken, async (req, res) => {
+    try {
+        const filePath = req.query.path;
+        if (!filePath) return res.status(400).json({ error: 'path 파라미터가 필요합니다.' });
+
+        const file = bucket.file(filePath);
+        const [metadata] = await file.getMetadata();
+        res.setHeader('Content-Type', metadata.contentType || 'application/octet-stream');
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(path.basename(filePath))}"`);
+        file.createReadStream().pipe(res);
+    } catch (error) {
+        console.error('[FileContent] Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // ===== 에러 핸들링 =====
 
 app.use((error, req, res, next) => {
