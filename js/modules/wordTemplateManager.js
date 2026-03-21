@@ -1,7 +1,7 @@
 /**
  * Word 양식(템플릿) 관리 모듈
  *
- * GCS(Firebase Storage)에 .docx 템플릿 파일을 저장하고
+ * GCS에 .docx 템플릿 파일을 저장(서버 /api/upload 경유)하고
  * Firestore에 메타데이터를 관리합니다.
  *
  * 템플릿 변수 문법: {{변수명}}
@@ -10,7 +10,7 @@
  */
 window.WordTemplateManager = {
     COLLECTION: 'wordTemplates',
-    STORAGE_PATH: 'word-templates',
+    STORAGE_FOLDER: 'word-templates',
 
     async init() {
         if (!document.getElementById('wordTemplatesContent')) return;
@@ -40,15 +40,32 @@ window.WordTemplateManager = {
         const purpose = prompt('용도를 입력하세요 (예: 배송표 출력, 주문확인서 출력):', '배송표 출력');
 
         try {
-            window.Utils.showNotification('양식 업로드 중...', 'info');
-            const storagePath = `${this.STORAGE_PATH}/${Date.now()}_${file.name}`;
-            const downloadURL = await window.firebaseManager.uploadFile(file, storagePath);
+            window.Utils.showNotification('양식 업로드 중...', 'info', 30000);
 
+            // 서버 /api/upload 엔드포인트 사용 (GCS 서버사이드 업로드)
+            const token = await window.firebaseAuth.currentUser.getIdToken();
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('folder', this.STORAGE_FOLDER);
+
+            const uploadRes = await fetch('/api/upload', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: formData,
+            });
+
+            if (!uploadRes.ok) {
+                const err = await uploadRes.json();
+                throw new Error(err.error || '업로드 실패');
+            }
+
+            const { path: storagePath } = await uploadRes.json();
+
+            // Firestore에 메타데이터 저장
             await window.firebaseDb.collection(this.COLLECTION).add({
                 name,
                 purpose: purpose || '',
                 storagePath,
-                downloadURL,
                 fileName: file.name,
                 uploadedAt: firebase.firestore.FieldValue.serverTimestamp(),
             });
@@ -98,11 +115,20 @@ window.WordTemplateManager = {
 
     async downloadTemplate(docId) {
         try {
-            const doc = await window.firebaseDb.collection(this.COLLECTION).doc(docId).get();
-            if (!doc.exists) return;
-            const { downloadURL, fileName } = doc.data();
+            const docSnap = await window.firebaseDb.collection(this.COLLECTION).doc(docId).get();
+            if (!docSnap.exists) return;
+            const { storagePath, fileName } = docSnap.data();
+
+            // 서명된 URL을 서버에서 받아 다운로드
+            const token = await window.firebaseAuth.currentUser.getIdToken();
+            const res = await fetch(`/api/signed-url?path=${encodeURIComponent(storagePath)}`, {
+                headers: { 'Authorization': `Bearer ${token}` },
+            });
+            if (!res.ok) throw new Error('다운로드 URL 생성 실패');
+            const { url } = await res.json();
+
             const a = document.createElement('a');
-            a.href = downloadURL;
+            a.href = url;
             a.download = fileName;
             a.target = '_blank';
             a.click();
@@ -114,10 +140,15 @@ window.WordTemplateManager = {
     async deleteTemplate(docId, name) {
         if (!confirm(`"${name}" 양식을 삭제하시겠습니까?`)) return;
         try {
-            const doc = await window.firebaseDb.collection(this.COLLECTION).doc(docId).get();
-            if (doc.exists) {
-                const { storagePath } = doc.data();
-                await window.firebaseManager.deleteFile(storagePath).catch(() => {});
+            const docSnap = await window.firebaseDb.collection(this.COLLECTION).doc(docId).get();
+            if (docSnap.exists) {
+                const { storagePath } = docSnap.data();
+                // 서버 DELETE /api/files 엔드포인트 사용
+                const token = await window.firebaseAuth.currentUser.getIdToken();
+                await fetch(`/api/files?path=${encodeURIComponent(storagePath)}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                }).catch(() => {});
                 await window.firebaseDb.collection(this.COLLECTION).doc(docId).delete();
             }
             window.Utils.showNotification(`"${name}" 양식이 삭제되었습니다.`, 'success');
@@ -128,52 +159,7 @@ window.WordTemplateManager = {
     },
 
     /**
-     * 지정한 템플릿(docId)으로 단일 주문 데이터를 Word 문서로 생성 후 다운로드
-     * @param {string} docId - Firestore 템플릿 문서 ID
-     * @param {Object} orderData - 주문 데이터 객체
-     */
-    async generateFromTemplate(docId, orderData) {
-        if (!window.PizZip || !window.docxtemplater) {
-            window.Utils.showNotification('템플릿 라이브러리가 로드되지 않았습니다.', 'error');
-            return;
-        }
-
-        try {
-            const templateDoc = await window.firebaseDb.collection(this.COLLECTION).doc(docId).get();
-            if (!templateDoc.exists) throw new Error('템플릿을 찾을 수 없습니다.');
-            const { downloadURL, fileName } = templateDoc.data();
-
-            const resp = await fetch(downloadURL);
-            if (!resp.ok) throw new Error('템플릿 파일 다운로드 실패');
-            const arrayBuffer = await resp.arrayBuffer();
-
-            const zip = new window.PizZip(arrayBuffer);
-            const doc = new window.docxtemplater(zip, {
-                paragraphLoop: true,
-                linebreaks: true,
-            });
-
-            doc.render(this._buildVariables(orderData));
-
-            const blob = doc.getZip().generate({
-                type: 'blob',
-                mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            });
-
-            const outName = fileName.replace('.docx', `_${orderData.주문번호 || ''}.docx`);
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = outName;
-            a.click();
-            URL.revokeObjectURL(a.href);
-        } catch (err) {
-            console.error('템플릿 문서 생성 오류:', err);
-            window.Utils.showNotification('문서 생성 실패: ' + (err.message || err), 'error');
-        }
-    },
-
-    /**
-     * 여러 주문 데이터를 각각 별도 파일로 생성하거나 단일 파일로 생성합니다.
+     * 여러 주문 데이터를 템플릿으로 각각 생성해 순서대로 다운로드
      * @param {string} docId - Firestore 템플릿 문서 ID
      * @param {Array} orders - 주문 데이터 배열
      */
@@ -190,9 +176,17 @@ window.WordTemplateManager = {
         try {
             const templateDoc = await window.firebaseDb.collection(this.COLLECTION).doc(docId).get();
             if (!templateDoc.exists) throw new Error('템플릿을 찾을 수 없습니다.');
-            const { downloadURL, fileName } = templateDoc.data();
+            const { storagePath, fileName } = templateDoc.data();
 
-            const resp = await fetch(downloadURL);
+            // 서명된 URL로 템플릿 파일 다운로드
+            const token = await window.firebaseAuth.currentUser.getIdToken();
+            const urlRes = await fetch(`/api/signed-url?path=${encodeURIComponent(storagePath)}`, {
+                headers: { 'Authorization': `Bearer ${token}` },
+            });
+            if (!urlRes.ok) throw new Error('템플릿 URL 생성 실패');
+            const { url } = await urlRes.json();
+
+            const resp = await fetch(url);
             if (!resp.ok) throw new Error('템플릿 파일 다운로드 실패');
             const arrayBuffer = await resp.arrayBuffer();
 
@@ -209,7 +203,7 @@ window.WordTemplateManager = {
                     mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                 });
 
-                const outName = fileName.replace('.docx', `_${order.주문번호 || ''}.docx`);
+                const outName = fileName.replace('.docx', `_${order.orderNumber || order.주문번호 || ''}.docx`);
                 const a = document.createElement('a');
                 a.href = URL.createObjectURL(blob);
                 a.download = outName;
