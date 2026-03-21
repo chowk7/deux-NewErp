@@ -164,8 +164,8 @@ window.WordTemplateManager = {
      * @param {Array} orders - 주문 데이터 배열
      */
     async generateBatchFromTemplate(docId, orders) {
-        if (!window.PizZip || !window.docxtemplater) {
-            window.Utils.showNotification('템플릿 라이브러리가 로드되지 않았습니다.', 'error');
+        if (!window.PizZip) {
+            window.Utils.showNotification('PizZip 라이브러리가 로드되지 않았습니다.', 'error');
             return;
         }
         if (!orders || orders.length === 0) {
@@ -187,17 +187,8 @@ window.WordTemplateManager = {
             const arrayBuffer = await resp.arrayBuffer();
 
             for (const order of orders) {
-                const zip = new window.PizZip(arrayBuffer);
-                const doc = new window.docxtemplater(zip, {
-                    paragraphLoop: true,
-                    linebreaks: true,
-                });
-                doc.render(this._buildVariables(order));
-
-                const blob = doc.getZip().generate({
-                    type: 'blob',
-                    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                });
+                const variables = this._buildVariables(order);
+                const blob = this._renderTemplate(arrayBuffer, variables);
 
                 const outName = fileName.replace('.docx', `_${order.orderNumber || order.주문번호 || ''}.docx`);
                 const a = document.createElement('a');
@@ -213,6 +204,66 @@ window.WordTemplateManager = {
             console.error('일괄 문서 생성 오류:', err);
             window.Utils.showNotification('문서 생성 실패: ' + (err.message || err), 'error');
         }
+    },
+
+    /**
+     * PizZip으로 docx XML을 직접 처리해 {{변수}} 치환.
+     * Word가 {{변수}} 태그를 여러 <w:r> 런으로 분리해도 동작함.
+     */
+    _renderTemplate(arrayBuffer, variables) {
+        const zip = new window.PizZip(arrayBuffer);
+
+        // 치환 대상 XML 파일 (본문 + 머리글/바닥글)
+        const targets = Object.keys(zip.files).filter(name =>
+            /^word\/(document|header\d*|footer\d*)\.xml$/.test(name)
+        );
+
+        for (const name of targets) {
+            const xml = zip.files[name].asText();
+            const processed = this._processXml(xml, variables);
+            zip.file(name, processed);
+        }
+
+        return zip.generate({
+            type: 'blob',
+            mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        });
+    },
+
+    /**
+     * XML 단락(<w:p>) 단위로 런 텍스트를 합쳐 {{변수}} 치환 후 재조립.
+     * 런 분리 문제를 근본적으로 해결함.
+     */
+    _processXml(xmlStr, variables) {
+        const escXml = s => String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+
+        return xmlStr.replace(/<w:p[ >][\s\S]*?<\/w:p>/g, paragraph => {
+            // 단락 내 모든 <w:t> 텍스트 추출
+            const texts = [];
+            const tRe = /<w:t(?:[^>]*)>([\s\S]*?)<\/w:t>/g;
+            let m;
+            while ((m = tRe.exec(paragraph)) !== null) {
+                texts.push(m[1]);
+            }
+            const fullText = texts.join('');
+            if (!fullText.includes('{{')) return paragraph;
+
+            // 변수 치환
+            let replaced = fullText;
+            for (const [key, val] of Object.entries(variables)) {
+                replaced = replaced.split(`{{${key}}}`).join(String(val));
+            }
+            if (replaced === fullText) return paragraph;
+
+            // 단락 재조립: pPr(단락서식)과 첫 번째 rPr(글자서식) 보존
+            const paraOpen = paragraph.match(/^<w:p(?:\s[^>]*)?>/)?.[0] ?? '<w:p>';
+            const pPr = paragraph.match(/(<w:pPr>[\s\S]*?<\/w:pPr>)/)?.[1] ?? '';
+            const rPr = paragraph.match(/(<w:rPr>[\s\S]*?<\/w:rPr>)/)?.[1] ?? '';
+            return `${paraOpen}${pPr}<w:r>${rPr}<w:t xml:space="preserve">${escXml(replaced)}</w:t></w:r></w:p>`;
+        });
     },
 
     /** 주문 데이터를 템플릿 변수 맵으로 변환 */
