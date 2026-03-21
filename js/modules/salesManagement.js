@@ -1126,10 +1126,6 @@ window.SalesManagementModule = {
             printValexBtn.textContent = `📦 발렉스 (${checkedCount})`;
             printValexBtn.onclick = () => this.printValexForm();
 
-            const shippingDocBtn = mkBtn('shippingDocOrderBtn', 'btn-secondary');
-            shippingDocBtn.textContent = `📦 배송표 (${checkedCount})`;
-            shippingDocBtn.onclick = () => this.generateShippingDocument();
-
             const warrantyCardBtn = mkBtn('warrantyCardBtn', 'btn-secondary');
             warrantyCardBtn.textContent = `🎁 게런티 카드 (${checkedCount})`;
             warrantyCardBtn.onclick = () => this.printWarrantyCards();
@@ -1144,7 +1140,6 @@ window.SalesManagementModule = {
         } else {
             document.getElementById('printOrderBtn')?.remove();
             document.getElementById('printValexFormBtn')?.remove();
-            document.getElementById('shippingDocOrderBtn')?.remove();
             document.getElementById('warrantyCardBtn')?.remove();
             document.getElementById('invoiceBtn')?.remove();
             document.getElementById('bulkDeleteOrderBtn')?.remove();
@@ -1707,7 +1702,7 @@ window.SalesManagementModule = {
                 '고객명': order.customerName || '',
                 '제품명': order.productName || '',
                 '옵션명': order.optionName || '',
-                '나석정보': order.stoneInfo || '',
+                '나석정보': order.stoneQty_text || '',
                 '기타': order.remark || '',
                 '보증서': order.warranty || ''
             };
