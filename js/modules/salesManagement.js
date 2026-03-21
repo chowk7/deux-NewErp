@@ -741,11 +741,11 @@ window.SalesManagementModule = {
                         data.productCode = product.code;
                     }
 
-                    // 종류(category) 자동 추출: 제품코드의 왼쪽 세번째 영문
+                    // 종류(category) 자동 추출: 제품코드의 왼쪽 다섯번째 영문
                     if (data.productCode) {
                         const codeChars = data.productCode.match(/[A-Za-z]/g);
-                        if (codeChars && codeChars.length >= 3) {
-                            const categoryChar = codeChars[2].toUpperCase();
+                        if (codeChars && codeChars.length >= 5) {
+                            const categoryChar = codeChars[4].toUpperCase();
                             const categoryMap = { 'E': 'E(귀걸이)', 'R': 'R(반지)', 'N': 'N(목걸이)', 'B': 'B(팔찌)' };
                             data.category = categoryMap[categoryChar] || '기타';
                         }
@@ -965,8 +965,8 @@ window.SalesManagementModule = {
 
                         // 종류 자동 추출
                         const codeChars = product.code.match(/[A-Za-z]/g);
-                        if (codeChars && codeChars.length >= 3) {
-                            const categoryChar = codeChars[2].toUpperCase();
+                        if (codeChars && codeChars.length >= 5) {
+                            const categoryChar = codeChars[4].toUpperCase();
                             const categoryMap = { 'E': 'E(귀걸이)', 'R': 'R(반지)', 'N': 'N(목걸이)', 'B': 'B(팔찌)' };
                             const category = categoryMap[categoryChar] || '기타';
                             const categorySelect = wrapper.querySelector('[name="category"]');
