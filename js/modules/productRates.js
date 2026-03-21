@@ -322,23 +322,83 @@ window.ProductRatesModule = {
     updateBulkDeleteBtn() {
         const table = document.querySelector('#productRatesTable');
         const checkedCount = table?.querySelectorAll('tbody .row-checkbox:checked').length || 0;
+        const buttonGroup = document.querySelector('#productRatesContent .button-group');
         let bulkDeleteBtn = document.getElementById('bulkDeleteProductBtn');
+        let bulkDiscountBtn = document.getElementById('bulkDiscountProductBtn');
 
         if (checkedCount > 0) {
+            if (!bulkDiscountBtn) {
+                bulkDiscountBtn = document.createElement('button');
+                bulkDiscountBtn.id = 'bulkDiscountProductBtn';
+                bulkDiscountBtn.className = 'btn btn-secondary';
+                bulkDiscountBtn.style.marginLeft = '8px';
+                if (buttonGroup) buttonGroup.appendChild(bulkDiscountBtn);
+            }
+            bulkDiscountBtn.textContent = `할인율 일괄변경 (${checkedCount}개)`;
+            bulkDiscountBtn.onclick = () => this.bulkChangeDiscountRate();
+
             if (!bulkDeleteBtn) {
                 bulkDeleteBtn = document.createElement('button');
                 bulkDeleteBtn.id = 'bulkDeleteProductBtn';
                 bulkDeleteBtn.className = 'btn btn-danger';
                 bulkDeleteBtn.style.marginLeft = '8px';
-                const buttonGroup = document.querySelector('#productRatesContent .button-group') ||
-                                  document.querySelector('.button-group');
                 if (buttonGroup) buttonGroup.appendChild(bulkDeleteBtn);
             }
             bulkDeleteBtn.textContent = `🗑️ ${checkedCount}개 삭제`;
             bulkDeleteBtn.onclick = () => this.bulkDelete();
-        } else if (bulkDeleteBtn) {
-            bulkDeleteBtn.remove();
+        } else {
+            bulkDiscountBtn?.remove();
+            bulkDeleteBtn?.remove();
         }
+    },
+
+    async bulkChangeDiscountRate() {
+        const table = document.querySelector('#productRatesTable');
+        const checkedIds = Array.from(table.querySelectorAll('tbody .row-checkbox:checked'))
+            .map(cb => cb.dataset.id);
+        if (checkedIds.length === 0) return;
+
+        const body = `
+            <div class="form-group">
+                <label>새 할인율 (%)</label>
+                <input type="number" id="bulkDiscountRateInput" min="0" max="100" step="0.1"
+                    style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:4px;font-size:1rem;"
+                    placeholder="예: 10">
+            </div>
+            <p style="font-size:0.85rem;color:#6b7280;margin-top:8px;">
+                선택한 <strong>${checkedIds.length}개</strong> 항목의 할인율을 일괄 변경합니다.<br>
+                할인가 등 관련 계산값도 자동으로 재계산됩니다.
+            </p>`;
+
+        const wrapper = window.Utils.openModal(
+            '할인율 일괄변경',
+            body,
+            async (data, w) => {
+                const newRate = parseFloat(document.getElementById('bulkDiscountRateInput').value);
+                if (isNaN(newRate) || newRate < 0 || newRate > 100) {
+                    window.Utils.showNotification('0~100 사이의 유효한 할인율을 입력하세요.', 'error');
+                    return false;
+                }
+
+                const batch = window.firebaseDb.batch();
+                const collection = window.firebaseDb.collection('prices').doc('productRates').collection('items');
+
+                for (const id of checkedIds) {
+                    const product = this.products.find(p => p.id === id);
+                    if (!product) continue;
+                    const updated = { ...product, discountRate: newRate };
+                    const calculated = this.calculate(updated);
+                    batch.update(collection.doc(id), { ...calculated, updatedAt: new Date() });
+                }
+
+                await batch.commit();
+                w.remove();
+                this.load();
+                window.Utils.showNotification(`${checkedIds.length}개 항목의 할인율이 ${newRate}%로 변경되었습니다.`, 'success');
+            }
+        );
+
+        setTimeout(() => wrapper.querySelector('#bulkDiscountRateInput')?.focus(), 100);
     },
 
     async bulkDelete() {
