@@ -304,16 +304,26 @@ window.Utils = {
     },
 
     _mapCsvToObjects(fields, headers, rows) {
-        // 헤더 레이블 → key 매핑
+        // 헤더 레이블 → key 매핑, 숫자 필드 key 집합
         const labelToKey = {};
-        fields.forEach(f => { labelToKey[f.label] = f.key; });
+        const numberKeys = new Set();
+        fields.forEach(f => {
+            labelToKey[f.label] = f.key;
+            if (f.type === 'number') numberKeys.add(f.key);
+        });
 
         const keyIndices = headers.map(h => labelToKey[h] || null);
 
         return rows.filter(r => r.some(v => v)).map(row => {
             const obj = {};
             keyIndices.forEach((key, i) => {
-                if (key) obj[key] = row[i] || '';
+                if (!key) return;
+                let val = row[i] || '';
+                // 숫자 필드: 쉼표 제거
+                if (numberKeys.has(key) && val !== '') {
+                    val = val.replace(/,/g, '');
+                }
+                obj[key] = val;
             });
             return obj;
         });
