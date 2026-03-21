@@ -114,7 +114,8 @@ class DiamonJewelryApp {
             'new-product-pricing': 'newProductPricingContent',
             'promotion': 'promotionContent',
             'notes': 'notesContent',
-            'images': 'imagesContent'
+            'images': 'imagesContent',
+            'word-templates': 'wordTemplatesContent'
         };
 
         const sectionId = sectionMap[menuId];
@@ -248,6 +249,7 @@ class DiamonJewelryApp {
         if (window.NewProductPricingModule) window.NewProductPricingModule.init();
         if (window.PromotionModule) window.PromotionModule.init();
         if (window.notes) window.notes.init();
+        if (window.WordTemplateManager) window.WordTemplateManager.init();
     }
 
     /**

@@ -153,6 +153,7 @@
                             <li><a href="#" data-menu="promotion" class="nav-link">🏷️ 프로모션</a></li>
                             <li><a href="#" data-menu="notes" class="nav-link">📝 노트</a></li>
                             <li><a href="#" data-menu="images" class="nav-link">🖼️ 이미지 관리</a></li>
+                            <li><a href="#" data-menu="word-templates" class="nav-link">📄 워드 양식 관리</a></li>
                         </ul>
                     </nav>
                 </div>
@@ -564,6 +565,32 @@
                         <h2>이미지 관리</h2>
                         <p>준비 중입니다...</p>
                     </section>
+
+                    <!-- 워드 양식 관리 섹션 -->
+                    <section id="wordTemplatesContent" class="content-section hidden">
+                        <h2>워드 양식 관리</h2>
+                        <p style="color:#6b7280;font-size:0.9em;margin-bottom:16px;">
+                            Word 파일에 <code>{{변수명}}</code> 형식으로 자리표시자를 넣으면 출력 시 자동 치환됩니다.<br>
+                            사용 가능 변수: {{주문번호}} {{고객명}} {{수령인}} {{연락처}} {{주소}} {{주소상세}} {{우편번호}} {{상품명}} {{옵션명}} {{수량}} {{주문금액}} {{주문일}} {{기타}}
+                        </p>
+                        <div class="button-group" style="margin-bottom:16px;">
+                            <input type="file" id="templateFileInput" accept=".docx" style="display:none;">
+                            <button id="uploadTemplateBtn" class="btn btn-primary">📤 양식 업로드</button>
+                        </div>
+                        <table id="templatesTable" class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>양식명</th>
+                                    <th>용도</th>
+                                    <th>업로드 일시</th>
+                                    <th>관리</th>
+                                </tr>
+                            </thead>
+                            <tbody id="templatesTableBody">
+                                <tr><td colspan="4" style="text-align:center;color:#9ca3af;">양식이 없습니다.</td></tr>
+                            </tbody>
+                        </table>
+                    </section>
                 </main>
             </div>
         </div>
@@ -579,6 +606,9 @@
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <!-- docx for Word document generation (local) -->
     <script src="/js/lib/docx.umd.js"></script>
+    <!-- pizzip + docxtemplater for Word template filling -->
+    <script src="/js/lib/pizzip.min.js"></script>
+    <script src="/js/lib/docxtemplater.min.js"></script>
 
     <!-- App Scripts -->
     <script src="/js/utils.js"></script>
@@ -598,6 +628,7 @@
     <script src="/js/modules/imwebIntegration.js"></script>
     <script src="/js/modules/newProductPricing.js"></script>
     <script src="/js/modules/promotion.js"></script>
+    <script src="/js/modules/wordTemplateManager.js"></script>
     <script src="/js/app.js"></script>
 </body>
 </html>

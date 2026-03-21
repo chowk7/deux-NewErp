@@ -1167,6 +1167,53 @@ window.SalesManagementModule = {
         window.Utils.showNotification(`${checkedIds.length}개 주문이 삭제되었습니다.`, 'success');
     },
 
+    /**
+     * 템플릿 선택 모달 (간단한 confirm 방식)
+     * @returns {Promise<string|null>} 선택된 templateId, 'builtin', 또는 null(취소)
+     */
+    _pickTemplate(templates) {
+        return new Promise(resolve => {
+            // 기존 모달 제거
+            document.getElementById('_templatePickerModal')?.remove();
+
+            const overlay = document.createElement('div');
+            overlay.id = '_templatePickerModal';
+            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;';
+
+            const box = document.createElement('div');
+            box.style.cssText = 'background:#fff;border-radius:8px;padding:24px;min-width:320px;max-width:480px;width:90%;';
+
+            const close = (val) => { overlay.remove(); resolve(val); };
+
+            box.innerHTML = `
+                <h3 style="margin:0 0 12px;font-size:1.1em;">출력 양식 선택</h3>
+                <p style="color:#6b7280;font-size:.85em;margin:0 0 16px;">사용할 Word 양식을 선택하거나 기본 양식을 사용하세요.</p>
+                <div id="_templateList" style="display:flex;flex-direction:column;gap:8px;"></div>
+                <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;">
+                    <button id="_templateBuiltin" class="btn btn-outline" style="font-size:.9em;">📋 기본 양식 사용</button>
+                    <button id="_templateCancel" class="btn btn-secondary" style="font-size:.9em;">취소</button>
+                </div>
+            `;
+
+            const list = box.querySelector('#_templateList');
+            templates.forEach(t => {
+                const btn = document.createElement('button');
+                btn.className = 'btn btn-primary';
+                btn.style.cssText = 'text-align:left;';
+                btn.innerHTML = `<strong>${t.name}</strong> <span style="font-weight:normal;color:#e0f2fe;font-size:.85em;">${t.purpose || ''}</span>`;
+                btn.onclick = () => close(t.id);
+                list.appendChild(btn);
+            });
+
+            box.querySelector('#_templateBuiltin').onclick = () => close('builtin');
+            box.querySelector('#_templateCancel').onclick = () => close(null);
+            overlay.addEventListener('click', e => { if (e.target === overlay) close(null); });
+
+            overlay.appendChild(box);
+            document.body.appendChild(overlay);
+        });
+    },
+
     _loadDocxLibrary() {
         return new Promise((resolve, reject) => {
             if (window.docx) return resolve(window.docx);
@@ -1179,14 +1226,6 @@ window.SalesManagementModule = {
     },
 
     async generateShippingDocument() {
-        let D;
-        try {
-            D = await this._loadDocxLibrary();
-        } catch (e) {
-            window.Utils.showNotification('Word 라이브러리 로드에 실패했습니다: ' + e.message, 'error');
-            return;
-        }
-
         const table = document.querySelector('#ordersTable');
         const checkedIds = Array.from(table.querySelectorAll('tbody .row-checkbox:checked'))
             .map(cb => cb.dataset.id);
@@ -1196,6 +1235,30 @@ window.SalesManagementModule = {
         }
 
         const selectedOrders = this.allOrders.filter(o => checkedIds.includes(o.id));
+
+        // 등록된 Word 양식이 있으면 선택지를 제공
+        const templates = window.WordTemplateManager
+            ? await window.WordTemplateManager.getTemplateList().catch(() => [])
+            : [];
+
+        if (templates.length > 0) {
+            const chosen = await this._pickTemplate(templates);
+            if (chosen === null) return; // 취소
+            if (chosen !== 'builtin') {
+                // 선택한 템플릿으로 일괄 생성
+                await window.WordTemplateManager.generateBatchFromTemplate(chosen, selectedOrders);
+                return;
+            }
+        }
+
+        // 기본 내장 양식으로 생성
+        let D;
+        try {
+            D = await this._loadDocxLibrary();
+        } catch (e) {
+            window.Utils.showNotification('Word 라이브러리 로드에 실패했습니다: ' + e.message, 'error');
+            return;
+        }
 
         const {
             Document, Paragraph, TextRun, Table, TableRow, TableCell,
