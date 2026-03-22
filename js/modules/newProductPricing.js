@@ -36,15 +36,17 @@ window.NewProductPricingModule = {
         { key: 'ownMallProfit',   label: '자사몰이익',      type: 'number', calc: true },
         { key: 'ownMallProfitRate',label: '자사몰이익률(%)', type: 'number', calc: true },
         { key: 'deptPrice',       label: '백화점가',        type: 'number', calc: true },
+        { key: 'deptProfit',      label: '백화점이익',      type: 'number', calc: true },
         { key: 'deptProfitRate',  label: '백화점이익률(%)', type: 'number', calc: true },
-        { key: 'goldValue18k',    label: '18K금값',         type: 'number', calc: true },
-        { key: 'marginPrice18k',  label: '18K마진포함가',   type: 'number', calc: true },
-        { key: 'finalPrice18k',   label: '18K최종소비자가', type: 'number', calc: false },
-        { key: 'discountPrice18k',label: '18K할인가',       type: 'number', calc: true },
-        { key: 'ownMallProfit18k',label: '18K자사몰이익',   type: 'number', calc: true },
-        { key: 'ownMallProfitRate18k', label: '18K자사몰이익률(%)', type: 'number', calc: true },
-        { key: 'deptPrice18k',    label: '18K백화점가',     type: 'number', calc: true },
-        { key: 'deptProfitRate18k',label: '18K백화점이익률(%)', type: 'number', calc: true },
+        { key: 'goldValue18k',    label: '18K금값',         type: 'number', calc: true, is18k: true },
+        { key: 'marginPrice18k',  label: '18K예상소비자가', type: 'number', calc: true, is18k: true },
+        { key: 'finalPrice18k',   label: '18K최종소비자가', type: 'number', calc: false, is18k: true },
+        { key: 'discountPrice18k',label: '18K할인가',       type: 'number', calc: true, is18k: true },
+        { key: 'ownMallProfit18k',label: '18K자사몰이익',   type: 'number', calc: true, is18k: true },
+        { key: 'ownMallProfitRate18k', label: '18K자사몰이익률(%)', type: 'number', calc: true, is18k: true },
+        { key: 'deptPrice18k',    label: '18K백화점가',     type: 'number', calc: true, is18k: true },
+        { key: 'deptProfit18k',   label: '18K백화점이익',   type: 'number', calc: true, is18k: true },
+        { key: 'deptProfitRate18k',label: '18K백화점이익률(%)', type: 'number', calc: true, is18k: true },
     ],
 
     products: [],
@@ -434,14 +436,16 @@ window.NewProductPricingModule = {
                         ).join('');
                         input = `<select name="${f.key}"><option value="">선택</option>${opts}</select>`;
                     } else if (f.type !== 'custom') {
+                        const bgColor = f.is18k ? '#fef3c7' : (f.calc ? '#f3f4f6' : '');
                         input = `<input type="${f.type}" name="${f.key}" value="${f.calc && val !== '' ? Math.round(val) : val !== '' ? val : ''}"
                             step="0.01" class="${f.calc ? 'calc-field' : ''}"
-                            ${f.calc ? 'readonly style="background:#f3f4f6;"' : ''}>`;
+                            ${f.calc ? `readonly style="background:${bgColor};"` : `style="background:${bgColor};"`}>`;
                     } else {
                         return '';
                     }
+                    const groupBgColor = f.is18k ? '#fffbeb' : '';
                     return `
-                        <div class="form-group">
+                        <div class="form-group" style="background:${groupBgColor};padding:8px;border-radius:4px;">
                             <label>${f.label}${f.calc ? ' <span style="color:#9ca3af;font-size:0.75rem">(자동)</span>' : ''}</label>
                             ${input}
                         </div>`;
@@ -687,9 +691,14 @@ window.NewProductPricingModule = {
         // 나석 원가
         const stones = data['stones'] || [];
         let stoneCost = 0;
+        let stoneVSAddFeeSum = 0; // VS 추가금 합계
         stones.forEach(stone => {
             const found = this.diamondRates?.find(d => d.diamondType === stone.type);
             stoneCost += (found ? parseFloat(found.costWithoutVat) || 0 : 0) * (stone.qty || 0);
+            // VS 추가금 합계 계산 (나석 종류당 1개만 계산)
+            if (found && stone.qty > 0) {
+                stoneVSAddFeeSum += parseFloat(found.vsWarrantyFee) || 0;
+            }
         });
 
         // 보증서 추가금
@@ -716,8 +725,11 @@ window.NewProductPricingModule = {
         const discountPrice = finalPrice * (1 - n('discountRate') / 100);
         const ownMallProfit = discountPrice * (1 - ownMallFee / 100) - salesCost;
         const ownMallProfitRate = discountPrice > 0 ? (ownMallProfit / discountPrice) * 100 : 0;
-        const deptPrice    = finalPrice * (1 - deptFee / 100);
-        const deptProfitRate = deptPrice > 0 ? ((deptPrice - salesCost) / deptPrice) * 100 : 0;
+        // 새로운 백화점가 계산: 최종소비자가 + 나석 VS 추가금 합계
+        const deptPrice    = finalPrice + stoneVSAddFeeSum;
+        // 새로운 백화점이익 계산
+        const deptProfit   = deptPrice - salesCost - stoneVSAddFeeSum * 0.8;
+        const deptProfitRate = deptPrice > 0 ? (deptProfit / deptPrice) * 100 : 0;
 
         // 18K 계산 (weight18kRate는 18K/14K 금 무게비 배수)
         const goldWeight18k = n('goldWeight14k') * weight18kRate;
@@ -725,22 +737,25 @@ window.NewProductPricingModule = {
         const productCost18k = stoneCost + n('laborCost') + goldValue18k + n('otherMaterial') + stoneWarrantyCostComponent;
         const vatCost18k    = productCost18k * 1.1;
         const salesCost18k  = vatCost18k + n('shipping');
-        const marginPrice18k = ownMargin > 0 ? salesCost18k / (1 - ownMargin / 100) : salesCost18k;
+        // 새로운 18K예상소비자가 계산: (금가격 * 18K/14K 금 무게비 + 공임비 + 나석원가 + 기타재료) * 1.1 / (자체마진율/100)
+        const marginPrice18k = (goldValue18k + n('laborCost') + stoneCost + n('otherMaterial')) * 1.1 / (ownMargin > 0 ? (ownMargin / 100) : 1);
         const expectedPrice18k = Math.round(marginPrice18k / 1000) * 1000;
         const finalPrice18k = (n('finalPrice18k') || expectedPrice18k) + n('sizeAddFee') + stoneWarrantyFee;
         const discountPrice18k = finalPrice18k * (1 - n('discountRate') / 100);
         const ownMallProfit18k = discountPrice18k * (1 - ownMallFee / 100) - salesCost18k;
         const ownMallProfitRate18k = discountPrice18k > 0 ? (ownMallProfit18k / discountPrice18k) * 100 : 0;
-        const deptPrice18k  = finalPrice18k * (1 - deptFee / 100);
-        const deptProfitRate18k = deptPrice18k > 0 ? ((deptPrice18k - salesCost18k) / deptPrice18k) * 100 : 0;
+        // 18K백화점가: 백화점가 계산과 같고 18K최종소비자가 사용
+        const deptPrice18k  = finalPrice18k + stoneVSAddFeeSum;
+        const deptProfit18k = deptPrice18k - salesCost18k - stoneVSAddFeeSum * 0.8;
+        const deptProfitRate18k = deptPrice18k > 0 ? (deptProfit18k / deptPrice18k) * 100 : 0;
 
         return {
             ...data,
             stoneCost, stoneWarrantyFee,
             goldValue, productCost, vatCost, salesCost, marginPrice, expectedPrice,
-            finalPrice, discountPrice, ownMallProfit, ownMallProfitRate, deptPrice, deptProfitRate,
+            finalPrice, discountPrice, ownMallProfit, ownMallProfitRate, deptPrice, deptProfit, deptProfitRate,
             goldValue18k, marginPrice18k, finalPrice18k, discountPrice18k,
-            ownMallProfit18k, ownMallProfitRate18k, deptPrice18k, deptProfitRate18k
+            ownMallProfit18k, ownMallProfitRate18k, deptPrice18k, deptProfit18k, deptProfitRate18k
         };
     },
 
