@@ -751,7 +751,7 @@ window.ProductRatesModule = {
                 if (!el) return;
                 el.value = Math.round(calc[f.key] || 0);
             });
-        }.bind(this);
+        };
 
         // 초기 stone type 검색 드롭다운 설정
         setupStoneTypeSearchable(wrapper);
