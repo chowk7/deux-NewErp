@@ -36,7 +36,7 @@ window.ProfitLossModule = {
                 this.load();
             });
         document.getElementById('calcPlBtn')
-            ?.addEventListener('click', () => this.load());
+            ?.addEventListener('click', () => this.calculateProfitLoss());
 
         // CSV 다운로드 버튼
         document.getElementById('downloadPlDataBtn')
@@ -45,6 +45,28 @@ window.ProfitLossModule = {
         // 표시항목 설정
         document.getElementById('plDisplaySettingsBtn')
             ?.addEventListener('click', () => this.openDisplaySettings());
+    },
+
+    // P&L 계산 (버튼 클릭)
+    async calculateProfitLoss() {
+        const calcBtn = document.getElementById('calcPlBtn');
+        if (calcBtn) {
+            calcBtn.disabled = true;
+            calcBtn.textContent = '계산 중...';
+        }
+
+        try {
+            await this.load();
+            window.Utils.showNotification(`${this.selectedYear}년도 P&L표 계산이 완료되었습니다.`, 'success');
+        } catch (error) {
+            console.error('P&L 계산 중 오류:', error);
+            window.Utils.showNotification('P&L 계산 중 오류가 발생했습니다.', 'error');
+        } finally {
+            if (calcBtn) {
+                calcBtn.disabled = false;
+                calcBtn.textContent = '계산';
+            }
+        }
     },
 
     openDisplaySettings() {
