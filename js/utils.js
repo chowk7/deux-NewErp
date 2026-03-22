@@ -1058,4 +1058,98 @@ window.Utils = {
             return true;
         });
     },
+
+    // ===== 다운로드 옵션 =====
+
+    /**
+     * CSV 다운로드 옵션 모달 열기
+     * @param {string} downloadType - 다운로드 타입 ('orders', 'integrated', 'mfg')
+     * @param {number} totalDataCount - 전체 데이터 개수
+     * @param {number} filteredDataCount - 필터된 데이터 개수
+     * @param {number} selectedDataCount - 선택한 데이터 개수
+     * @param {Function} onDownload - 다운로드 실행 콜백 (option) => void
+     */
+    openDownloadOptionModal(downloadType, totalDataCount, filteredDataCount, selectedDataCount, onDownload) {
+        const wrapper = document.createElement('div');
+        wrapper.setAttribute('data-modal', '');
+        wrapper.innerHTML = `
+            <div class="modal-overlay" style="z-index:10000;">
+                <div class="modal-content" style="max-width:450px;">
+                    <div class="modal-header">
+                        <h3>데이터 다운로드 선택</h3>
+                        <button type="button" class="modal-close-btn" aria-label="닫기">✕</button>
+                    </div>
+                    <div style="padding:24px;">
+                        <div style="margin-bottom:20px;color:#6b7280;font-size:0.9rem;">
+                            어떤 데이터를 다운로드할까요?
+                        </div>
+                        <div id="downloadOptions">
+                            <label style="display:block;margin-bottom:16px;padding:16px;border:2px solid #e5e7eb;border-radius:6px;cursor:pointer;transition:all 0.2s;">
+                                <input type="radio" name="downloadOption" value="all" style="margin-right:8px;">
+                                <strong>전체 데이터</strong>
+                                <div style="font-size:0.85rem;color:#6b7280;margin-top:4px;">필터/정렬 무시하고 모든 데이터</div>
+                                <div style="font-size:0.8rem;color:#9ca3af;margin-top:4px;">총 ${window.Utils.formatNumber(totalDataCount || 0)}개 항목</div>
+                            </label>
+
+                            ${filteredDataCount !== totalDataCount ? `
+                            <label style="display:block;margin-bottom:16px;padding:16px;border:2px solid #e5e7eb;border-radius:6px;cursor:pointer;transition:all 0.2s;">
+                                <input type="radio" name="downloadOption" value="filtered" style="margin-right:8px;">
+                                <strong>필터된 데이터</strong>
+                                <div style="font-size:0.85rem;color:#6b7280;margin-top:4px;">현재 적용된 필터와 정렬 적용</div>
+                                <div style="font-size:0.8rem;color:#9ca3af;margin-top:4px;">총 ${window.Utils.formatNumber(filteredDataCount || 0)}개 항목</div>
+                            </label>
+                            ` : ''}
+
+                            ${selectedDataCount > 0 ? `
+                            <label style="display:block;margin-bottom:16px;padding:16px;border:2px solid #e5e7eb;border-radius:6px;cursor:pointer;transition:all 0.2s;">
+                                <input type="radio" name="downloadOption" value="selected" style="margin-right:8px;">
+                                <strong>선택한 데이터만</strong>
+                                <div style="font-size:0.85rem;color:#6b7280;margin-top:4px;">체크박스로 선택한 항목만</div>
+                                <div style="font-size:0.8rem;color:#9ca3af;margin-top:4px;">총 ${window.Utils.formatNumber(selectedDataCount)}개 항목 선택됨</div>
+                            </label>
+                            ` : ''}
+                        </div>
+
+                        <div style="margin-top:24px;display:flex;gap:8px;justify-content:flex-end;">
+                            <button type="button" id="downloadCancelBtn" class="btn btn-secondary">취소</button>
+                            <button type="button" id="downloadConfirmBtn" class="btn btn-primary">다운로드</button>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+
+        document.body.appendChild(wrapper);
+
+        // 모달 닫기
+        const cleanup = () => wrapper.remove();
+        wrapper.querySelector('.modal-close-btn').addEventListener('click', cleanup);
+        wrapper.querySelector('.modal-overlay').addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) cleanup();
+        });
+        wrapper.querySelector('#downloadCancelBtn').addEventListener('click', cleanup);
+
+        // 다운로드 실행
+        wrapper.querySelector('#downloadConfirmBtn').addEventListener('click', () => {
+            const selectedOption = wrapper.querySelector('input[name="downloadOption"]:checked')?.value;
+            if (selectedOption) {
+                cleanup();
+                if (onDownload) onDownload(selectedOption);
+            }
+        });
+
+        // 기본값 설정
+        const defaultOption = wrapper.querySelector('input[name="downloadOption"]');
+        if (defaultOption) defaultOption.checked = true;
+
+        // 라벨 스타일 (선택시)
+        const labels = wrapper.querySelectorAll('label');
+        labels.forEach(label => {
+            const radio = label.querySelector('input[type="radio"]');
+            radio.addEventListener('change', () => {
+                labels.forEach(l => l.style.borderColor = '#e5e7eb');
+                if (radio.checked) label.style.borderColor = '#3b82f6';
+            });
+            if (radio.checked) label.style.borderColor = '#3b82f6';
+        });
+    },
 };

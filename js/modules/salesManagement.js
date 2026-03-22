@@ -114,13 +114,13 @@ window.SalesManagementModule = {
         document.getElementById('downloadOrdersTemplateBtn')
             ?.addEventListener('click', () => this.downloadOrderCsvTemplate());
         document.getElementById('downloadOrdersDataBtn')
-            ?.addEventListener('click', () => this.downloadOrderCsvData());
+            ?.addEventListener('click', () => this.showOrderDownloadOption());
 
         // 통합 CSV 버튼 리스너 (매출+제조원가+주문관리)
         document.getElementById('downloadIntegratedCsvTemplateBtn')
             ?.addEventListener('click', () => this.downloadIntegratedCsvTemplate());
         document.getElementById('downloadIntegratedCsvDataBtn')
-            ?.addEventListener('click', () => this.downloadIntegratedCsvData());
+            ?.addEventListener('click', () => this.showIntegratedDownloadOption());
         document.getElementById('csvUploadIntegratedBtn')
             ?.addEventListener('click', () => {
                 const downloadDiv = document.getElementById('integratedDownloadBtns');
@@ -1546,9 +1546,34 @@ window.SalesManagementModule = {
         window.Utils.downloadCsvTemplate(this.ORDER_FIELDS, '매출표_양식.csv');
     },
 
-    downloadOrderCsvData() {
+    showOrderDownloadOption() {
+        const selectedCount = document.querySelectorAll('#ordersTable tbody .row-checkbox:checked').length;
+        window.Utils.openDownloadOptionModal(
+            'orders',
+            this.allOrders.length,
+            this.filteredOrders.length,
+            selectedCount,
+            (option) => this.downloadOrderCsvData(option)
+        );
+    },
+
+    downloadOrderCsvData(option = 'filtered') {
+        let rows;
         const STATUS_KEYS = ['stoneRequested','workshopRequested','productionComplete','shippingReady','delivered'];
-        const rows = this.orders.map(o => {
+
+        if (option === 'all') {
+            rows = this.allOrders;
+        } else if (option === 'selected') {
+            const selectedIds = new Set();
+            document.querySelectorAll('#ordersTable tbody .row-checkbox:checked').forEach(cb => {
+                selectedIds.add(cb.dataset.id);
+            });
+            rows = this.allOrders.filter(o => selectedIds.has(o.id));
+        } else {
+            rows = this.filteredOrders;
+        }
+
+        const formattedRows = rows.map(o => {
             const row = { ...o };
             if (row.orderDate?.toDate) {
                 row.orderDate = row.orderDate.toDate().toLocaleDateString('ko-KR');
@@ -1556,7 +1581,7 @@ window.SalesManagementModule = {
             STATUS_KEYS.forEach(k => { row[k] = row[k] === true ? 'Y' : 'N'; });
             return row;
         });
-        window.Utils.downloadCsvData(this.ORDER_FIELDS, rows, '매출표.csv');
+        window.Utils.downloadCsvData(this.ORDER_FIELDS, formattedRows, '매출표.csv');
     },
 
     openOrderCsvUpload() {
@@ -1589,9 +1614,34 @@ window.SalesManagementModule = {
         window.Utils.downloadCsvTemplate(fields, '통합_양식.csv');
     },
 
-    downloadIntegratedCsvData() {
+    showIntegratedDownloadOption() {
+        const selectedCount = document.querySelectorAll('#ordersTable tbody .row-checkbox:checked').length;
+        window.Utils.openDownloadOptionModal(
+            'integrated',
+            this.allOrders.length,
+            this.filteredOrders.length,
+            selectedCount,
+            (option) => this.downloadIntegratedCsvData(option)
+        );
+    },
+
+    downloadIntegratedCsvData(option = 'filtered') {
         const fields = this.INTEGRATED_CSV_FIELDS.filter(f => !f.key.startsWith('separator'));
-        const rows = this.orders.map(o => {
+        let rows;
+
+        if (option === 'all') {
+            rows = this.allOrders;
+        } else if (option === 'selected') {
+            const selectedIds = new Set();
+            document.querySelectorAll('#ordersTable tbody .row-checkbox:checked').forEach(cb => {
+                selectedIds.add(cb.dataset.id);
+            });
+            rows = this.allOrders.filter(o => selectedIds.has(o.id));
+        } else {
+            rows = this.filteredOrders;
+        }
+
+        const formattedRows = rows.map(o => {
             const row = { ...o };
             // 날짜 포맷팅
             ['orderDate', 'stoneRequestDate', 'stoneCertificationDate', 'workshopRequestDate',
@@ -1606,7 +1656,7 @@ window.SalesManagementModule = {
             });
             return row;
         });
-        window.Utils.downloadCsvData(fields, rows, '통합.csv');
+        window.Utils.downloadCsvData(fields, formattedRows, '통합.csv');
     },
 
     openIntegratedCsvUpload() {
