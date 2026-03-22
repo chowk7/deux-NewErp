@@ -71,6 +71,10 @@ window.ManufacturingCostsModule = {
         // VAT 일괄 재계산 버튼
         document.getElementById('mfgRecalcVatBtn')
             ?.addEventListener('click', () => this.bulkRecalcWithVat());
+
+        // 나석정보 형식 변환 버튼
+        document.getElementById('mfgMigrateStoneFormatBtn')
+            ?.addEventListener('click', () => this.migrateStoneQtyTextFormat());
     },
 
     async loadDiamondRates() {
@@ -1041,6 +1045,62 @@ window.ManufacturingCostsModule = {
         } catch (error) {
             console.error('[ManufacturingCosts] bulkFillStoneFields error:', error);
             window.Utils.showNotification('일괄 업데이트 중 오류: ' + error.message, 'error');
+        }
+    },
+
+    /**
+     * 기존 나석정보 형식 일괄 변환
+     * "1 × 1캐럿" → "1캐럿 x 1" 형식으로 변환
+     */
+    async migrateStoneQtyTextFormat() {
+        if (!(await window.Utils.confirm(
+            '모든 주문의 나석정보 형식을 변환합니다.\n"1 × 1캐럿" → "1캐럿 x 1" 형식으로 변환됩니다.\n계속하시겠습니까?'
+        ))) return;
+
+        try {
+            const snap = await window.firebaseDb
+                .collection('sales').doc('orders').collection('items').get();
+
+            const docs = snap.docs;
+            let converted = 0;
+            const BATCH_SIZE = 400;
+
+            // 배치 크기만큼 묶어서 처리
+            for (let i = 0; i < docs.length; i += BATCH_SIZE) {
+                let batch = window.firebaseDb.batch();
+                const batchDocs = docs.slice(i, i + BATCH_SIZE);
+                let batchCount = 0;
+
+                batchDocs.forEach(doc => {
+                    const order = doc.data();
+                    const oldText = order.stoneQty_text || '';
+
+                    if (!oldText) return; // 빈 값 스킵
+
+                    // 정규식: "숫자 × 문자" → "문자 x 숫자"
+                    // 예: "1 × 1캐럿, 2 × 2mm" → "1캐럿 x 1, 2mm x 2"
+                    const newText = oldText.replace(/(\d+)\s*×\s*([^\d,]+)/g, (match, qty, type) => {
+                        return `${type.trim()} x ${qty}`;
+                    });
+
+                    if (oldText !== newText) {
+                        batch.update(doc.ref, { stoneQty_text: newText });
+                        converted++;
+                        batchCount++;
+                    }
+                });
+
+                // 이 배치에 업데이트가 있으면 커밋
+                if (batchCount > 0) {
+                    await batch.commit();
+                }
+            }
+
+            window.Utils.showNotification(`✓ ${converted}건의 나석정보 형식을 변환했습니다.`, 'success');
+
+        } catch (error) {
+            console.error('[ManufacturingCosts] migrateStoneQtyTextFormat error:', error);
+            window.Utils.showNotification('형식 변환 중 오류: ' + error.message, 'error');
         }
     },
 
