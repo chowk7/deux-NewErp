@@ -792,4 +792,270 @@ window.Utils = {
             wrapper.querySelector('.modal-close-btn').addEventListener('click', () => finish(false));
         });
     },
+
+    // ===== 열 필터 =====
+
+    /**
+     * 열 필터 모달 열기
+     * @param {string} columnKey - 컬럼 키
+     * @param {string} fieldLabel - 필드 레이블
+     * @param {string} fieldType - 필드 타입 (text, number, date, select, status)
+     * @param {*} currentFilterValue - 현재 필터 값
+     * @param {Array} selectOptions - select 타입일 경우 옵션 배열
+     * @param {Function} onApply - 필터 적용 콜백 (filterSpec) => void
+     */
+    openColumnFilterModal(columnKey, fieldLabel, fieldType, currentFilterValue, selectOptions = [], onApply) {
+        let filterInputHtml = '';
+        let filterSpec = currentFilterValue || {};
+
+        switch (fieldType) {
+            case 'text':
+                filterInputHtml = `
+                    <div class="form-group">
+                        <label>조건</label>
+                        <select id="textOperator" class="form-control">
+                            <option value="contains" ${filterSpec.operator === 'contains' ? 'selected' : ''}>포함</option>
+                            <option value="exact" ${filterSpec.operator === 'exact' ? 'selected' : ''}>정확일치</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>값</label>
+                        <input type="text" id="textValue" class="form-control" value="${filterSpec.value || ''}" placeholder="검색어 입력">
+                    </div>`;
+                break;
+
+            case 'number':
+                filterInputHtml = `
+                    <div class="form-group">
+                        <label>조건</label>
+                        <select id="numberOperator" class="form-control">
+                            <option value="=" ${filterSpec.operator === '=' ? 'selected' : ''}>=</option>
+                            <option value=">" ${filterSpec.operator === '>' ? 'selected' : ''}>></option>
+                            <option value=">=" ${filterSpec.operator === '>=' ? 'selected' : ''}>>=</option>
+                            <option value="<" ${filterSpec.operator === '<' ? 'selected' : ''}><</option>
+                            <option value="<=" ${filterSpec.operator === '<=' ? 'selected' : ''}><=</option>
+                            <option value="between" ${filterSpec.operator === 'between' ? 'selected' : ''}>범위</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>값</label>
+                        <div style="display:flex;gap:8px;">
+                            <input type="number" id="numberValue" class="form-control" value="${filterSpec.value || ''}" placeholder="값 입력">
+                            <input type="number" id="numberValueEnd" class="form-control" value="${filterSpec.valueEnd || ''}" placeholder="값2 (범위용)" style="display:${filterSpec.operator === 'between' ? 'block' : 'none'}">
+                        </div>
+                    </div>`;
+                break;
+
+            case 'date':
+                filterInputHtml = `
+                    <div class="form-group">
+                        <label>조건</label>
+                        <select id="dateOperator" class="form-control">
+                            <option value="=" ${filterSpec.operator === '=' ? 'selected' : ''}>특정 날짜</option>
+                            <option value="between" ${filterSpec.operator === 'between' ? 'selected' : ''}>범위</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>시작 날짜</label>
+                        <input type="date" id="dateValue" class="form-control" value="${filterSpec.value || ''}">
+                    </div>
+                    <div class="form-group" style="display:${filterSpec.operator === 'between' ? 'block' : 'none'};">
+                        <label>종료 날짜</label>
+                        <input type="date" id="dateValueEnd" class="form-control" value="${filterSpec.valueEnd || ''}">
+                    </div>`;
+                break;
+
+            case 'select':
+                const options = selectOptions.map(opt =>
+                    `<label style="display:block;margin:8px 0;">
+                        <input type="checkbox" value="${opt}" ${filterSpec.values?.includes(opt) ? 'checked' : ''}>
+                        ${opt}
+                    </label>`
+                ).join('');
+                filterInputHtml = `
+                    <div class="form-group">
+                        <label>선택</label>
+                        <div id="selectOptions" style="max-height:300px;overflow-y:auto;border:1px solid #e5e7eb;padding:12px;border-radius:6px;">
+                            ${options}
+                        </div>
+                    </div>`;
+                break;
+
+            case 'status':
+                filterInputHtml = `
+                    <div class="form-group">
+                        <label>
+                            <input type="radio" name="statusValue" value="true" ${filterSpec.value === 'true' || filterSpec.value === true ? 'checked' : ''}>
+                            예 (Y)
+                        </label>
+                        <label style="margin-left:16px;">
+                            <input type="radio" name="statusValue" value="false" ${filterSpec.value === 'false' || filterSpec.value === false ? 'checked' : ''}>
+                            아니오 (N)
+                        </label>
+                        <label style="margin-left:16px;">
+                            <input type="radio" name="statusValue" value="" ${!filterSpec.value || filterSpec.value === '' ? 'checked' : ''}>
+                            무관 (필터 안함)
+                        </label>
+                    </div>`;
+                break;
+
+            default:
+                filterInputHtml = '<p>지원하지 않는 필드 타입입니다.</p>';
+        }
+
+        const modalHtml = `
+            <div style="padding:20px;">
+                <h4 style="margin-bottom:16px;">필터: ${fieldLabel}</h4>
+                ${filterInputHtml}
+                <div style="margin-top:20px;padding-top:20px;border-top:1px solid #e5e7eb;display:flex;gap:8px;">
+                    <button type="button" id="applyFilterBtn" class="btn btn-primary">적용</button>
+                    <button type="button" id="clearFilterBtn" class="btn btn-secondary">필터 초기화</button>
+                    <button type="button" id="cancelFilterBtn" class="btn btn-outline">취소</button>
+                </div>
+            </div>`;
+
+        const wrapper = document.createElement('div');
+        wrapper.setAttribute('data-modal', '');
+        wrapper.innerHTML = `
+            <div class="modal-overlay">
+                <div class="modal-content" style="max-width:400px;">
+                    <div class="modal-header">
+                        <h3>열 필터</h3>
+                        <button type="button" class="modal-close-btn" aria-label="닫기">✕</button>
+                    </div>
+                    ${modalHtml}
+                </div>
+            </div>`;
+
+        document.body.appendChild(wrapper);
+
+        wrapper.querySelector('.modal-close-btn').addEventListener('click', () => wrapper.remove());
+        wrapper.querySelector('.modal-overlay').addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) wrapper.remove();
+        });
+
+        wrapper.querySelector('#cancelFilterBtn').addEventListener('click', () => wrapper.remove());
+
+        wrapper.querySelector('#applyFilterBtn').addEventListener('click', () => {
+            let newFilterSpec = null;
+
+            if (fieldType === 'text') {
+                const operator = wrapper.querySelector('#textOperator').value;
+                const value = wrapper.querySelector('#textValue').value.trim();
+                if (value) newFilterSpec = { operator, value };
+            } else if (fieldType === 'number') {
+                const operator = wrapper.querySelector('#numberOperator').value;
+                const value = wrapper.querySelector('#numberValue').value;
+                if (value) {
+                    newFilterSpec = { operator, value: parseFloat(value) };
+                    if (operator === 'between') {
+                        const valueEnd = wrapper.querySelector('#numberValueEnd').value;
+                        if (valueEnd) newFilterSpec.valueEnd = parseFloat(valueEnd);
+                    }
+                }
+            } else if (fieldType === 'date') {
+                const operator = wrapper.querySelector('#dateOperator').value;
+                const value = wrapper.querySelector('#dateValue').value;
+                if (value) {
+                    newFilterSpec = { operator, value };
+                    if (operator === 'between') {
+                        const valueEnd = wrapper.querySelector('#dateValueEnd').value;
+                        if (valueEnd) newFilterSpec.valueEnd = valueEnd;
+                    }
+                }
+            } else if (fieldType === 'select') {
+                const selectedValues = Array.from(wrapper.querySelectorAll('#selectOptions input:checked'))
+                    .map(cb => cb.value);
+                if (selectedValues.length > 0) newFilterSpec = { values: selectedValues };
+            } else if (fieldType === 'status') {
+                const statusValue = wrapper.querySelector('input[name="statusValue"]:checked').value;
+                if (statusValue) newFilterSpec = { value: statusValue === 'true' };
+            }
+
+            wrapper.remove();
+            if (onApply) onApply(newFilterSpec);
+        });
+
+        wrapper.querySelector('#clearFilterBtn').addEventListener('click', () => {
+            wrapper.remove();
+            if (onApply) onApply(null);
+        });
+
+        // 동적 UI 업데이트 (범위 선택 시)
+        if (fieldType === 'number') {
+            const operator = wrapper.querySelector('#numberOperator');
+            const valueEnd = wrapper.querySelector('#numberValueEnd');
+            operator.addEventListener('change', () => {
+                valueEnd.style.display = operator.value === 'between' ? 'block' : 'none';
+            });
+        } else if (fieldType === 'date') {
+            const operator = wrapper.querySelector('#dateOperator');
+            const dateValueEnd = wrapper.querySelector('#dateValueEnd').parentElement;
+            operator.addEventListener('change', () => {
+                dateValueEnd.style.display = operator.value === 'between' ? 'block' : 'none';
+            });
+        }
+    },
+
+    /**
+     * 데이터에 필터 조건 적용
+     * @param {Array} data - 필터링할 데이터 배열
+     * @param {string} fieldKey - 필드 키
+     * @param {string} fieldType - 필드 타입
+     * @param {Object} filterSpec - 필터 스펙 { operator, value, valueEnd, values }
+     * @returns {Array} - 필터링된 데이터
+     */
+    applyColumnFilter(data, fieldKey, fieldType, filterSpec) {
+        if (!filterSpec) return data;
+
+        return data.filter(item => {
+            const value = item[fieldKey];
+
+            if (value === undefined || value === null) {
+                return fieldType !== 'status' ? false : !filterSpec.value;
+            }
+
+            switch (fieldType) {
+                case 'text':
+                    if (filterSpec.operator === 'contains') {
+                        return String(value).toLowerCase().includes(String(filterSpec.value).toLowerCase());
+                    } else if (filterSpec.operator === 'exact') {
+                        return String(value).toLowerCase() === String(filterSpec.value).toLowerCase();
+                    }
+                    break;
+
+                case 'number':
+                    const numValue = parseFloat(value);
+                    const filterNum = filterSpec.value;
+                    switch (filterSpec.operator) {
+                        case '=': return numValue === filterNum;
+                        case '>': return numValue > filterNum;
+                        case '>=': return numValue >= filterNum;
+                        case '<': return numValue < filterNum;
+                        case '<=': return numValue <= filterNum;
+                        case 'between': return numValue >= filterNum && numValue <= filterSpec.valueEnd;
+                    }
+                    break;
+
+                case 'date':
+                    const itemDate = value.toDate ? value.toDate() : new Date(value);
+                    const itemDateStr = itemDate.toISOString().split('T')[0];
+                    if (filterSpec.operator === '=') {
+                        return itemDateStr === filterSpec.value;
+                    } else if (filterSpec.operator === 'between') {
+                        return itemDateStr >= filterSpec.value && itemDateStr <= filterSpec.valueEnd;
+                    }
+                    break;
+
+                case 'select':
+                    return filterSpec.values.includes(String(value));
+
+                case 'status':
+                    const boolValue = value === true || value === 'Y' || value === 'y' || value === 1 || value === '1';
+                    return boolValue === filterSpec.value;
+            }
+
+            return true;
+        });
+    },
 };

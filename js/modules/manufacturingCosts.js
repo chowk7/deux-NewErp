@@ -49,6 +49,7 @@ window.ManufacturingCostsModule = {
     selectedYear: 'all',
     searchQuery: '',
     mfgSortState: { column: null, direction: 'asc' },
+    mfgColumnFilters: {}, // 열 필터 상태 { columnKey: filterSpec }
 
     async init() {
         // 나석단가표 로드
@@ -137,6 +138,14 @@ window.ManufacturingCostsModule = {
                 (o.customerName || '').toLowerCase().includes(q) ||
                 (o.productName || '').toLowerCase().includes(q)
             );
+        }
+        // 열 필터 적용
+        for (const [columnKey, filterSpec] of Object.entries(this.mfgColumnFilters)) {
+            const allFields = [...this.HEADER_FIELDS, ...this.BASE_FIELDS, ...this.STONE_FIELDS];
+            const field = allFields.find(f => f.key === columnKey);
+            if (field) {
+                data = window.Utils.applyColumnFilter(data, columnKey, field.type, filterSpec);
+            }
         }
         // 기본 정렬: 주문일 내림차순
         data = [...data].sort((a, b) => {
@@ -356,12 +365,30 @@ window.ManufacturingCostsModule = {
                     const label = field ? field.label : key;
                     const isSorted = this.mfgSortState.column === key;
                     const indicator = isSorted ? (this.mfgSortState.direction === 'asc' ? ' ▲' : ' ▼') : '';
-                    return `<th data-column="${key}" style="cursor:pointer;user-select:none;">${label}${indicator}</th>`;
+                    const hasFilter = this.mfgColumnFilters[key];
+                    const filterColor = hasFilter ? 'color:#3b82f6;' : 'color:#9ca3af;';
+                    return `<th data-column="${key}" style="cursor:pointer;user-select:none;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                            <span style="cursor:pointer;user-select:none;" data-sort-column="${key}">${label}${indicator}</span>
+                            <button style="border:none;background:none;padding:4px;cursor:pointer;${filterColor}font-size:1rem;opacity:0.7;transition:all 0.2s;"
+                                class="mfg-header-filter-btn" data-column="${key}" title="필터">🔍</button>
+                        </div>
+                    </th>`;
                 }).join('') + '<th>관리</th>';
                 thead.insertBefore(checkboxTh, thead.firstChild);
 
                 thead.querySelectorAll('th[data-column]').forEach(th => {
-                    th.addEventListener('click', () => this.sortMfgCosts(th.dataset.column));
+                    th.addEventListener('click', (e) => {
+                        const filterBtn = e.target.closest('.mfg-header-filter-btn');
+                        if (filterBtn) {
+                            e.stopPropagation();
+                            const column = filterBtn.dataset.column;
+                            this.openMfgColumnFilter(column);
+                        } else {
+                            const sortColumn = e.target.closest('[data-sort-column]')?.dataset.sortColumn;
+                            if (sortColumn) this.sortMfgCosts(sortColumn);
+                        }
+                    });
                 });
             }
 
@@ -453,6 +480,34 @@ window.ManufacturingCostsModule = {
         });
 
         this.renderTable();
+    },
+
+    openMfgColumnFilter(columnKey) {
+        const allFields = [...this.HEADER_FIELDS, ...this.BASE_FIELDS, ...this.STONE_FIELDS];
+        const field = allFields.find(f => f.key === columnKey);
+        if (!field) return;
+
+        const currentFilterValue = this.mfgColumnFilters[columnKey];
+
+        window.Utils.openColumnFilterModal(
+            columnKey,
+            field.label,
+            field.type,
+            currentFilterValue,
+            [],
+            (filterSpec) => {
+                if (filterSpec) {
+                    this.mfgColumnFilters[columnKey] = filterSpec;
+                } else {
+                    delete this.mfgColumnFilters[columnKey];
+                }
+                this.currentPage = 1; // 필터 변경 시 첫 페이지로 이동
+                this.applyMfgFilters();
+                this.costs = this.filteredCosts.slice(0, this.pageSize);
+                this.renderTable();
+                this.renderMfgFilterBar();
+            }
+        );
     },
 
     renderPagination() {

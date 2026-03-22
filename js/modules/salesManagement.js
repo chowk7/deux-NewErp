@@ -59,6 +59,7 @@ window.SalesManagementModule = {
     searchQuery: '',
     showUndeliveredOnly: false,
     orderSortState: { column: null, direction: 'asc' },
+    orderColumnFilters: {}, // 열 필터 상태 { columnKey: filterSpec }
 
     async init() {
         // 통합 CSV 필드 초기화 (매출 + 제조원가 + 주문관리)
@@ -172,6 +173,13 @@ window.SalesManagementModule = {
                 (o.customerName || '').toLowerCase().includes(q) ||
                 (o.productName || '').toLowerCase().includes(q)
             );
+        }
+        // 열 필터 적용
+        for (const [columnKey, filterSpec] of Object.entries(this.orderColumnFilters)) {
+            const field = this.ORDER_FIELDS.find(f => f.key === columnKey);
+            if (field) {
+                data = window.Utils.applyColumnFilter(data, columnKey, field.type, filterSpec);
+            }
         }
         // 기본 정렬: 주문일 내림차순
         data = [...data].sort((a, b) => {
@@ -336,6 +344,33 @@ window.SalesManagementModule = {
         this.renderOrdersTable();
     },
 
+    openOrderColumnFilter(columnKey) {
+        const field = this.ORDER_FIELDS.find(f => f.key === columnKey);
+        if (!field) return;
+
+        const currentFilterValue = this.orderColumnFilters[columnKey];
+
+        window.Utils.openColumnFilterModal(
+            columnKey,
+            field.label,
+            field.type,
+            currentFilterValue,
+            [],
+            (filterSpec) => {
+                if (filterSpec) {
+                    this.orderColumnFilters[columnKey] = filterSpec;
+                } else {
+                    delete this.orderColumnFilters[columnKey];
+                }
+                this.currentPage = 1; // 필터 변경 시 첫 페이지로 이동
+                this.applyOrderFilters();
+                this.orders = this.filteredOrders.slice(0, this.pageSize);
+                this.renderOrdersTable();
+                this.renderOrderFilterBar();
+            }
+        );
+    },
+
     renderOrdersTable() {
         const table = document.querySelector('#ordersTable');
         const tbody = table?.querySelector('tbody');
@@ -426,13 +461,27 @@ window.SalesManagementModule = {
                 const label = field ? field.label : key;
                 const isSorted = this.orderSortState.column === key;
                 const arrow = isSorted ? (this.orderSortState.direction === 'asc' ? ' ▲' : ' ▼') : '';
-                th.textContent = label + arrow;
+                const hasFilter = this.orderColumnFilters[key];
+                const filterColor = hasFilter ? 'color:#3b82f6;' : 'color:#9ca3af;';
+                th.innerHTML = `
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                        <span style="cursor:pointer;user-select:none;" data-sort-column="${key}">${label}${arrow}</span>
+                        <button style="border:none;background:none;padding:4px;cursor:pointer;${filterColor}font-size:1rem;opacity:0.7;transition:all 0.2s;"
+                            class="header-filter-btn" data-column="${key}" title="필터">🔍</button>
+                    </div>`;
                 th.setAttribute('data-column', key);
                 th.style.cursor = 'pointer';
                 th.style.userSelect = 'none';
                 th.addEventListener('click', (e) => {
-                    const column = e.target.dataset.column;
-                    this.sortOrders(column);
+                    const filterBtn = e.target.closest('.header-filter-btn');
+                    if (filterBtn) {
+                        e.stopPropagation();
+                        const column = filterBtn.dataset.column;
+                        this.openOrderColumnFilter(column);
+                    } else {
+                        const sortColumn = e.target.closest('[data-sort-column]')?.dataset.sortColumn;
+                        if (sortColumn) this.sortOrders(sortColumn);
+                    }
                 });
                 thead.appendChild(th);
             });
