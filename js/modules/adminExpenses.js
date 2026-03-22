@@ -15,8 +15,6 @@ window.AdminExpensesModule = {
           options: ['법인카드','계좌이체','현금','기타'] },
         { key: 'isBizExpense',  label: '비용처리', type: 'select',
           options: ['처리','미처리'] },
-        { key: 'expenseMonth',  label: '비용월',   type: 'text', placeholder: 'MM' },
-        { key: 'expenseYear',   label: '비용연도', type: 'text', placeholder: 'YYYY' },
     ],
 
     expenses: [],
@@ -202,8 +200,6 @@ window.AdminExpensesModule = {
         const body = `<div class="form-grid" id="expenseFormGrid">` + fields.map(f => {
             let val = exp?.[f.key] ?? '';
             if (f.key === 'date' && !val) val = today;
-            if (f.key === 'expenseYear' && !val) val = String(now.getFullYear());
-            if (f.key === 'expenseMonth' && !val) val = String(now.getMonth() + 1).padStart(2,'0');
 
             if (f.type === 'select') {
                 const opts = (f.options || []).map(o =>
@@ -227,12 +223,13 @@ window.AdminExpensesModule = {
             async (data, w) => {
                 // 데이터 정규화
                 data.amount = parseFloat(data.amount) || 0;
-                data.expenseYear = String(data.expenseYear || new Date().getFullYear());
-                data.expenseMonth = String(data.expenseMonth || String(new Date().getMonth() + 1).padStart(2,'0')).padStart(2,'0');
 
-                // date를 Firestore Timestamp로 변환
+                // date를 Firestore Timestamp로 변환하고, 연도/월 자동 계산
                 if (data.date && typeof data.date === 'string') {
-                    data.date = firebase.firestore.Timestamp.fromDate(new Date(data.date));
+                    const dateObj = new Date(data.date);
+                    data.date = firebase.firestore.Timestamp.fromDate(dateObj);
+                    data.expenseYear = String(dateObj.getFullYear());
+                    data.expenseMonth = String(dateObj.getMonth() + 1).padStart(2,'0');
                 }
 
                 if (expId) {
@@ -276,12 +273,13 @@ window.AdminExpensesModule = {
             const batch = window.firebaseDb.batch();
             rows.forEach(r => {
                 r.amount = parseFloat(r.amount) || 0;
-                r.expenseYear = String(r.expenseYear || new Date().getFullYear());
-                r.expenseMonth = String(r.expenseMonth || String(new Date().getMonth() + 1).padStart(2,'0')).padStart(2,'0');
 
-                // date를 Firestore Timestamp로 변환
+                // date를 Firestore Timestamp로 변환하고, 연도/월 자동 계산
                 if (r.date && typeof r.date === 'string') {
-                    r.date = firebase.firestore.Timestamp.fromDate(new Date(r.date));
+                    const dateObj = new Date(r.date);
+                    r.date = firebase.firestore.Timestamp.fromDate(dateObj);
+                    r.expenseYear = String(dateObj.getFullYear());
+                    r.expenseMonth = String(dateObj.getMonth() + 1).padStart(2,'0');
                 }
 
                 const ref = window.firebaseDb.collection('sales').doc('adminExpenses').collection('items').doc();

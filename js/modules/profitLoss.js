@@ -56,7 +56,6 @@ window.ProfitLossModule = {
         const year = this.selectedYear;
 
         // 1. 해당 연도 주문 전체 로드 (주문일 기준)
-        //    orderDate는 Firestore Timestamp이므로 연도 범위로 쿼리
         const yearStart = new Date(year, 0, 1);
         const yearEnd   = new Date(year + 1, 0, 1);
 
@@ -65,15 +64,21 @@ window.ProfitLossModule = {
             .where('orderDate', '>=', yearStart)
             .where('orderDate', '<',  yearEnd)
             .get();
-        const orders = ordersSnap.docs.map(d => d.data());
+        const orders = ordersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-        // 2. 월별 제조원가 집계
+        // 2. 제조원가 전체 로드 (주문별 매출이익 계산용)
         const mfgSnap = await window.firebaseDb
             .collection('sales').doc('manufacturingCosts').collection('items')
             .get();
         const mfgCosts = mfgSnap.docs.map(d => d.data());
 
-        // 3. 월별 판관비 집계
+        // 주문ID -> 제조원가 매핑
+        const mfgByOrderId = {};
+        mfgCosts.forEach(m => {
+            if (m.orderId) mfgByOrderId[m.orderId] = m;
+        });
+
+        // 3. 판관비는 판관비 날짜 기준으로 집계
         const expSnap = await window.firebaseDb
             .collection('sales').doc('adminExpenses').collection('items')
             .where('expenseYear', '==', String(year))
@@ -85,27 +90,27 @@ window.ProfitLossModule = {
             const month    = i + 1;
             const monthStr = String(month).padStart(2, '0');
 
-            // 주문일(orderDate) 기준 해당 월 매출합계
+            // 주문일(orderDate) 기준 해당 월 매출합계 및 매출이익 (제조원가관리표 기준)
             const monthOrders = orders.filter(o => {
                 if (!o.orderDate?.toDate) return false;
                 const d = o.orderDate.toDate();
                 return (d.getMonth() + 1) === month;
             });
-            const revenue = monthOrders.reduce((s, o) => s + (o.salesAmount || 0), 0);
-
-            // 해당 월 제조원가 (productionMonth: "YYYY-MM")
-            const monthMfg = mfgCosts.filter(m => {
-                if (!m.productionMonth) return false;
-                const [y, mo] = m.productionMonth.split('-');
-                return parseInt(y) === year && parseInt(mo) === month;
+            let revenue = 0;
+            let grossProfit = 0;
+            monthOrders.forEach(o => {
+                revenue += o.salesAmount || 0;
+                // 주문별 매출이익 = 매출액 - 제조원가
+                const mfg = mfgByOrderId[o.id];
+                const profit = (o.salesAmount || 0) - (mfg?.manufacturingCost || 0);
+                grossProfit += profit;
             });
-            const cogs = monthMfg.reduce((s, m) => s + (m.manufacturingCost || 0), 0);
 
-            // 월별 매출이익합계
-            const grossProfit  = revenue - cogs;
+            // 매출원가 = 매출액 - 매출이익
+            const cogs = revenue - grossProfit;
             const grossMargin  = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
 
-            // 해당 월 판관비 집계
+            // 해당 월 판관비 집계 (판관비 날짜 기준)
             const monthExp = expenses.filter(e =>
                 String(e.expenseMonth).padStart(2,'0') === monthStr
             );
