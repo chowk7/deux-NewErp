@@ -1054,7 +1054,7 @@ window.ManufacturingCostsModule = {
      */
     async migrateStoneQtyTextFormat() {
         if (!(await window.Utils.confirm(
-            '모든 주문의 나석정보 형식을 변환합니다.\n"1 × 1캐럿" → "1캐럿 x 1" 형식으로 변환됩니다.\n계속하시겠습니까?'
+            '모든 주문의 나석정보 형식을 변환합니다.\n"나석종류/나석갯수" → "나석종류 x 나석갯수" 형식으로 변환됩니다.\n예: "2mm/1, 1캐럿/2" → "2mm x 1, 1캐럿 x 2"\n계속하시겠습니까?'
         ))) return;
 
         try {
@@ -1077,12 +1077,17 @@ window.ManufacturingCostsModule = {
 
                     if (!oldText) return; // 빈 값 스킵
 
-                    // 정규식: "숫자 × 타입" → "타입 x 숫자"
-                    // 예: "62 × 1.2mm, 40 × 2.0mm" → "1.2mm x 62, 2.0mm x 40"
-                    // [^,]+ : 쉼표(구분자)를 제외한 모든 문자 매칭 (숫자·소수점 포함)
-                    const newText = oldText.replace(/(\d+)\s*×\s*([^,]+)/g, (match, qty, type) => {
-                        return `${type.trim()} x ${qty}`;
-                    });
+                    // 정규식: "나석종류/나석갯수" → "나석종류 x 나석갯수"
+                    // 예: "2mm/1,1캐럿/2" → "2mm x 1, 1캐럿 x 2"
+                    // ([^\/,\s]+) : 슬래시와 쉼표를 제외한 모든 문자 매칭 (나석종류)
+                    // (\d+(?:\.\d+)?) : 정수 또는 소수 (나석갯수)
+                    const newText = oldText
+                        // "나석종류/나석갯수" 형식을 "나석종류 x 나석갯수"로 변환
+                        .replace(/([^\/,\s]+)\s*\/\s*(\d+(?:\.\d+)?)/g, (match, type, qty) => {
+                            return `${type.trim()} x ${qty}`;
+                        })
+                        // 쉼표 뒤에 공백이 있으면 유지, 없으면 공백 추가
+                        .replace(/,(?!\s)/g, ', ');
 
                     if (oldText !== newText) {
                         batch.update(doc.ref, { stoneQty_text: newText });
