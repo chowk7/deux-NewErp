@@ -6,6 +6,26 @@ window.ProfitLossModule = {
 
     EXPENSE_TYPES: ['R&D비용','광고선전비','재료매입','판관비','운송비','지급수수료','포장비','임대료','기타'],
 
+    FIELDS: [
+        { key: 'month', label: '월' },
+        { key: 'revenue', label: '매출' },
+        { key: 'cogs', label: '매출원가' },
+        { key: 'grossProfit', label: '매출이익' },
+        { key: 'grossMargin', label: '매출이익률' },
+        { key: 'R&D비용', label: 'R&D비용' },
+        { key: '광고선전비', label: '광고선전비' },
+        { key: '재료매입', label: '재료매입' },
+        { key: '판관비', label: '판관비' },
+        { key: '운송비', label: '운송비' },
+        { key: '지급수수료', label: '지급수수료' },
+        { key: '포장비', label: '포장비' },
+        { key: '임대료', label: '임대료' },
+        { key: '기타', label: '기타' },
+        { key: 'totalExpenses', label: '판관비합계' },
+        { key: 'operatingProfit', label: '영업이익' },
+        { key: 'operatingMargin', label: '영업이익률' },
+    ],
+
     plData: [],
     selectedYear: new Date().getFullYear(),
 
@@ -21,6 +41,15 @@ window.ProfitLossModule = {
         // CSV 다운로드 버튼
         document.getElementById('downloadPlDataBtn')
             ?.addEventListener('click', () => this.downloadData());
+
+        // 표시항목 설정
+        document.getElementById('plDisplaySettingsBtn')
+            ?.addEventListener('click', () => this.openDisplaySettings());
+    },
+
+    openDisplaySettings() {
+        const defaultKeys = this.FIELDS.map(f => f.key);
+        window.Utils.openDisplayFieldsModal('profitLoss', this.FIELDS, () => this.renderTable(), defaultKeys);
     },
 
     async load() {
@@ -103,27 +132,44 @@ window.ProfitLossModule = {
     },
 
     renderTable() {
-        const tbody = document.querySelector('#profitLossTable tbody');
-        if (!tbody) return;
+        const table = document.querySelector('#profitLossTable');
+        const tbody = table?.querySelector('tbody');
+        if (!tbody || !table) return;
+
+        // 표시할 필드 결정
+        const defaultDisplayFields = this.FIELDS.map(f => f.key);
+        const displayFieldKeys = window.Utils.getDisplayFields('profitLoss', defaultDisplayFields);
+
+        // 표시할 필드만 필터링
+        const displayFields = this.FIELDS.filter(f => displayFieldKeys.includes(f.key));
+
+        // 테이블 헤더 업데이트
+        const thead = table.querySelector('thead tr');
+        thead.innerHTML = displayFields.map(f => `<th>${f.label}</th>`).join('');
 
         const fmt = v => window.Utils.formatNumber(Math.round(v));
         const pct = v => isFinite(v) ? v.toFixed(1) + '%' : '-';
 
-        tbody.innerHTML = this.plData.map(row => `
-            <tr>
-                <td>${row.month}월</td>
-                <td style="text-align:right;">${fmt(row.revenue)}</td>
-                <td style="text-align:right;">${fmt(row.cogs)}</td>
-                <td style="text-align:right;font-weight:600;">${fmt(row.grossProfit)}</td>
-                <td style="text-align:right;">${pct(row.grossMargin)}</td>
-                ${this.EXPENSE_TYPES.map(t =>
-                    `<td style="text-align:right;">${fmt(row[t])}</td>`
-                ).join('')}
-                <td style="text-align:right;">${fmt(row.totalExpenses)}</td>
-                <td style="text-align:right;font-weight:600;color:${row.operatingProfit >= 0 ? '#10b981' : '#ef4444'};">
-                    ${fmt(row.operatingProfit)}</td>
-                <td style="text-align:right;">${pct(row.operatingMargin)}</td>
-            </tr>`).join('');
+        tbody.innerHTML = this.plData.map(row => {
+            const cells = displayFields.map(f => {
+                let val = '-';
+
+                if (f.key === 'month') val = row.month + '월';
+                else if (f.key === 'grossMargin' || f.key === 'operatingMargin') val = pct(row[f.key]);
+                else if (f.key === 'operatingProfit') {
+                    const color = row.operatingProfit >= 0 ? '#10b981' : '#ef4444';
+                    return `<td style="text-align:right;font-weight:600;color:${color};">${fmt(row[f.key])}</td>`;
+                } else if (f.key === 'grossProfit') {
+                    return `<td style="text-align:right;font-weight:600;">${fmt(row[f.key])}</td>`;
+                } else {
+                    val = fmt(row[f.key] || 0);
+                }
+
+                return `<td style="text-align:right;">${val}</td>`;
+            }).join('');
+
+            return `<tr>${cells}</tr>`;
+        }).join('');
 
         // 연간 합계 행
         const totals = this.plData.reduce((acc, row) => {
@@ -134,19 +180,23 @@ window.ProfitLossModule = {
         const totalGrossMargin = totals.revenue > 0 ? (totals.grossProfit / totals.revenue) * 100 : 0;
         const totalOpMargin    = totals.revenue > 0 ? (totals.operatingProfit / totals.revenue) * 100 : 0;
 
-        tbody.innerHTML += `
-            <tr style="background:#f3f4f6;font-weight:700;border-top:2px solid #374151;">
-                <td>연간합계</td>
-                <td style="text-align:right;">${fmt(totals.revenue)}</td>
-                <td style="text-align:right;">${fmt(totals.cogs)}</td>
-                <td style="text-align:right;">${fmt(totals.grossProfit)}</td>
-                <td style="text-align:right;">${pct(totalGrossMargin)}</td>
-                ${this.EXPENSE_TYPES.map(t => `<td style="text-align:right;">${fmt(totals[t])}</td>`).join('')}
-                <td style="text-align:right;">${fmt(totals.totalExpenses)}</td>
-                <td style="text-align:right;color:${totals.operatingProfit >= 0 ? '#10b981' : '#ef4444'};">
-                    ${fmt(totals.operatingProfit)}</td>
-                <td style="text-align:right;">${pct(totalOpMargin)}</td>
-            </tr>`;
+        const totalCells = displayFields.map(f => {
+            let val = '-';
+
+            if (f.key === 'month') val = '연간합계';
+            else if (f.key === 'grossMargin') val = pct(totalGrossMargin);
+            else if (f.key === 'operatingMargin') val = pct(totalOpMargin);
+            else if (f.key === 'operatingProfit') {
+                const color = totals.operatingProfit >= 0 ? '#10b981' : '#ef4444';
+                return `<td style="text-align:right;color:${color};">${fmt(totals[f.key] || 0)}</td>`;
+            } else {
+                val = fmt(totals[f.key] || 0);
+            }
+
+            return `<td style="text-align:right;">${val}</td>`;
+        }).join('');
+
+        tbody.innerHTML += `<tr style="background:#f3f4f6;font-weight:700;border-top:2px solid #374151;">${totalCells}</tr>`;
     },
 
     downloadData() {

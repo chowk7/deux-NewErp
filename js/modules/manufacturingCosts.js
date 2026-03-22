@@ -26,9 +26,9 @@ window.ManufacturingCostsModule = {
         { key: 'stoneCostRef',    label: '나석가격(참고)',  type: 'number', calc: true },
         { key: 'otherCost',       label: '기타비용',       type: 'number' },
         { key: 'manufacturingCost',label: '제조가격',      type: 'number', calc: true },
-        { key: 'inputCompleted',  label: '입력 완료',      type: 'checkbox' },
         { key: 'salesProfit',     label: '매출이익',       type: 'number', calc: true },
         { key: 'salesProfitRate', label: '매출이익률(%)',   type: 'number', calc: true },
+        { key: 'inputCompleted',  label: '입력 완료',      type: 'checkbox' },
     ],
 
     // 나석 10개 동적 필드
@@ -701,12 +701,20 @@ window.ManufacturingCostsModule = {
             </div>
         `;
 
+        // allFields를 platingCost 위치에서 분할: 나석 정보 섹션을 중간에 삽입
+        const platingCostIndex = allFields.findIndex(f => f.key === 'platingCost');
+        const fieldsBeforeStone = allFields.slice(0, platingCostIndex + 1);
+        const fieldsAfterStone = allFields.slice(platingCostIndex + 1).filter(f => f.key !== 'inputCompleted');
+        const inputCompletedField = allFields.find(f => f.key === 'inputCompleted');
+
         const body = `
             <div class="form-grid">
                 ${makeInput(orderField)}
                 ${makeInput(salesField)}
-                ${allFields.map(makeInput).join('')}
+                ${fieldsBeforeStone.map(makeInput).join('')}
                 ${stoneSection}
+                ${fieldsAfterStone.map(makeInput).join('')}
+                ${inputCompletedField ? makeInput(inputCompletedField) : ''}
             </div>`;
 
         const wrapper = window.Utils.openModal(
