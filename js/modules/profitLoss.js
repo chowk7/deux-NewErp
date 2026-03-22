@@ -70,20 +70,32 @@ window.ProfitLossModule = {
         const mfgSnap = await window.firebaseDb
             .collection('sales').doc('manufacturingCosts').collection('items')
             .get();
-        const mfgCosts = mfgSnap.docs.map(d => d.data());
+        const mfgCosts = mfgSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
         // 주문ID -> 제조원가 매핑
+        // orderId 필드가 우선, 없으면 문서 ID(=orderId)를 사용
         const mfgByOrderId = {};
         mfgCosts.forEach(m => {
-            if (m.orderId) mfgByOrderId[m.orderId] = m;
+            const orderId = m.orderId || m.id;
+            if (orderId) {
+                mfgByOrderId[orderId] = m;
+            }
         });
 
         // 3. 판관비는 판관비 날짜 기준으로 집계
         const expSnap = await window.firebaseDb
             .collection('sales').doc('adminExpenses').collection('items')
-            .where('expenseYear', '==', String(year))
             .get();
-        const expenses = expSnap.docs.map(d => d.data());
+        const expenses = expSnap.docs.map(d => {
+            const e = d.data();
+            // 기존 데이터에서 expenseYear/expenseMonth가 없으면 date에서 자동 계산
+            if (!e.expenseYear && e.date) {
+                const dateObj = e.date.toDate ? e.date.toDate() : new Date(e.date);
+                e.expenseYear = String(dateObj.getFullYear());
+                e.expenseMonth = String(dateObj.getMonth() + 1).padStart(2,'0');
+            }
+            return e;
+        }).filter(e => e.expenseYear === String(year));
 
         // 월별 데이터 구성
         this.plData = Array.from({length: 12}, (_, i) => {
