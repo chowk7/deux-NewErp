@@ -67,6 +67,10 @@ window.ManufacturingCostsModule = {
         // 나석 일괄 업데이트
         document.getElementById('mfgBulkFillStoneBtn')
             ?.addEventListener('click', () => this.bulkFillStoneFieldsFromProductRates());
+
+        // VAT 일괄 재계산 버튼
+        document.getElementById('mfgRecalcVatBtn')
+            ?.addEventListener('click', () => this.bulkRecalcWithVat());
     },
 
     async loadDiamondRates() {
@@ -614,9 +618,10 @@ window.ManufacturingCostsModule = {
         // 수동입력이 있으면 수동, 없으면 참고값 사용
         const stoneUsed = n('stoneCostManual') > 0 ? n('stoneCostManual') : (stoneCostRef + stoneWarrantyCost);
 
-        // 제조가격 = 금값 + 물림비 + 공임 + 나석가격 + 기타비용
-        const manufacturingCost = goldValue + n('settingCost') + n('laborCost') +
-            n('platingCost') + stoneUsed + n('otherCost');
+        // 제조가격 = 금값 + 물림비(VAT포함) + 공임(VAT포함) + 나석가격 + 도금/각인(VAT포함) + 기타비용(VAT포함)
+        // 물림비·공임·도금/각인·기타비용은 VAT불포함 기준 입력이므로 × 1.1 적용
+        const manufacturingCost = goldValue + n('settingCost') * 1.1 + n('laborCost') * 1.1 +
+            n('platingCost') * 1.1 + stoneUsed + n('otherCost') * 1.1;
 
         // 3️⃣ 매출이익 = 매출 × (1 - 수수료율(%)/100) - 제조가격
         // commissionRate는 판매표에서 오는 필드
@@ -651,15 +656,44 @@ window.ManufacturingCostsModule = {
         // 주문번호 필드 추가
         const orderField = { key: 'orderId', label: '주문번호(연결)', type: 'text', calc: false };
 
+        // 금시세가 0이거나 없을 때 금재고에서 최신 평단가 로드
+        let goldAvgPrice = null;
+        if (!cost?.goldMarketPrice) {
+            // GoldInventoryModule 캐시 우선, 없으면 직접 Firestore 조회
+            goldAvgPrice = window.GoldInventoryModule?.getLatestAvgPrice?.() || null;
+            if (!goldAvgPrice) {
+                try {
+                    if (window.GoldInventoryModule) {
+                        await window.GoldInventoryModule.load();
+                        goldAvgPrice = window.GoldInventoryModule.getLatestAvgPrice() || null;
+                    } else {
+                        // GoldInventoryModule 없을 경우 직접 Firestore 조회
+                        const goldSnap = await window.firebaseDb
+                            .collection('inventory').doc('gold').collection('items')
+                            .orderBy('purchaseDate', 'asc')
+                            .get();
+                        if (!goldSnap.empty) {
+                            const raw = goldSnap.docs.map(d => d.data());
+                            // 마지막 항목의 avgPriceG 계산 (누적 평균)
+                            let totalWeight = 0, totalAmount = 0;
+                            for (const item of raw) {
+                                totalWeight += parseFloat(item.weightG) || 0;
+                                totalAmount += parseFloat(item.totalAmount) || 0;
+                            }
+                            if (totalWeight > 0) goldAvgPrice = Math.round(totalAmount / totalWeight);
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[ManufacturingCosts] 금재고 평단가 로드 실패:', e);
+                }
+            }
+        }
+
         const makeInput = (f) => {
-            // 금시세는 금재고의 최신 평단가로 자동 반영 (수정 가능)
             let val = cost?.[f.key] ?? '';
             if (f.key === 'goldMarketPrice') {
-                // 저장된 값이 없을 때만 최신 평단가 사용
-                if (!val) {
-                    const latestAvg = window.GoldInventoryModule?.getLatestAvgPrice?.();
-                    if (latestAvg) val = Math.round(latestAvg);
-                }
+                // 저장된 금시세가 0이거나 없으면 금재고 최신 평단가 자동 반영
+                if (!val && goldAvgPrice) val = Math.round(goldAvgPrice);
             }
             // 주문번호(orderId)와 매출금액(salesAmount)은 수정 불가
             const isReadOnly = f.key === 'orderId' || f.key === 'salesAmount' || f.calc;
@@ -1113,5 +1147,60 @@ window.ManufacturingCostsModule = {
                 '나석정보 자동입력 중 오류가 발생했습니다: ' + error.message, 'error'
             );
         }
+    },
+
+    /**
+     * 기존 전체 데이터에 새 제조가격 공식(VAT 1.1) 적용하여 일괄 재계산
+     */
+    async bulkRecalcWithVat() {
+        window.Utils.showConfirm(
+            '기존 전체 데이터의 제조가격을 새 공식(물림비·공임·도금·기타비용 × 1.1 VAT 적용)으로 재계산합니다.\n계속하시겠습니까?',
+            async () => {
+                try {
+                    window.Utils.showNotification('VAT 일괄 재계산 중...', 'info');
+
+                    const snap = await window.firebaseDb
+                        .collection('sales').doc('orders').collection('items')
+                        .get();
+
+                    const allItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                    const collection = window.firebaseDb.collection('sales').doc('orders').collection('items');
+
+                    let updated = 0;
+                    const BATCH_SIZE = 400;
+
+                    for (let i = 0; i < allItems.length; i += BATCH_SIZE) {
+                        const chunk = allItems.slice(i, i + BATCH_SIZE);
+                        const batch = window.firebaseDb.batch();
+
+                        for (const item of chunk) {
+                            const calculated = this.calculate(item);
+                            batch.update(collection.doc(item.id), {
+                                goldValue:          calculated.goldValue,
+                                manufacturingCost:  calculated.manufacturingCost,
+                                salesProfit:        calculated.salesProfit,
+                                salesProfitRate:    calculated.salesProfitRate,
+                                stoneCostRef:       calculated.stoneCostRef,
+                                stoneWarrantyFeeTotal: calculated.stoneWarrantyFeeTotal,
+                                updatedAt:          new Date()
+                            });
+                            updated++;
+                        }
+
+                        await batch.commit();
+                    }
+
+                    window.Utils.showNotification(`VAT 재계산 완료: ${updated}개 항목 업데이트`, 'success', 5000);
+
+                    // 캐시 초기화 후 재로드
+                    this.allCosts = [];
+                    await this.load(1);
+
+                } catch (error) {
+                    console.error('[ManufacturingCosts] bulkRecalcWithVat error:', error);
+                    window.Utils.showNotification('일괄 재계산 중 오류: ' + error.message, 'error');
+                }
+            }
+        );
     },
 };
