@@ -723,9 +723,51 @@
             });
         });
 
+        // 고정 스크롤바 드래그 상태
+        let isDragging = false;
+        let dragStartX = 0;
+        let dragStartScrollLeft = 0;
+
+        // 스크롤바 thumb 드래그
+        scrollThumb.addEventListener('mousedown', (e) => {
+            if (!currentTable) return;
+            isDragging = true;
+            dragStartX = e.clientX;
+            dragStartScrollLeft = currentTable.scrollLeft;
+            scrollThumb.style.background = '#b5a693';
+            document.body.style.userSelect = 'none';
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging || !currentTable) return;
+
+            const table = currentTable.querySelector('.data-table');
+            const maxScroll = table.scrollWidth - currentTable.clientWidth;
+            const scrollTrackRect = scrollTrack.getBoundingClientRect();
+            const thumbWidth = scrollThumb.offsetWidth;
+            const maxThumbLeft = scrollTrackRect.width - thumbWidth;
+
+            const dragDelta = e.clientX - dragStartX;
+            const newThumbLeft = dragStartScrollLeft + dragDelta;
+            const scrollPercent = newThumbLeft / maxThumbLeft;
+
+            currentTable.scrollLeft = Math.max(0, Math.min(scrollPercent * maxScroll, maxScroll));
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isDragging) {
+                isDragging = false;
+                scrollThumb.style.background = '#c4b5a0';
+                document.body.style.userSelect = '';
+            }
+        });
+
         // 고정 스크롤바 클릭 이벤트
         scrollTrack.addEventListener('click', (e) => {
-            if (!currentTable) return;
+            if (!currentTable || isDragging) return;
+            if (e.target === scrollThumb) return;
+
             const rect = scrollTrack.getBoundingClientRect();
             const clickX = e.clientX - rect.left;
             const scrollPercent = clickX / rect.width;
