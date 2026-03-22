@@ -764,6 +764,8 @@ window.ManufacturingCostsModule = {
                     console.log('[저장 완료] Firestore 응답:', result);
 
                     w.remove();
+                    // 캐시 초기화 후 Firestore에서 최신 데이터 다시 로드
+                    this.allCosts = [];
                     this.load();
                 } catch (err) {
                     console.error('[저장 오류]', err);
@@ -879,6 +881,8 @@ window.ManufacturingCostsModule = {
                 }
 
                 await batch.commit();
+                // 캐시 초기화 후 Firestore에서 최신 데이터 다시 로드
+                this.allCosts = [];
                 this.load();
                 window.Utils.showNotification('제조원가 정보가 업로드되었습니다. (자동 계산 적용됨)', 'success');
             }
