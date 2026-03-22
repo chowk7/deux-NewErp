@@ -134,6 +134,11 @@ window.ManufacturingCostsModule = {
                 (o.productName || '').toLowerCase().includes(q)
             );
         }
+        // 기본 정렬: 주문일 내림차순
+        data = [...data].sort((a, b) => {
+            const toMs = v => v?.toDate ? v.toDate().getTime() : (v ? new Date(v).getTime() : 0);
+            return toMs(b.orderDate) - toMs(a.orderDate);
+        });
         this.filteredCosts = data;
     },
 
