@@ -429,6 +429,7 @@ window.ProductRatesModule = {
         const ownMargin = parseFloat(s.ownMargin) || 0;
         const ownMallFee = parseFloat(s.ownMallCommission) || 0;
         const deptFee = parseFloat(s.departmentCommission) || 0;
+        // 18K/14K 금 무게비 (배수, 예: 1.4 = 14K 무게의 1.4배)
         const weight18kRate = parseFloat(s.weightAdjustment18K) || 1;
 
         const n = k => parseFloat(data[k]) || 0;
@@ -475,7 +476,7 @@ window.ProductRatesModule = {
         const deptPrice   = finalPrice * (1 - deptFee / 100);
         const deptProfitRate = deptPrice > 0 ? ((deptPrice - salesCost) / deptPrice) * 100 : 0;
 
-        // 18K 계산
+        // 18K 계산 (weight18kRate는 18K/14K 금 무게비 배수)
         const goldWeight18k = n('goldWeight14k') * weight18kRate;
         const goldValue18k  = goldWeight18k * goldPrice * (18/24);
         const productCost18k= stoneCost + n('laborCost') + goldValue18k + n('otherMaterial') + stoneWarrantyCostComponent;
