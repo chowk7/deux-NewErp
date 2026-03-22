@@ -720,42 +720,52 @@ window.ManufacturingCostsModule = {
         const wrapper = window.Utils.openModal(
             '제조원가 수정', body,
             async (data, w) => {
-                console.log('[저장 전] FormData 수집 데이터:', Object.keys(data));
-                // stoneArray, stoneQty_text는 문자열로 보존; 나머지 숫자 필드 변환
-                const STRING_KEYS = new Set(['orderId', 'productionMonth', 'stoneArray', 'stoneQty_text']);
-                Object.keys(data).forEach(k => {
-                    if (k === 'inputCompleted') {
-                        data[k] = data[k] === 'on' || data[k] === true;
-                    } else if (!STRING_KEYS.has(k)) {
-                        data[k] = parseFloat(data[k]) || 0;
-                    }
-                });
-                console.log('[변환 후] 전송할 데이터 키:', Object.keys(data));
-                const calculated = this.calculate(data);
-                console.log('[계산 후] 최종 저장 데이터 키:', Object.keys(calculated));
+                try {
+                    console.log('[저장 전] FormData 수집 데이터:', Object.keys(data));
+                    console.log('[저장 전] 실제 데이터값:', data);
 
-                // stoneArray에서 개별 나석 필드(stoneType1~10 등) 생성
-                let parsedStones = [];
-                try { parsedStones = JSON.parse(data.stoneArray || '[]'); } catch(e) {}
-                const stoneFields = Array.from({length: 10}, (_, i) => {
-                    const s = parsedStones[i];
-                    return {
-                        [`stoneType${i+1}`]:  s ? (s.stoneType || '') : '',
-                        [`stoneQty${i+1}`]:   s ? (s.stoneQty  || 0) : 0,
-                        [`stoneCert${i+1}`]:  s ? (s.stoneCert || s.cert || '') : '',
-                        [`stonePrice${i+1}`]: s ? (s.totalPrice || 0) : 0,
-                    };
-                }).reduce((a, b) => ({...a, ...b}), {});
+                    // stoneArray, stoneQty_text는 문자열로 보존; 나머지 숫자 필드 변환
+                    const STRING_KEYS = new Set(['orderId', 'productionMonth', 'stoneArray', 'stoneQty_text']);
+                    Object.keys(data).forEach(k => {
+                        if (k === 'inputCompleted') {
+                            data[k] = data[k] === 'on' || data[k] === true;
+                        } else if (!STRING_KEYS.has(k)) {
+                            data[k] = parseFloat(data[k]) || 0;
+                        }
+                    });
+                    console.log('[변환 후] 전송할 데이터:', data);
+                    const calculated = this.calculate(data);
+                    console.log('[계산 후] 최종 저장 데이터:', calculated);
 
-                // 수정만 가능 (신규 입력은 매출표에서만)
-                const updateData = { ...calculated, ...stoneFields, updatedAt: new Date() };
-                console.log('[Firestore update] 저장할 필드:', Object.keys(updateData));
-                await window.firebaseDb.collection('sales').doc('orders')
-                    .collection('items').doc(costId)
-                    .update(updateData);
-                console.log('[저장 완료]');
-                w.remove();
-                this.load();
+                    // stoneArray에서 개별 나석 필드(stoneType1~10 등) 생성
+                    let parsedStones = [];
+                    try { parsedStones = JSON.parse(data.stoneArray || '[]'); } catch(e) {}
+                    const stoneFields = Array.from({length: 10}, (_, i) => {
+                        const s = parsedStones[i];
+                        return {
+                            [`stoneType${i+1}`]:  s ? (s.stoneType || '') : '',
+                            [`stoneQty${i+1}`]:   s ? (s.stoneQty  || 0) : 0,
+                            [`stoneCert${i+1}`]:  s ? (s.stoneCert || s.cert || '') : '',
+                            [`stonePrice${i+1}`]: s ? (s.totalPrice || 0) : 0,
+                        };
+                    }).reduce((a, b) => ({...a, ...b}), {});
+
+                    // 수정만 가능 (신규 입력은 매출표에서만)
+                    const updateData = { ...calculated, ...stoneFields, updatedAt: new Date() };
+                    console.log('[Firestore update] 저장할 전체 데이터:', updateData);
+                    console.log('[Firestore update] costId:', costId);
+
+                    const result = await window.firebaseDb.collection('sales').doc('orders')
+                        .collection('items').doc(costId)
+                        .update(updateData);
+                    console.log('[저장 완료] Firestore 응답:', result);
+
+                    w.remove();
+                    this.load();
+                } catch (err) {
+                    console.error('[저장 오류]', err);
+                    window.Utils.showNotification('저장 중 오류 발생: ' + (err?.message || err), 'error', 5000);
+                }
             }
         );
 
