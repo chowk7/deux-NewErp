@@ -913,6 +913,9 @@ window.ProductRatesModule = {
         // input, change 이벤트 모두 반영 (select, number input 모두 지원)
         wrapper.querySelector('#modalForm').addEventListener('input', updateCalculatedFields);
         wrapper.querySelector('#modalForm').addEventListener('change', updateCalculatedFields);
+
+        // 초기 계산 실행 (모달 열릴 때 계산값 표시)
+        updateCalculatedFields();
     },
 
     async delete(id) {
