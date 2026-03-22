@@ -454,6 +454,7 @@ window.SalesManagementModule = {
                 headerCheckbox.addEventListener('change', (e) => {
                     const allCheckboxes = table.querySelectorAll('tbody .row-checkbox');
                     allCheckboxes.forEach(cb => cb.checked = e.target.checked);
+                    this.updateOrderBulkDeleteBtn();
                 });
             }
         }
@@ -863,7 +864,31 @@ window.SalesManagementModule = {
             const searchableSelect = window.Utils.createSearchableSelect(
                 customerOptions,
                 order?.customerName || '',
-                null,
+                async (selectedName) => {
+                    // 고객 선택 시 수령인/연락처/우편번호/주소/주소상세 자동 입력
+                    try {
+                        const snap = await window.firebaseDb
+                            .collection('sales').doc('customers').collection('items')
+                            .where('customerName', '==', selectedName)
+                            .limit(1)
+                            .get();
+                        if (snap.empty) return;
+                        const cust = snap.docs[0].data();
+                        const fields = [
+                            { name: 'recipient',      value: cust.customerName || '' },
+                            { name: 'phone',           value: cust.phone || '' },
+                            { name: 'postalCode',      value: cust.postalCode || '' },
+                            { name: 'address',         value: cust.address || '' },
+                            { name: 'addressDetail',   value: cust.addressDetail || '' }
+                        ];
+                        fields.forEach(({ name, value }) => {
+                            const el = wrapper.querySelector(`[name="${name}"]`);
+                            if (el && !el.value) el.value = value;
+                        });
+                    } catch (e) {
+                        console.warn('고객 자동입력 실패:', e);
+                    }
+                },
                 '고객명 검색...',
                 'customerName'
             );

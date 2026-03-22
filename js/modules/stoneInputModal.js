@@ -282,7 +282,7 @@ window.StoneInputModalModule = {
 
                 <div style="flex:1;">
                     <div style="font-weight:500; color:#1f2937; font-size:0.95rem;">
-                        ${stone.stoneQty} × ${stone.stoneType}
+                        ${stone.stoneType} x ${stone.stoneQty}
                     </div>
                     <div style="font-size:0.85rem; color:#6b7280; margin-top:4px;">
                         단가: ₩${window.Utils.formatNumber(stone.stonePrice)} |

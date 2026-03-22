@@ -527,7 +527,7 @@ window.ManufacturingCostsModule = {
     populateFormFromStones(stoneArray, wrapper) {
         // 나석갯수 텍스트 포맷팅
         const stoneQtyText = stoneArray
-            .map(s => `${s.stoneQty} × ${s.stoneType}`)
+            .map(s => `${s.stoneType} x ${s.stoneQty}`)
             .join(', ');
 
         // 나석 가격 합계 계산
@@ -991,7 +991,7 @@ window.ManufacturingCostsModule = {
 
                 if (stoneArray.length === 0) { skipped++; continue; }
 
-                const stoneQtyText = stoneArray.map(s => `${s.stoneQty} × ${s.stoneType}`).join(', ');
+                const stoneQtyText = stoneArray.map(s => `${s.stoneType} x ${s.stoneQty}`).join(', ');
                 const stoneFields = Array.from({length: 10}, (_, i) => {
                     const s = stoneArray[i];
                     return {
@@ -1108,7 +1108,7 @@ window.ManufacturingCostsModule = {
 
             // stoneQty_text 생성
             const stoneQtyText = stoneArray
-                .map(s => `${s.stoneQty} × ${s.stoneType}`).join(', ');
+                .map(s => `${s.stoneType} x ${s.stoneQty}`).join(', ');
 
             // calculate()로 파생 필드 계산 (기존 주문 데이터 + stoneArray 주입)
             const dataForCalc = {
