@@ -1771,7 +1771,7 @@ window.SalesManagementModule = {
 
                                 // 나석단가표에서 가격 정보 조회
                                 const diamondInfo = diamondRates?.find(d => d.diamondType === stoneType);
-                                const unitPrice = diamondInfo?.price || 0;
+                                const unitPrice = parseFloat(diamondInfo?.costWithoutVat) || 0;
                                 const totalPrice = unitPrice * qty;
 
                                 // 보증서 타입별 추가금 계산 (cert: 'VS', 'VVS' 등)
