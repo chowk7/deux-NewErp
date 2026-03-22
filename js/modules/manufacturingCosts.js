@@ -1077,9 +1077,10 @@ window.ManufacturingCostsModule = {
 
                     if (!oldText) return; // 빈 값 스킵
 
-                    // 정규식: "숫자 × 문자" → "문자 x 숫자"
-                    // 예: "1 × 1캐럿, 2 × 2mm" → "1캐럿 x 1, 2mm x 2"
-                    const newText = oldText.replace(/(\d+)\s*×\s*([^\d,]+)/g, (match, qty, type) => {
+                    // 정규식: "숫자 × 타입" → "타입 x 숫자"
+                    // 예: "62 × 1.2mm, 40 × 2.0mm" → "1.2mm x 62, 2.0mm x 40"
+                    // [^,]+ : 쉼표(구분자)를 제외한 모든 문자 매칭 (숫자·소수점 포함)
+                    const newText = oldText.replace(/(\d+)\s*×\s*([^,]+)/g, (match, qty, type) => {
                         return `${type.trim()} x ${qty}`;
                     });
 
