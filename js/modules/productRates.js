@@ -34,6 +34,7 @@ window.ProductRatesModule = {
         { key: 'ownMallProfit',   label: '자사몰이익',      type: 'number', calc: true },
         { key: 'ownMallProfitRate',label: '자사몰이익률(%)', type: 'number', calc: true },
         { key: 'deptPrice',       label: '백화점가',        type: 'number', calc: true },
+        { key: 'deptFinalPrice',  label: '최종백화점가',    type: 'number', calc: false },
         { key: 'deptProfit',      label: '백화점이익',      type: 'number', calc: true },
         { key: 'deptProfitRate',  label: '백화점이익률(%)', type: 'number', calc: true },
         { key: 'goldValue18k',    label: '18K금값',         type: 'number', calc: true, is18k: true },
@@ -43,6 +44,7 @@ window.ProductRatesModule = {
         { key: 'ownMallProfit18k',label: '18K자사몰이익',   type: 'number', calc: true, is18k: true },
         { key: 'ownMallProfitRate18k', label: '18K자사몰이익률(%)', type: 'number', calc: true, is18k: true },
         { key: 'deptPrice18k',    label: '18K백화점가',     type: 'number', calc: true, is18k: true },
+        { key: 'deptFinalPrice18k', label: '18K최종백화점가', type: 'number', calc: false, is18k: true },
         { key: 'deptProfit18k',   label: '18K백화점이익',   type: 'number', calc: true, is18k: true },
         { key: 'deptProfitRate18k',label: '18K백화점이익률(%)', type: 'number', calc: true, is18k: true },
     ],
@@ -480,27 +482,26 @@ window.ProductRatesModule = {
         const discountPrice = finalPrice * (1 - n('discountRate') / 100);
         const ownMallProfit = discountPrice * (1 - ownMallFee / 100) - salesCost;
         const ownMallProfitRate = discountPrice > 0 ? (ownMallProfit / discountPrice) * 100 : 0;
-        // 새로운 백화점가 계산: 최종소비자가 + 나석 VS 추가금 합계
-        const deptPrice   = finalPrice + stoneVSAddFeeSum;
-        // 새로운 백화점이익 계산
+        // 백화점가 계산: 최종백화점가가 있으면 그것으로, 없으면 최종소비자가 사용
+        const deptPrice   = (n('deptFinalPrice') || finalPrice) + stoneVSAddFeeSum;
+        // 백화점이익 계산
         const deptProfit  = deptPrice - salesCost - stoneVSAddFeeSum * 0.8;
         const deptProfitRate = deptPrice > 0 ? (deptProfit / deptPrice) * 100 : 0;
 
         // 18K 계산 (weight18kRate는 18K/14K 금 무게비 배수)
-        const goldWeight18k = n('goldWeight14k') * weight18kRate;
-        const goldValue18k  = goldWeight18k * goldPrice * (18/24);
+        const goldValue18k  = goldValue * weight18kRate;
         const productCost18k= stoneCost + n('laborCost') + goldValue18k + n('otherMaterial') + stoneWarrantyCostComponent;
         const vatCost18k    = productCost18k * 1.1;
         const salesCost18k  = vatCost18k + n('shipping');
-        // 새로운 18K예상소비자가 계산: (금가격 * 18K/14K 금 무게비 + 공임비 + 나석원가 + 기타재료) * 1.1 / (자체마진율/100)
-        const marginPrice18k= (goldValue18k + n('laborCost') + stoneCost + n('otherMaterial')) * 1.1 / (ownMargin > 0 ? (ownMargin / 100) : 1);
+        // 18K예상소비자가 계산
+        const marginPrice18k = ownMargin > 0 ? salesCost18k / (1 - ownMargin / 100) : salesCost18k;
         const expectedPrice18k = Math.round(marginPrice18k / 1000) * 1000;
         const finalPrice18k = (n('finalPrice18k') || expectedPrice18k) + n('sizeAddFee') + stoneWarrantyFee;
         const discountPrice18k = finalPrice18k * (1 - n('discountRate') / 100);
         const ownMallProfit18k = discountPrice18k * (1 - ownMallFee / 100) - salesCost18k;
         const ownMallProfitRate18k = discountPrice18k > 0 ? (ownMallProfit18k / discountPrice18k) * 100 : 0;
-        // 18K백화점가: 백화점가 계산과 같고 18K최종소비자가 사용
-        const deptPrice18k  = finalPrice18k + stoneVSAddFeeSum;
+        // 18K백화점가: 18K최종백화점가가 있으면 그것으로, 없으면 18K최종소비자가 사용
+        const deptPrice18k  = (n('deptFinalPrice18k') || finalPrice18k) + stoneVSAddFeeSum;
         const deptProfit18k = deptPrice18k - salesCost18k - stoneVSAddFeeSum * 0.8;
         const deptProfitRate18k = deptPrice18k > 0 ? (deptProfit18k / deptPrice18k) * 100 : 0;
 
