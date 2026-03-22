@@ -642,10 +642,10 @@ window.ProductRatesModule = {
                     `stoneType`
                 );
 
-                // 나석 종류 컨테이너를 wrapper로 감싸고 "+" 버튼 추가
-                const wrapper = document.createElement('div');
-                wrapper.style.cssText = 'display: flex; gap: 4px; align-items: flex-start;';
-                wrapper.appendChild(searchableSelect);
+                // 나석 종류 컨테이너를 stoneWrapper로 감싸고 "+" 버튼 추가
+                const stoneWrapper = document.createElement('div');
+                stoneWrapper.style.cssText = 'display: flex; gap: 4px; align-items: flex-start;';
+                stoneWrapper.appendChild(searchableSelect);
 
                 // "새로등록" 버튼
                 const addBtn = document.createElement('button');
@@ -712,7 +712,7 @@ window.ProductRatesModule = {
                                 modal.remove();
 
                                 // 새로 추가된 나석을 searchable select에 설정
-                                const stoneInput = wrapper.querySelector('.searchable-select-input[name="stoneType"]');
+                                const stoneInput = stoneWrapper.querySelector('.searchable-select-input[name="stoneType"]');
                                 if (stoneInput) stoneInput.value = data.newStoneName;
 
                                 window.Utils.showNotification('신규 나석 종류가 추가되었습니다.', 'success');
@@ -724,8 +724,8 @@ window.ProductRatesModule = {
                     );
                 });
 
-                wrapper.appendChild(addBtn);
-                el.replaceWith(wrapper);
+                stoneWrapper.appendChild(addBtn);
+                el.replaceWith(stoneWrapper);
             });
         };
 
@@ -806,10 +806,10 @@ window.ProductRatesModule = {
                     'stoneType'
                 );
 
-                // 나석 종류 컨테이너를 wrapper로 감싸고 "+" 버튼 추가
-                const wrapper = document.createElement('div');
-                wrapper.style.cssText = 'display: flex; gap: 4px; align-items: flex-start;';
-                wrapper.appendChild(searchableSelect);
+                // 나석 종류 컨테이너를 stoneWrapper로 감싸고 "+" 버튼 추가
+                const stoneWrapper = document.createElement('div');
+                stoneWrapper.style.cssText = 'display: flex; gap: 4px; align-items: flex-start;';
+                stoneWrapper.appendChild(searchableSelect);
 
                 // "새로등록" 버튼
                 const addBtn = document.createElement('button');
@@ -876,7 +876,7 @@ window.ProductRatesModule = {
                                 modal.remove();
 
                                 // 새로 추가된 나석을 searchable select에 설정
-                                const stoneInput = wrapper.querySelector('.searchable-select-input[name="stoneType"]');
+                                const stoneInput = stoneWrapper.querySelector('.searchable-select-input[name="stoneType"]');
                                 if (stoneInput) stoneInput.value = data.newStoneName;
 
                                 window.Utils.showNotification('신규 나석 종류가 추가되었습니다.', 'success');
@@ -888,8 +888,8 @@ window.ProductRatesModule = {
                     );
                 });
 
-                wrapper.appendChild(addBtn);
-                stoneTypeContainer.replaceWith(wrapper);
+                stoneWrapper.appendChild(addBtn);
+                stoneTypeContainer.replaceWith(stoneWrapper);
 
                 // 삭제 버튼 이벤트
                 removeBtn.addEventListener('click', (e) => {
