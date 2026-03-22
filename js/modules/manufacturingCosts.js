@@ -640,8 +640,8 @@ window.ManufacturingCostsModule = {
 
         const required = await window.Utils.getRequiredFields('manufacturingCosts');
         const cost = costId ? this.costs.find(c => c.id === costId) : null;
-        // productionMonth 필드 제외
-        const allFields = [...this.BASE_FIELDS.filter(f => f.key !== 'productionMonth')];
+        // productionMonth와 orderId 필드 제외 (별도로 처리)
+        const allFields = [...this.BASE_FIELDS.filter(f => f.key !== 'productionMonth' && f.key !== 'orderId')];
 
         // 매출금액 참고 필드 추가
         const salesField = { key: 'salesAmount', label: '매출금액(이익계산용)', type: 'number', calc: false };
