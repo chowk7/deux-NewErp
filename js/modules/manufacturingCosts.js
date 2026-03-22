@@ -1063,39 +1063,66 @@ window.ManufacturingCostsModule = {
             .join(', ');
     },
 
-    // 나석정보를 새로 입력/작성하는 함수
+    // 제품의 나석정보를 형식 변환하고 저장하는 함수
     async formatStoneQtyText() {
         if (!(await window.Utils.confirm(
-            '나석 정보 입력 모달을 열어 나석 정보를 새로 작성하시겠습니까?'
+            '제품단가표의 모든 제품 나석정보를 "나석종류 x 나석갯수" 형식으로 변환하여 저장합니다.\n계속하시겠습니까?'
         ))) return;
 
         try {
-            let formattedText = '';
+            // productRates 컬렉션에서 모든 제품 조회
+            const snap = await window.firebaseDb
+                .collection('prices').doc('productRates').collection('items').get();
 
-            // 나석 입력 모달 열기
-            window.StoneInputModalModule.open(this.diamondRates, [], (stoneArray) => {
-                // 나석 배열을 "나석종류 x 나석갯수, 나석종류 x 나석갯수" 형식으로 포맷
-                formattedText = this.formatStoneArrayToText(stoneArray);
+            const docs = snap.docs;
+            let converted = 0;
+            const BATCH_SIZE = 400;
 
-                if (formattedText) {
-                    // 포맷된 텍스트를 클립보드에 복사
-                    navigator.clipboard.writeText(formattedText).then(() => {
-                        window.Utils.showNotification(
-                            `✓ 나석 정보가 작성되었습니다.\n${formattedText}\n\n(클립보드에 복사되었습니다)`,
-                            'success'
-                        );
-                    }).catch(() => {
-                        window.Utils.showNotification(
-                            `✓ 나석 정보가 작성되었습니다.\n${formattedText}`,
-                            'success'
-                        );
-                    });
+            // 배치 크기만큼 묶어서 처리
+            for (let i = 0; i < docs.length; i += BATCH_SIZE) {
+                let batch = window.firebaseDb.batch();
+                const batchDocs = docs.slice(i, i + BATCH_SIZE);
+                let batchCount = 0;
+
+                batchDocs.forEach(doc => {
+                    const product = doc.data();
+
+                    // stones 배열이 있는 경우에만 처리
+                    const stones = product.stones || [];
+                    if (!stones || stones.length === 0) return;
+
+                    // 나석 배열을 "나석종류 x 나석갯수, ..." 형식으로 변환
+                    const formattedText = stones
+                        .filter(s => s && s.type && s.qty > 0)
+                        .map(s => `${s.type} x ${s.qty}`)
+                        .join(', ');
+
+                    if (formattedText) {
+                        // stoneQty_text 필드에 저장 (기존 필드 호환성)
+                        batch.update(doc.ref, { stoneQty_text: formattedText });
+                        converted++;
+                        batchCount++;
+                    }
+                });
+
+                // 이 배치에 업데이트가 있으면 커밋
+                if (batchCount > 0) {
+                    await batch.commit();
                 }
-            });
+            }
+
+            if (converted === 0) {
+                window.Utils.showNotification('변환할 나석정보가 없습니다.', 'info');
+            } else {
+                window.Utils.showNotification(
+                    `✓ ${converted}개 제품의 나석정보를 형식 변환하여 저장했습니다.`,
+                    'success'
+                );
+            }
 
         } catch (error) {
             console.error('[ManufacturingCosts] formatStoneQtyText error:', error);
-            window.Utils.showNotification('나석 정보 작성 중 오류: ' + error.message, 'error');
+            window.Utils.showNotification('나석정보 변환 중 오류: ' + error.message, 'error');
         }
     },
 
