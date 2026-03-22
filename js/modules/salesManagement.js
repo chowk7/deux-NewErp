@@ -1652,6 +1652,28 @@ window.SalesManagementModule = {
                         });
                         row['inputCompleted'] = toBool(row['inputCompleted']);
 
+                        // stoneQty_text와 stoneArray 자동 생성 (CSV의 stoneType/stoneQty 필드로부터)
+                        const stoneArray = [];
+                        for (let i = 1; i <= 10; i++) {
+                            const stoneType = row[`stoneType${i}`];
+                            const stoneQty = row[`stoneQty${i}`];
+                            if (stoneType && stoneQty) {
+                                stoneArray.push({
+                                    stoneType: stoneType,
+                                    stoneQty: parseFloat(String(stoneQty).replace(/,/g, '')) || 0,
+                                    stoneCert: row[`stoneCert${i}`] || '',
+                                    stonePrice: parseFloat(String(row[`stonePrice${i}`] || 0).replace(/,/g, '')) || 0
+                                });
+                            }
+                        }
+                        if (stoneArray.length > 0) {
+                            row['stoneArray'] = JSON.stringify(stoneArray);
+                            row['stoneQty_text'] = stoneArray.map(s => `${s.stoneType} x ${s.stoneQty}`).join(', ');
+                        } else {
+                            row['stoneArray'] = '[]';
+                            row['stoneQty_text'] = '';
+                        }
+
                         addBatch.set(ref, { ...row, createdAt: new Date(), updatedAt: new Date() });
                         if ((idx + 1) % 500 === 0) {
                             addBatches.push(addBatch.commit());
