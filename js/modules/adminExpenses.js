@@ -8,8 +8,8 @@ window.AdminExpensesModule = {
     FIELDS: [
         { key: 'date',          label: '날짜',     type: 'date'   },
         { key: 'accountType',   label: '계정과목', type: 'select', options: [] }, // 동적으로 설정
-        { key: 'description',   label: '거래내용', type: 'text'   },
-        { key: 'vendor',        label: '거래처',   type: 'text'   },
+        { key: 'description',   label: '거래내용', type: 'searchable' },
+        { key: 'vendor',        label: '거래처',   type: 'searchable' },
         { key: 'amount',        label: '금액',     type: 'number' },
         { key: 'paymentMethod', label: '결제방식', type: 'select',
           options: ['법인카드','계좌이체','현금','기타'] },
@@ -162,12 +162,18 @@ window.AdminExpensesModule = {
         const today = new Date().toISOString().split('T')[0];
         const now = new Date();
 
+        // 이전 거래처와 거래내용 값 수집
+        const vendors = [...new Set(this.expenses.map(e => e.vendor).filter(Boolean))];
+        const descriptions = [...new Set(this.expenses.map(e => e.description).filter(Boolean))];
+
         const fields = this.FIELDS.map(f => {
             if (f.key === 'accountType') return { ...f, options: this.ACCOUNT_TYPES };
+            if (f.key === 'vendor') return { ...f, options: vendors };
+            if (f.key === 'description') return { ...f, options: descriptions };
             return f;
         });
 
-        const body = `<div class="form-grid">` + fields.map(f => {
+        const body = `<div class="form-grid" id="expenseFormGrid">` + fields.map(f => {
             let val = exp?.[f.key] ?? '';
             if (f.key === 'date' && !val) val = today;
             if (f.key === 'expenseYear' && !val) val = String(now.getFullYear());
@@ -180,13 +186,17 @@ window.AdminExpensesModule = {
                 return `<div class="form-group"><label>${f.label}</label>
                     <select name="${f.key}"><option value="">선택</option>${opts}</select></div>`;
             }
+            if (f.type === 'searchable') {
+                return `<div class="form-group"><label>${f.label}</label>
+                    <div id="searchable_${f.key}" data-key="${f.key}" data-options='${JSON.stringify(f.options || [])}' data-value="${val}"></div></div>`;
+            }
             return `<div class="form-group"><label>${f.label}</label>
                 <input type="${f.type}" name="${f.key}" value="${val}"
                     step="${f.type === 'number' ? '1' : ''}"
                     placeholder="${f.placeholder || ''}"></div>`;
         }).join('') + `</div>`;
 
-        window.Utils.openModal(
+        const wrapper = window.Utils.openModal(
             expId ? '판관비 수정' : '판관비 추가', body,
             async (data, w) => {
                 // 데이터 정규화
@@ -211,6 +221,19 @@ window.AdminExpensesModule = {
                 this.load();
             }
         );
+
+        // Searchable select 생성 (모달이 열린 후)
+        setTimeout(() => {
+            wrapper.querySelectorAll('[id^="searchable_"]').forEach(el => {
+                const key = el.dataset.key;
+                const options = JSON.parse(el.dataset.options);
+                const value = el.dataset.value;
+                const container = window.Utils.createSearchableSelect(
+                    options, value, null, `${key === 'vendor' ? '거래처' : '거래내용'} 입력...`, key
+                );
+                el.parentNode.replaceChild(container, el);
+            });
+        }, 0);
     },
 
     async delete(id) {
