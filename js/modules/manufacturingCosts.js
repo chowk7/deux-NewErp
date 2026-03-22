@@ -638,6 +638,9 @@ window.ManufacturingCostsModule = {
             return;
         }
 
+        // 기존 모달 모두 제거 (중복 모달 방지)
+        document.querySelectorAll('[data-modal]').forEach(m => m.remove());
+
         const required = await window.Utils.getRequiredFields('manufacturingCosts');
         const cost = costId ? this.costs.find(c => c.id === costId) : null;
         // productionMonth와 orderId 필드 제외 (별도로 처리)
