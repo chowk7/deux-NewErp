@@ -72,9 +72,9 @@ window.ManufacturingCostsModule = {
         document.getElementById('mfgRecalcVatBtn')
             ?.addEventListener('click', () => this.bulkRecalcWithVat());
 
-        // 나석정보 형식 변환 버튼
+        // 나석정보 작성 버튼
         document.getElementById('mfgMigrateStoneFormatBtn')
-            ?.addEventListener('click', () => this.migrateStoneQtyTextFormat());
+            ?.addEventListener('click', () => this.formatStoneQtyText());
     },
 
     async loadDiamondRates() {
@@ -1052,61 +1052,50 @@ window.ManufacturingCostsModule = {
      * 기존 나석정보 형식 일괄 변환
      * "1 × 1캐럿" → "1캐럿 x 1" 형식으로 변환
      */
-    async migrateStoneQtyTextFormat() {
+    // 나석 배열을 텍스트 형식으로 포맷하는 함수
+    formatStoneArrayToText(stoneArray) {
+        if (!stoneArray || stoneArray.length === 0) {
+            return '';
+        }
+        return stoneArray
+            .filter(s => s && s.stoneType && s.stoneQty > 0)
+            .map(s => `${s.stoneType} x ${s.stoneQty}`)
+            .join(', ');
+    },
+
+    // 나석정보를 새로 입력/작성하는 함수
+    async formatStoneQtyText() {
         if (!(await window.Utils.confirm(
-            '모든 주문의 나석정보 형식을 변환합니다.\n"나석종류/나석갯수" → "나석종류 x 나석갯수" 형식으로 변환됩니다.\n예: "2mm/1, 1캐럿/2" → "2mm x 1, 1캐럿 x 2"\n계속하시겠습니까?'
+            '나석 정보 입력 모달을 열어 나석 정보를 새로 작성하시겠습니까?'
         ))) return;
 
         try {
-            const snap = await window.firebaseDb
-                .collection('sales').doc('orders').collection('items').get();
+            let formattedText = '';
 
-            const docs = snap.docs;
-            let converted = 0;
-            const BATCH_SIZE = 400;
+            // 나석 입력 모달 열기
+            window.StoneInputModalModule.open(this.diamondRates, [], (stoneArray) => {
+                // 나석 배열을 "나석종류 x 나석갯수, 나석종류 x 나석갯수" 형식으로 포맷
+                formattedText = this.formatStoneArrayToText(stoneArray);
 
-            // 배치 크기만큼 묶어서 처리
-            for (let i = 0; i < docs.length; i += BATCH_SIZE) {
-                let batch = window.firebaseDb.batch();
-                const batchDocs = docs.slice(i, i + BATCH_SIZE);
-                let batchCount = 0;
-
-                batchDocs.forEach(doc => {
-                    const order = doc.data();
-                    const oldText = order.stoneQty_text || '';
-
-                    if (!oldText) return; // 빈 값 스킵
-
-                    // 정규식: "나석종류/나석갯수" → "나석종류 x 나석갯수"
-                    // 예: "2mm/1,1캐럿/2" → "2mm x 1, 1캐럿 x 2"
-                    // ([^\/,\s]+) : 슬래시와 쉼표를 제외한 모든 문자 매칭 (나석종류)
-                    // (\d+(?:\.\d+)?) : 정수 또는 소수 (나석갯수)
-                    const newText = oldText
-                        // "나석종류/나석갯수" 형식을 "나석종류 x 나석갯수"로 변환
-                        .replace(/([^\/,\s]+)\s*\/\s*(\d+(?:\.\d+)?)/g, (match, type, qty) => {
-                            return `${type.trim()} x ${qty}`;
-                        })
-                        // 쉼표 뒤에 공백이 있으면 유지, 없으면 공백 추가
-                        .replace(/,(?!\s)/g, ', ');
-
-                    if (oldText !== newText) {
-                        batch.update(doc.ref, { stoneQty_text: newText });
-                        converted++;
-                        batchCount++;
-                    }
-                });
-
-                // 이 배치에 업데이트가 있으면 커밋
-                if (batchCount > 0) {
-                    await batch.commit();
+                if (formattedText) {
+                    // 포맷된 텍스트를 클립보드에 복사
+                    navigator.clipboard.writeText(formattedText).then(() => {
+                        window.Utils.showNotification(
+                            `✓ 나석 정보가 작성되었습니다.\n${formattedText}\n\n(클립보드에 복사되었습니다)`,
+                            'success'
+                        );
+                    }).catch(() => {
+                        window.Utils.showNotification(
+                            `✓ 나석 정보가 작성되었습니다.\n${formattedText}`,
+                            'success'
+                        );
+                    });
                 }
-            }
-
-            window.Utils.showNotification(`✓ ${converted}건의 나석정보 형식을 변환했습니다.`, 'success');
+            });
 
         } catch (error) {
-            console.error('[ManufacturingCosts] migrateStoneQtyTextFormat error:', error);
-            window.Utils.showNotification('형식 변환 중 오류: ' + error.message, 'error');
+            console.error('[ManufacturingCosts] formatStoneQtyText error:', error);
+            window.Utils.showNotification('나석 정보 작성 중 오류: ' + error.message, 'error');
         }
     },
 
