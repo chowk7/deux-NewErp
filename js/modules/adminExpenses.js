@@ -81,31 +81,60 @@ window.AdminExpensesModule = {
     },
 
     renderTable() {
-        const tbody = document.querySelector('#adminExpensesTable tbody');
-        if (!tbody) return;
+        const table = document.querySelector('#adminExpensesTable');
+        if (!table) return;
+
+        // 표시할 필드 결정
+        const defaultDisplayFields = ['date', 'accountType', 'description', 'vendor', 'amount', 'paymentMethod', 'isBizExpense'];
+        const displayFieldKeys = window.Utils.getDisplayFields('adminExpenses', defaultDisplayFields);
+
+        // 필드 맵 생성
+        const fieldMap = {};
+        this.FIELDS.forEach(f => fieldMap[f.key] = f);
+
+        // 표시할 필드만 필터링
+        const displayFields = this.FIELDS.filter(f => displayFieldKeys.includes(f.key));
+
+        // 테이블 헤더 업데이트
+        const thead = table.querySelector('thead tr');
+        thead.innerHTML = displayFields.map(f => `<th>${f.label}</th>`).join('') + '<th>관리</th>';
+
+        // 테이블 바디 업데이트
+        const tbody = table.querySelector('tbody');
         if (this.expenses.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="8" style="text-align:center">데이터가 없습니다.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="${displayFields.length + 1}" style="text-align:center">데이터가 없습니다.</td></tr>`;
             return;
         }
+
         tbody.innerHTML = this.expenses.map(e => {
-            // date를 포맷팅
-            let dateStr = '-';
-            if (e.date) {
-                if (e.date.toDate) {
-                    dateStr = new Date(e.date.toDate()).toLocaleDateString('ko-KR');
-                } else if (typeof e.date === 'string') {
-                    dateStr = new Date(e.date).toLocaleDateString('ko-KR');
+            const cells = displayFields.map(f => {
+                let val = e[f.key] || '-';
+
+                // 날짜 포맷팅
+                if (f.key === 'date' && e.date) {
+                    if (e.date.toDate) {
+                        val = new Date(e.date.toDate()).toLocaleDateString('ko-KR');
+                    } else if (typeof e.date === 'string') {
+                        val = new Date(e.date).toLocaleDateString('ko-KR');
+                    }
                 }
-            }
+
+                // 계정과목 배지
+                if (f.key === 'accountType') {
+                    return `<td><span class="badge">${val}</span></td>`;
+                }
+
+                // 금액 포맷팅
+                if (f.key === 'amount') {
+                    return `<td style="text-align:right;">${window.Utils.formatNumber(e.amount)}</td>`;
+                }
+
+                return `<td>${val}</td>`;
+            }).join('');
+
             return `
             <tr>
-                <td>${dateStr}</td>
-                <td><span class="badge">${e.accountType || '-'}</span></td>
-                <td>${e.description || '-'}</td>
-                <td>${e.vendor || '-'}</td>
-                <td style="text-align:right;">${window.Utils.formatNumber(e.amount)}</td>
-                <td>${e.paymentMethod || '-'}</td>
-                <td>${e.isBizExpense || '-'}</td>
+                ${cells}
                 <td style="display:flex; gap:8px; align-items:center;">
                     <button class="btn btn-sm btn-primary"
                         data-action="showForm" data-id="${e.id}">수정</button>
@@ -116,20 +145,17 @@ window.AdminExpensesModule = {
         }).join('');
 
         // Event delegation for action buttons
-        const table = document.querySelector('#adminExpensesTable');
-        if (table) {
-            table.removeEventListener('click', this._tableHandler);
-            this._tableHandler = (e) => {
-                const btn = e.target.closest('[data-action]');
-                if (!btn) return;
-                const action = btn.dataset.action;
-                const id = btn.dataset.id;
-                if (typeof this[action] === 'function') {
-                    this[action](id);
-                }
-            };
-            table.addEventListener('click', this._tableHandler);
-        }
+        table.removeEventListener('click', this._tableHandler);
+        this._tableHandler = (e) => {
+            const btn = e.target.closest('[data-action]');
+            if (!btn) return;
+            const action = btn.dataset.action;
+            const id = btn.dataset.id;
+            if (typeof this[action] === 'function') {
+                this[action](id);
+            }
+        };
+        table.addEventListener('click', this._tableHandler);
     },
 
     renderSummary() {
