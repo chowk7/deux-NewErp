@@ -720,6 +720,7 @@ window.ManufacturingCostsModule = {
         const wrapper = window.Utils.openModal(
             '제조원가 수정', body,
             async (data, w) => {
+                console.log('[저장 전] FormData 수집 데이터:', Object.keys(data));
                 // stoneArray, stoneQty_text는 문자열로 보존; 나머지 숫자 필드 변환
                 const STRING_KEYS = new Set(['orderId', 'productionMonth', 'stoneArray', 'stoneQty_text']);
                 Object.keys(data).forEach(k => {
@@ -729,7 +730,9 @@ window.ManufacturingCostsModule = {
                         data[k] = parseFloat(data[k]) || 0;
                     }
                 });
+                console.log('[변환 후] 전송할 데이터 키:', Object.keys(data));
                 const calculated = this.calculate(data);
+                console.log('[계산 후] 최종 저장 데이터 키:', Object.keys(calculated));
 
                 // stoneArray에서 개별 나석 필드(stoneType1~10 등) 생성
                 let parsedStones = [];
@@ -745,9 +748,12 @@ window.ManufacturingCostsModule = {
                 }).reduce((a, b) => ({...a, ...b}), {});
 
                 // 수정만 가능 (신규 입력은 매출표에서만)
+                const updateData = { ...calculated, ...stoneFields, updatedAt: new Date() };
+                console.log('[Firestore update] 저장할 필드:', Object.keys(updateData));
                 await window.firebaseDb.collection('sales').doc('orders')
                     .collection('items').doc(costId)
-                    .update({ ...calculated, ...stoneFields, updatedAt: new Date() });
+                    .update(updateData);
+                console.log('[저장 완료]');
                 w.remove();
                 this.load();
             }
