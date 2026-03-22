@@ -350,8 +350,8 @@ window.WordTemplateManager = {
             }
         }
 
-        // 보증서 (없으면 공백)
-        const warranty = order.warranty && order.warranty !== '없음' ? order.warranty : '';
+        // 보증서 (VS/VVS이면 "[IGI]", 아니면 공백)
+        const warranty = order.warranty === 'VS' || order.warranty === 'VVS' ? '[IGI]' : '';
 
         return {
             주문번호: order.orderNumber || order.주문번호 || '',
