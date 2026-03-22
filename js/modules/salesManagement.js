@@ -846,6 +846,8 @@ window.SalesManagementModule = {
                     }
                 }
                 w.remove();
+                // 캐시 초기화 후 Firestore에서 최신 데이터 다시 로드
+                this.allOrders = [];
                 this.loadOrders();
             }
         );
@@ -1497,6 +1499,8 @@ window.SalesManagementModule = {
             });
             await batch.commit();
             alert(`${rows.length}개 주문이 저장되었습니다.`);
+            // 캐시 초기화 후 Firestore에서 최신 데이터 다시 로드
+            this.allOrders = [];
             this.loadOrders();
         });
     },
