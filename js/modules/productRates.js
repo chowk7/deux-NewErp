@@ -729,6 +729,30 @@ window.ProductRatesModule = {
             });
         };
 
+        // 입력 시 실시간 계산 (addStoneBtn 이벤트 리스너에서 사용하기 위해 미리 정의)
+        const updateCalculatedFields = () => {
+            const fd = new FormData(wrapper.querySelector('#modalForm'));
+            const data = Object.fromEntries(fd);
+
+            // stones 배열 재구성
+            const stoneRows = wrapper.querySelectorAll('.stone-row');
+            const newStones = Array.from(stoneRows)
+                .map(row => ({
+                    type: row.querySelector('.searchable-select-input[name="stoneType"]')?.value || '',
+                    qty: parseFloat(row.querySelector('.stone-qty-input').value) || 0
+                }))
+                .filter(s => s.type && s.qty > 0);
+            data.stones = newStones;
+
+            const RATE_KEYS = new Set(['ownMallProfitRate','deptProfitRate','ownMallProfitRate18k','deptProfitRate18k']);
+            const calc = this.calculate(data);
+            this.FIELDS.filter(f => f.calc).forEach(f => {
+                const el = wrapper.querySelector(`[name="${f.key}"]`);
+                if (!el) return;
+                el.value = Math.round(calc[f.key] || 0);
+            });
+        }.bind(this);
+
         // 초기 stone type 검색 드롭다운 설정
         setupStoneTypeSearchable(wrapper);
 
@@ -885,30 +909,6 @@ window.ProductRatesModule = {
                 updateCalculatedFields();
             });
         });
-
-        // 입력 시 실시간 계산 미리보기
-        const updateCalculatedFields = () => {
-            const fd = new FormData(wrapper.querySelector('#modalForm'));
-            const data = Object.fromEntries(fd);
-
-            // stones 배열 재구성
-            const stoneRows = wrapper.querySelectorAll('.stone-row');
-            const newStones = Array.from(stoneRows)
-                .map(row => ({
-                    type: row.querySelector('.searchable-select-input[name="stoneType"]')?.value || '',
-                    qty: parseFloat(row.querySelector('.stone-qty-input').value) || 0
-                }))
-                .filter(s => s.type && s.qty > 0);
-            data.stones = newStones;
-
-            const RATE_KEYS = new Set(['ownMallProfitRate','deptProfitRate','ownMallProfitRate18k','deptProfitRate18k']);
-            const calc = this.calculate(data);
-            this.FIELDS.filter(f => f.calc).forEach(f => {
-                const el = wrapper.querySelector(`[name="${f.key}"]`);
-                if (!el) return;
-                el.value = Math.round(calc[f.key] || 0);
-            });
-        };
 
         // input, change 이벤트 모두 반영 (select, number input 모두 지원)
         wrapper.querySelector('#modalForm').addEventListener('input', updateCalculatedFields);
