@@ -87,7 +87,6 @@ window.SalesManagementModule = {
                 { key: `stoneType${i+1}`,    label: `나석종류${i+1}`,   type: 'text'   },
                 { key: `stoneQty${i+1}`,     label: `나석갯수${i+1}`,   type: 'number' },
                 { key: `stoneCert${i+1}`,    label: `나석보증서${i+1}`,  type: 'text'   },
-                { key: `stonePrice${i+1}`,   label: `나석가격${i+1}`,   type: 'number' },
             ]).flat(),
             { key: 'separator2', label: '--- 주문관리 ---', type: 'text' },
             // 주문관리 필드
@@ -821,8 +820,7 @@ window.SalesManagementModule = {
                         ...Array.from({length: 10}, (_, i) => ({
                             [`stoneType${i+1}`]: '',
                             [`stoneQty${i+1}`]: 0,
-                            [`stoneCert${i+1}`]: '',
-                            [`stonePrice${i+1}`]: 0
+                            [`stoneCert${i+1}`]: ''
                         })).reduce((acc, obj) => ({...acc, ...obj}), {}),
                         // 주문관리 기본값
                         stoneRequestDate: null,
@@ -1643,7 +1641,6 @@ window.SalesManagementModule = {
 
                         for (let i = 1; i <= 10; i++) {
                             if (row[`stoneQty${i}`]) row[`stoneQty${i}`] = parseFloat(String(row[`stoneQty${i}`]).replace(/,/g, '')) || 0;
-                            if (row[`stonePrice${i}`]) row[`stonePrice${i}`] = parseFloat(String(row[`stonePrice${i}`]).replace(/,/g, '')) || 0;
                         }
 
                         const toBool = v => ['Y','y','YES','yes','TRUE','true','1'].includes(String(v ?? '').trim()) || v === true;
@@ -1661,8 +1658,7 @@ window.SalesManagementModule = {
                                 stoneArray.push({
                                     stoneType: stoneType,
                                     stoneQty: parseFloat(String(stoneQty).replace(/,/g, '')) || 0,
-                                    stoneCert: row[`stoneCert${i}`] || '',
-                                    stonePrice: parseFloat(String(row[`stonePrice${i}`] || 0).replace(/,/g, '')) || 0
+                                    stoneCert: row[`stoneCert${i}`] || ''
                                 });
                             }
                         }
