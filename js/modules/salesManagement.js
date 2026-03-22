@@ -1698,6 +1698,16 @@ window.SalesManagementModule = {
             cleanup();
             window.Utils.openCsvUploadModal(fields, async (rows) => {
                 try {
+                    // 나석단가표 로드 (CSV 업로드 시 나석 가격 계산용)
+                    let diamondRates = [];
+                    try {
+                        const diamondSnap = await window.firebaseDb
+                            .collection('prices').doc('diamondRates').collection('items').get();
+                        diamondRates = diamondSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                    } catch (e) {
+                        console.warn('나석단가표 로드 실패:', e);
+                    }
+
                     const col = window.firebaseDb.collection('sales').doc('orders').collection('items');
 
                     // 교체 모드: 기존 전체 삭제
@@ -1750,20 +1760,48 @@ window.SalesManagementModule = {
 
                         // stoneQty_text와 stoneArray 자동 생성 (CSV의 stoneType/stoneQty 필드로부터)
                         const stoneArray = [];
+                        let totalStoneCost = 0;
+                        let totalWarrantyFee = 0;
                         for (let i = 1; i <= 10; i++) {
                             const stoneType = row[`stoneType${i}`];
                             const stoneQty = row[`stoneQty${i}`];
                             if (stoneType && stoneQty) {
+                                const qty = parseFloat(String(stoneQty).replace(/,/g, '')) || 0;
+                                const cert = row[`stoneCert${i}`] || '';
+
+                                // 나석단가표에서 가격 정보 조회
+                                const diamondInfo = diamondRates?.find(d => d.diamondType === stoneType);
+                                const unitPrice = diamondInfo?.price || 0;
+                                const totalPrice = unitPrice * qty;
+
+                                // 보증서 타입별 추가금 계산 (cert: 'VS', 'VVS' 등)
+                                let warrantyFee = 0;
+                                if (cert === 'VS') {
+                                    warrantyFee = diamondInfo?.vsWarrantyFee || 0;
+                                } else if (cert === 'VVS') {
+                                    warrantyFee = diamondInfo?.vvsWarrantyFee || 0;
+                                }
+
                                 stoneArray.push({
                                     stoneType: stoneType,
-                                    stoneQty: parseFloat(String(stoneQty).replace(/,/g, '')) || 0,
-                                    stoneCert: row[`stoneCert${i}`] || ''
+                                    stoneQty: qty,
+                                    stonePrice: unitPrice,
+                                    totalPrice: totalPrice,
+                                    stoneCert: cert,
+                                    warrantyFee: warrantyFee
                                 });
+
+                                totalStoneCost += totalPrice;
+                                totalWarrantyFee += warrantyFee;
                             }
                         }
                         if (stoneArray.length > 0) {
                             row['stoneArray'] = JSON.stringify(stoneArray);
                             row['stoneQty_text'] = stoneArray.map(s => `${s.stoneType} x ${s.stoneQty}`).join(', ');
+                            // 나석 관련 필드 자동 설정
+                            if (!row['stoneCostRef'] || row['stoneCostRef'] === 0) {
+                                row['stoneCostRef'] = totalStoneCost;
+                            }
                         } else {
                             row['stoneArray'] = '[]';
                             row['stoneQty_text'] = '';
