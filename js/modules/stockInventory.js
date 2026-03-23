@@ -69,7 +69,7 @@ window.StockInventoryModule = {
 
             // 제품가격표 로드
             const priceSnap = await window.firebaseDb
-                .collection('sales').doc('productRates').collection('items').get();
+                .collection('prices').doc('productRates').collection('items').get();
             this.productRates = priceSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
             // 나석단가표 로드
@@ -447,7 +447,8 @@ window.StockInventoryModule = {
         setTimeout(() => {
             const productNames = self.productRates.map(p => p.productName).filter((v, i, a) => a.indexOf(v) === i);
             const container = w.querySelector('#searchable_productName');
-            if (container) {
+
+            if (container && productNames.length > 0) {
                 const selectElement = window.Utils.createSearchableSelect(
                     productNames,
                     item?.productName || '',
