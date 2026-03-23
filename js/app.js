@@ -108,6 +108,7 @@ class DiamonJewelryApp {
             'price-settings': 'priceSettingsContent',
             'orders': 'ordersContent',
             'manufacturing-costs': 'manufacturingCostsContent',
+            'stock-inventory': 'stockInventoryContent',
             'admin-expenses': 'adminExpensesContent',
             'profit-loss': 'profitLossContent',
             'gold-inventory': 'goldInventoryContent',
@@ -139,6 +140,8 @@ class DiamonJewelryApp {
                     } else if (window.ManufacturingCostsModule && menuId === 'manufacturing-costs') {
                         window.ManufacturingCostsModule.allCosts = [];
                         await window.ManufacturingCostsModule.load();
+                    } else if (window.StockInventoryModule && menuId === 'stock-inventory') {
+                        await window.StockInventoryModule.load();
                     } else if (window.AdminExpensesModule && menuId === 'admin-expenses') {
                         await window.AdminExpensesModule.load();
                     } else if (window.ProfitLossModule && menuId === 'profit-loss') {
@@ -242,6 +245,7 @@ class DiamonJewelryApp {
         if (window.ProductRatesModule) window.ProductRatesModule.init();
         if (window.CustomerManagementModule) window.CustomerManagementModule.init();
         if (window.ManufacturingCostsModule) window.ManufacturingCostsModule.init();
+        if (window.StockInventoryModule) window.StockInventoryModule.init();
         if (window.OrderManagementModule) window.OrderManagementModule.init();
         if (window.AdminExpensesModule) window.AdminExpensesModule.init();
         if (window.ProfitLossModule) window.ProfitLossModule.init();

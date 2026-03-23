@@ -144,6 +144,7 @@
                             <li><a href="#" data-menu="customers" class="nav-link">👥 고객목록표</a></li>
                             <li><a href="#" data-menu="option-charges" class="nav-link">➕ 각줄추가금액</a></li>
                             <li><a href="#" data-menu="price-settings" class="nav-link">⚙️ 가격옵션</a></li>
+                            <li><a href="#" data-menu="stock-inventory" class="nav-link">📦 재고관리</a></li>
                             <li class="nav-section">매출관리</li>
                             <li><a href="#" data-menu="orders" class="nav-link">📋 매출표</a></li>
                             <li><a href="#" data-menu="manufacturing-costs" class="nav-link">🏭 제조원가표</a></li>
@@ -396,6 +397,29 @@
                         <div id="manufacturingCostsPagination"></div>
                     </section>
 
+                    <!-- 재고관리 섹션 -->
+                    <section id="stockInventoryContent" class="content-section hidden">
+                        <h2>재고관리</h2>
+                        <div class="button-group">
+                            <button id="addStockItemBtn" class="btn btn-primary">+ 새 항목 추가</button>
+                            <button id="csvUploadStockBtn" class="btn btn-secondary">📥 CSV 업로드</button>
+                            <button id="downloadStockTemplateBtn" class="btn btn-outline" style="display:none;">📄 양식 다운로드</button>
+                            <button id="downloadStockDataBtn" class="btn btn-outline" style="display:none;">💾 데이터 다운로드</button>
+                        </div>
+                        <div id="stockFilterBar"></div>
+                        <div class="table-scroll-wrapper">
+                        <table id="stockInventoryTable" class="data-table">
+                            <thead><tr>
+                                <th>주문번호</th><th>제작월</th><th>금값</th>
+                                <th>나석가격</th><th>제조가격</th><th>매출이익률</th>
+                                <th>용도</th><th>비고</th><th>관리</th>
+                            </tr></thead>
+                            <tbody></tbody>
+                        </table>
+                        </div>
+                        <div id="stockInventoryPagination"></div>
+                    </section>
+
                     <!-- 신제품가격산정 섹션 -->
                     <section id="newProductPricingContent" class="content-section hidden">
                         <h2>신제품가격산정</h2>
@@ -633,6 +657,7 @@
     <script src="/js/modules/productRates.js"></script>
     <script src="/js/modules/customerManagement.js"></script>
     <script src="/js/modules/manufacturingCosts.js"></script>
+    <script src="/js/modules/stockInventory.js"></script>
     <script src="/js/modules/stoneInputModal.js"></script>
     <script src="/js/modules/orderManagement.js"></script>
     <script src="/js/modules/adminExpenses.js"></script>
