@@ -67,20 +67,17 @@ window.AdminExpensesModule = {
     },
 
     async load() {
-        let query = window.firebaseDb
+        // 일단 모든 데이터를 가져옴 (expenseYear 필터 없이)
+        const snap = await window.firebaseDb
             .collection('sales').doc('adminExpenses').collection('items')
-            .orderBy('date', 'desc');
+            .orderBy('date', 'desc')
+            .get();
 
-        if (this.filterYear) {
-            query = query.where('expenseYear', '==', String(this.filterYear));
-        }
-
-        const snap = await query.get();
         this.expenses = snap.docs.map(d => {
             const data = { id: d.id, ...d.data() };
 
-            // date가 있는데 expenseMonth가 없으면 자동 추출
-            if (data.date && !data.expenseMonth) {
+            // date가 있으면 항상 expenseYear/expenseMonth를 계산/갱신
+            if (data.date) {
                 let dateObj = data.date;
                 if (dateObj.toDate) {
                     dateObj = dateObj.toDate();
@@ -94,6 +91,12 @@ window.AdminExpensesModule = {
             return data;
         });
 
+        // 메뉴 활성화 후 연도 필터링
+        if (this.filterYear) {
+            this.expenses = this.expenses.filter(e => e.expenseYear === String(this.filterYear));
+        }
+
+        // 월 필터링
         if (this.filterMonth) {
             this.expenses = this.expenses.filter(e =>
                 String(e.expenseMonth).padStart(2,'0') === String(this.filterMonth).padStart(2,'0'));
@@ -508,8 +511,7 @@ window.AdminExpensesModule = {
                     }
                     if (dateObj && !isNaN(dateObj.getTime())) {
                         data.date = firebase.firestore.Timestamp.fromDate(dateObj);
-                        data.expenseYear = String(dateObj.getFullYear());
-                        data.expenseMonth = String(dateObj.getMonth() + 1).padStart(2,'0');
+                        // expenseYear/expenseMonth는 load()에서 자동 계산되므로 여기선 설정 안함
                     }
                 }
 
@@ -628,8 +630,7 @@ window.AdminExpensesModule = {
                     }
                     if (dateObj && !isNaN(dateObj.getTime())) {
                         r.date = firebase.firestore.Timestamp.fromDate(dateObj);
-                        r.expenseYear = String(dateObj.getFullYear());
-                        r.expenseMonth = String(dateObj.getMonth() + 1).padStart(2,'0');
+                        // expenseYear/expenseMonth는 load()에서 자동 계산되므로 여기선 설정 안함
                         savedCount++;
                     } else {
                         console.warn('[CSV] date 파싱 실패:', r.date);

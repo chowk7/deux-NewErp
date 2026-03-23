@@ -154,11 +154,9 @@ window.ProfitLossModule = {
                 return null;
             }
 
-            // expenseYear/expenseMonth 자동 계산 또는 기존값 사용
-            if (!e.expenseYear || !e.expenseMonth) {
-                e.expenseYear = String(dateObj.getFullYear());
-                e.expenseMonth = String(dateObj.getMonth() + 1).padStart(2,'0');
-            }
+            // expenseYear/expenseMonth는 항상 date로부터 계산 (CSV 업로드 등으로 누락된 경우 대비)
+            e.expenseYear = String(dateObj.getFullYear());
+            e.expenseMonth = String(dateObj.getMonth() + 1).padStart(2,'0');
             return e;
         }).filter(e => {
             // 연도 일치하고, 비활성화되지 않은 항목만 포함
