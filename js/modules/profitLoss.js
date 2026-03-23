@@ -87,12 +87,14 @@ window.ProfitLossModule = {
             .where('orderDate', '<',  yearEnd)
             .get();
         const orders = ordersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        console.log(`[P&L] ${year}년 주문 데이터: ${orders.length}개`, orders);
 
         // 2. 제조원가 전체 로드 (주문별 매출이익 계산용)
         const mfgSnap = await window.firebaseDb
             .collection('sales').doc('manufacturingCosts').collection('items')
             .get();
         const mfgCosts = mfgSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        console.log(`[P&L] 제조원가 데이터: ${mfgCosts.length}개`, mfgCosts);
 
         // 주문ID -> 제조원가 매핑
         // orderId 필드가 우선, 없으면 문서 ID(=orderId)를 사용
@@ -103,21 +105,29 @@ window.ProfitLossModule = {
                 mfgByOrderId[orderId] = m;
             }
         });
+        console.log(`[P&L] orderId 매핑: ${Object.keys(mfgByOrderId).length}개`, mfgByOrderId);
 
         // 3. 판관비는 판관비 날짜 기준으로 집계
         const expSnap = await window.firebaseDb
             .collection('sales').doc('adminExpenses').collection('items')
             .get();
-        const expenses = expSnap.docs.map(d => {
+        const allExpenses = expSnap.docs.map(d => {
             const e = d.data();
+            // date 필드가 없으면 건너뜀
+            if (!e.date) {
+                console.warn('[P&L] date 필드가 없는 판관비 데이터:', e);
+                return null;
+            }
             // 기존 데이터에서 expenseYear/expenseMonth가 없으면 date에서 자동 계산
-            if (!e.expenseYear && e.date) {
+            if (!e.expenseYear || !e.expenseMonth) {
                 const dateObj = e.date.toDate ? e.date.toDate() : new Date(e.date);
                 e.expenseYear = String(dateObj.getFullYear());
                 e.expenseMonth = String(dateObj.getMonth() + 1).padStart(2,'0');
             }
             return e;
-        }).filter(e => e.expenseYear === String(year));
+        }).filter(e => e && e.expenseYear === String(year));
+        console.log(`[P&L] ${year}년 판관비 데이터: ${allExpenses.length}개`, allExpenses);
+        const expenses = allExpenses;
 
         // 월별 데이터 구성
         this.plData = Array.from({length: 12}, (_, i) => {

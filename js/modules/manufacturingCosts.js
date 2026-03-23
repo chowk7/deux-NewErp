@@ -962,18 +962,24 @@ window.ManufacturingCostsModule = {
             [...this.BASE_FIELDS.filter(f => !f.calc && f.key !== 'productionMonth'), ...this.STONE_FIELDS],
             async (rows) => {
                 const batch = window.firebaseDb.batch();
-                const collection = window.firebaseDb
-                    .collection('sales').doc('orders').collection('items');
+                const manufacturingCostsCol = window.firebaseDb
+                    .collection('sales').doc('manufacturingCosts').collection('items');
 
                 for (const row of rows) {
                     // ✅ 각 행에 대해 calculate() 호출하여 자동 계산 필드 채우기
                     const calculatedRow = this.calculate(row);
 
-                    // orderId를 문서 ID로 사용하거나, 새 ID 생성
-                    const docId = row.orderId || window.firebaseDb.collection('_').doc().id;
-                    const docRef = collection.doc(docId);
+                    // orderId는 필수 - 주문과의 연결을 위함
+                    if (!row.orderId) {
+                        console.warn('orderId가 없는 행은 건너뜁니다:', row);
+                        continue;
+                    }
+
+                    // orderId를 문서 ID로 사용하여 주문과 연결
+                    const docRef = manufacturingCostsCol.doc(row.orderId);
                     batch.set(docRef, {
                         ...calculatedRow,
+                        orderId: row.orderId,  // orderId 필드도 명시적으로 저장
                         updatedAt: new Date()
                     }, { merge: true }); // 기존 필드(salesAmount 등) 보존
                 }
