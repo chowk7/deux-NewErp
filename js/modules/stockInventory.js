@@ -4,7 +4,6 @@
 window.StockInventoryModule = {
 
     FIELDS: [
-        { key: 'orderDate',    label: '주문일',     type: 'date' },
         { key: 'manufacturingDate', label: '제작일', type: 'date' },
         { key: 'productName',  label: '상품명',     type: 'text' },
         { key: 'optionName',   label: '옵션명',     type: 'text' },
@@ -12,7 +11,6 @@ window.StockInventoryModule = {
         { key: 'stoneCostRef', label: '나석가격',   type: 'number' },
         { key: 'stoneInfo',    label: '나석정보',   type: 'text' },
         { key: 'manufacturingCost', label: '제조가격', type: 'number' },
-        { key: 'salesProfitRate',   label: '매출이익률(%)', type: 'number' },
         { key: 'purpose',      label: '용도',       type: 'select',
           options: ['재고', '샘플', '실패재고', '기타'] },
         { key: 'remarks',      label: '비고',       type: 'text' },
@@ -50,7 +48,7 @@ window.StockInventoryModule = {
         try {
             const snap = await window.firebaseDb
                 .collection('sales').doc('stockInventory').collection('items')
-                .orderBy('orderDate', 'desc')
+                .orderBy('manufacturingDate', 'desc')
                 .get();
 
             this.items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -220,7 +218,7 @@ window.StockInventoryModule = {
         tbody.innerHTML = pageItems.map(item => {
             const cells = displayFields.map(f => {
                 let val = item[f.key] || '-';
-                if ((f.key === 'orderDate' || f.key === 'manufacturingDate') && item[f.key]) {
+                if (f.key === 'manufacturingDate' && item[f.key]) {
                     const date = item[f.key].toDate ? item[f.key].toDate() : new Date(item[f.key]);
                     val = date.toLocaleDateString('ko-KR');
                 }
@@ -375,27 +373,14 @@ window.StockInventoryModule = {
         }
         const today = new Date().toISOString().split('T')[0];
 
-        const fields = this.FIELDS.map(f => {
-            let val = item?.[f.key] ?? '';
-            if (f.key === 'orderDate') {
-                if (item && item.orderDate) {
-                    const date = item.orderDate.toDate ? item.orderDate.toDate() : new Date(item.orderDate);
-                    val = date.toISOString().split('T')[0];
-                } else {
-                    val = today;
-                }
-            }
-            return f;
-        });
+        const fields = this.FIELDS;
 
         const body = `<div class="form-grid">` + fields.map(f => {
             let val = item?.[f.key] ?? '';
-            if (f.key === 'orderDate' || f.key === 'manufacturingDate') {
+            if (f.key === 'manufacturingDate') {
                 if (item && item[f.key]) {
                     const date = item[f.key].toDate ? item[f.key].toDate() : new Date(item[f.key]);
                     val = date.toISOString().split('T')[0];
-                } else if (f.key === 'orderDate') {
-                    val = today;
                 }
             }
 
@@ -418,16 +403,7 @@ window.StockInventoryModule = {
                     if (el.name) data[el.name] = el.value;
                 });
 
-                if (!data.orderDate) {
-                    window.Utils.alert('주문일을 입력하세요.');
-                    return;
-                }
-
-                // orderDate를 Firestore Timestamp로 변환
-                const orderDate = new Date(data.orderDate);
-                data.orderDate = firebase.firestore.Timestamp.fromDate(orderDate);
-
-                // manufacturingDate도 Firestore Timestamp로 변환 (있으면)
+                // manufacturingDate를 Firestore Timestamp로 변환 (있으면)
                 if (data.manufacturingDate) {
                     const mfgDate = new Date(data.manufacturingDate);
                     data.manufacturingDate = firebase.firestore.Timestamp.fromDate(mfgDate);
@@ -482,20 +458,12 @@ window.StockInventoryModule = {
             let count = 0;
 
             rows.forEach(r => {
-                // orderDate 처리
-                if (r.orderDate && typeof r.orderDate === 'string') {
-                    const date = new Date(r.orderDate);
-                    if (!isNaN(date.getTime())) {
-                        r.orderDate = firebase.firestore.Timestamp.fromDate(date);
-                        count++;
-                    }
-                }
-
                 // manufacturingDate 처리
                 if (r.manufacturingDate && typeof r.manufacturingDate === 'string') {
                     const date = new Date(r.manufacturingDate);
                     if (!isNaN(date.getTime())) {
                         r.manufacturingDate = firebase.firestore.Timestamp.fromDate(date);
+                        count++;
                     }
                 }
 
