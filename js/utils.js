@@ -137,6 +137,9 @@ window.Utils = {
             }
         });
 
+        // wrapper에 closeModal 메서드 추가 (명시적 닫기용)
+        wrapper.closeModal = closeModal;
+
         document.body.appendChild(wrapper);
         return wrapper;
     },

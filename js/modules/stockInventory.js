@@ -330,7 +330,7 @@ window.StockInventoryModule = {
                         delete this.columnFilters[columnKey];
                     }
                 }
-                modal.remove();
+                modal.closeModal();
                 this.currentPage = 1;
                 this.applyFilters();
                 this.renderTable();
@@ -359,7 +359,7 @@ window.StockInventoryModule = {
                 { label: '확인', onClick: async (w) => {
                     const stoneCostRef = document.getElementById('stoneCostRef')?.value || '';
                     const stoneInfo = document.getElementById('stoneInfo')?.value || '';
-                    w.remove();
+                    w.closeModal();
                     resolve({ stoneCostRef: parseFloat(stoneCostRef) || 0, stoneInfo });
                 }}
             ]);
@@ -442,7 +442,7 @@ window.StockInventoryModule = {
                     await window.firebaseDb.collection('sales').doc('stockInventory')
                         .collection('items').add({...data, createdAt: new Date()});
                 }
-                w.remove();
+                w.closeModal();
                 this.load();
             }},
         ]);
@@ -541,7 +541,7 @@ window.StockInventoryModule = {
                     return;
                 }
                 window.Utils.setDisplayFields('stockInventory', selected);
-                modal.remove();
+                modal.closeModal();
                 this.renderTable();
             }},
         ]);

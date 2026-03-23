@@ -408,7 +408,7 @@ window.AdminExpensesModule = {
                             delete this.columnFilters[columnKey];
                         }
                     }
-                    modal.remove();
+                    modal.closeModal();
                     this.renderTable();
                     this.renderFilterBar();
                 }
@@ -534,7 +534,7 @@ window.AdminExpensesModule = {
                     await window.firebaseDb.collection('sales').doc('adminExpenses')
                         .collection('items').add({ ...data, createdAt: new Date(), updatedAt: new Date() });
                 }
-                w.remove();
+                // w.remove()는 openModal에서 자동으로 처리됨
                 this.load();
             }
         );
