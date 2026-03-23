@@ -1731,8 +1731,19 @@ window.SalesManagementModule = {
                     // 새 데이터 저장 (500개씩 배치 분할)
                     const addBatches = [];
                     let addBatch = window.firebaseDb.batch();
+                    let skippedRows = 0;
+                    let addedCount = 0;
                     rows.forEach((row, idx) => {
-                        const ref = col.doc();
+                        // orderId 검증 - 필수 필드
+                        if (!row.orderId) {
+                            console.warn(`[CSV] ${idx + 1}번 행: orderId가 없어서 건너뜀`, row);
+                            skippedRows++;
+                            return;
+                        }
+
+                        // orderId를 문서 ID로 사용하여 주문과 연결
+                        const ref = col.doc(row.orderId);
+                        addedCount++;
 
                         ['orderDate', 'stoneRequestDate', 'stoneCertificationDate', 'workshopRequestDate',
                          'workshopDeliveryDate', 'completionDate', 'shippingReadyDate'].forEach(k => {
@@ -1807,17 +1818,28 @@ window.SalesManagementModule = {
                             row['stoneQty_text'] = '';
                         }
 
-                        addBatch.set(ref, { ...row, createdAt: new Date(), updatedAt: new Date() });
-                        if ((idx + 1) % 500 === 0) {
+                        // orderId를 명시적으로 저장 (P&L 계산에서 제조원가 매핑용)
+                        addBatch.set(ref, {
+                            ...row,
+                            orderId: row.orderId,  // orderId 필드 명시
+                            createdAt: new Date(),
+                            updatedAt: new Date()
+                        });
+
+                        // 500개씩 배치 분할
+                        if (addedCount % 500 === 0) {
                             addBatches.push(addBatch.commit());
                             addBatch = window.firebaseDb.batch();
                         }
                     });
-                    if (rows.length % 500 !== 0) addBatches.push(addBatch.commit());
+                    if (addedCount % 500 !== 0) addBatches.push(addBatch.commit());
                     await Promise.all(addBatches);
 
                     const modeLabel = replaceMode ? '교체' : '추가';
-                    window.Utils.showNotification(`${rows.length}개 항목 ${modeLabel} 완료(매출+제조원가+주문관리)`, 'success');
+                    const message = skippedRows > 0
+                        ? `${addedCount}개 항목 ${modeLabel} 완료 (주문번호 미입력으로 ${skippedRows}건 스킵됨)`
+                        : `${addedCount}개 항목 ${modeLabel} 완료(매출+제조원가+주문관리)`;
+                    window.Utils.showNotification(message, 'success');
                     this.allOrders = [];
                     if (window.ManufacturingCostsModule) window.ManufacturingCostsModule.allCosts = [];
                     this.loadOrders();
