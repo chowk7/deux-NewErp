@@ -103,9 +103,42 @@ window.AdminExpensesModule = {
         // 표시할 필드만 필터링
         const displayFields = this.FIELDS.filter(f => displayFieldKeys.includes(f.key));
 
+        // 필터링된 데이터 생성
+        const filteredExpenses = this.expenses.filter(e => {
+            if (this.searchFilters.vendor && !String(e.vendor || '').includes(this.searchFilters.vendor)) return false;
+            if (this.searchFilters.description && !String(e.description || '').includes(this.searchFilters.description)) return false;
+            if (this.searchFilters.amount && !String(e.amount || '').includes(this.searchFilters.amount)) return false;
+            return true;
+        });
+
+        // 숫자 필드 통계 계산
+        const numericFields = displayFields.filter(f => f.type === 'number' || f.key === 'amount');
+        const stats = {};
+        numericFields.forEach(f => {
+            const values = filteredExpenses.map(e => parseFloat(e[f.key]) || 0).filter(v => v !== 0);
+            const sum = values.reduce((a, b) => a + b, 0);
+            const avg = values.length > 0 ? sum / values.length : 0;
+            stats[f.key] = { sum, avg, count: values.length };
+        });
+
         // 테이블 헤더 업데이트
         const thead = table.querySelector('thead');
         const headerRow = `<tr>${displayFields.map(f => `<th>${f.label}</th>`).join('')}<th>관리</th></tr>`;
+
+        // 통계 행 생성 (숫자 열에만)
+        const statsRow = `<tr class="stats-row" style="background-color: #f3f4f6; border-bottom: 1px solid #d1d5db;">
+            ${displayFields.map(f => {
+                if (stats[f.key]) {
+                    const { sum, avg } = stats[f.key];
+                    return `<th style="padding: 4px 8px; font-size: 11px; color: #666; text-align: right;">
+                        <div>합: ${window.Utils.formatNumber(sum)}</div>
+                        <div>평: ${window.Utils.formatNumber(Math.round(avg))}</div>
+                    </th>`;
+                } else {
+                    return `<th></th>`;
+                }
+            }).join('')}<th></th>
+        </tr>`;
 
         // 필터 행 생성 (검색 가능한 필드만)
         const filterRow = `<tr class="filter-row" style="background-color: #f9fafb; border-bottom: 2px solid #e5e7eb;">
@@ -131,15 +164,7 @@ window.AdminExpensesModule = {
             }).join('')}<th></th>
         </tr>`;
 
-        thead.innerHTML = headerRow + filterRow;
-
-        // 필터링된 데이터 생성
-        const filteredExpenses = this.expenses.filter(e => {
-            if (this.searchFilters.vendor && !String(e.vendor || '').includes(this.searchFilters.vendor)) return false;
-            if (this.searchFilters.description && !String(e.description || '').includes(this.searchFilters.description)) return false;
-            if (this.searchFilters.amount && !String(e.amount || '').includes(this.searchFilters.amount)) return false;
-            return true;
-        });
+        thead.innerHTML = headerRow + statsRow + filterRow;
 
         // 테이블 바디 업데이트
         const tbody = table.querySelector('tbody');
