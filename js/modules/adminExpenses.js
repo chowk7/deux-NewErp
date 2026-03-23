@@ -16,7 +16,7 @@ window.AdminExpensesModule = {
         { key: 'isBizExpense',  label: '비용처리', type: 'select',
           options: ['처리','미처리'] },
         { key: 'isEnabled',     label: '활성화',   type: 'select',
-          options: ['활성','비활성'], hidden: true },
+          options: ['활성','비활성'] },
     ],
 
     expenses: [],
@@ -195,7 +195,7 @@ window.AdminExpensesModule = {
         if (!table) return;
 
         // 표시할 필드 결정
-        const defaultDisplayFields = ['date', 'accountType', 'description', 'vendor', 'amount', 'paymentMethod', 'isBizExpense'];
+        const defaultDisplayFields = ['date', 'accountType', 'description', 'vendor', 'amount', 'paymentMethod', 'isBizExpense', 'isEnabled'];
         const displayFieldKeys = window.Utils.getDisplayFields('adminExpenses', defaultDisplayFields);
 
         // 필드 맵 생성
@@ -287,7 +287,9 @@ window.AdminExpensesModule = {
                 return `<td>${val}</td>`;
             }).join('');
 
-            const isDisabled = e.isEnabled === '비활성' || !e.isEnabled;
+            // isEnabled가 없으면 기본값 '활성'으로 처리
+            const enableStatus = e.isEnabled || '활성';
+            const isDisabled = enableStatus === '비활성';
             const rowStyle = isDisabled ? 'opacity:0.5;background-color:#f3f4f6;' : '';
 
             return `
@@ -408,6 +410,9 @@ window.AdminExpensesModule = {
         const totals = {};
         this.ACCOUNT_TYPES.forEach(t => { totals[t] = 0; });
         this.expenses.forEach(e => {
+            // 비활성화된 항목은 제외
+            const enableStatus = e.isEnabled || '활성';
+            if (enableStatus === '비활성') return;
             if (totals[e.accountType] !== undefined) totals[e.accountType] += (e.amount || 0);
         });
         const grandTotal = Object.values(totals).reduce((a, b) => a + b, 0);
@@ -456,6 +461,10 @@ window.AdminExpensesModule = {
 
         const body = `<div class="form-grid" id="expenseFormGrid">` + fields.map(f => {
             let val = exp?.[f.key] ?? '';
+            // isEnabled 기본값: 새로운 항목은 '활성'으로 설정
+            if (f.key === 'isEnabled' && !exp) {
+                val = '활성';
+            }
             // date 필드 처리: 기존 값이 있으면 ISO 형식으로 변환
             if (f.key === 'date') {
                 if (exp && exp.date) {
@@ -604,6 +613,10 @@ window.AdminExpensesModule = {
             const batch = window.firebaseDb.batch();
             let savedCount = 0;
             rows.forEach(r => {
+                // isEnabled 기본값 설정
+                if (!r.isEnabled) {
+                    r.isEnabled = '활성';
+                }
                 r.amount = parseFloat(r.amount) || 0;
 
                 // date를 Firestore Timestamp로 변환하고, 연도/월 자동 계산
