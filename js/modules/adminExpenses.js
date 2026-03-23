@@ -20,12 +20,9 @@ window.AdminExpensesModule = {
     expenses: [],
     filterYear: new Date().getFullYear(),
     filterMonth: '',
-    // 테이블 검색 필터
-    searchFilters: {
-        vendor: '',
-        description: '',
-        amount: '',
-    },
+    searchQuery: '',
+    // 열 필터 상태
+    columnFilters: {},
 
     async init() {
         // FIELDS의 accountType options 동적으로 설정
@@ -84,8 +81,82 @@ window.AdminExpensesModule = {
                 String(e.expenseMonth).padStart(2,'0') === String(this.filterMonth).padStart(2,'0'));
         }
 
+        this.renderFilterBar();
         this.renderTable();
         this.renderSummary();
+    },
+
+    applyFilters() {
+        let filtered = this.expenses;
+
+        // 통합 검색
+        if (this.searchQuery) {
+            const q = this.searchQuery.toLowerCase();
+            filtered = filtered.filter(e =>
+                (e.description && String(e.description).toLowerCase().includes(q)) ||
+                (e.vendor && String(e.vendor).toLowerCase().includes(q)) ||
+                (e.accountType && String(e.accountType).toLowerCase().includes(q))
+            );
+        }
+
+        // 열 필터 적용
+        for (const [columnKey, filterSpec] of Object.entries(this.columnFilters)) {
+            const field = this.FIELDS.find(f => f.key === columnKey);
+            if (!field) continue;
+
+            if (field.type === 'number' && filterSpec.min !== undefined) {
+                filtered = filtered.filter(e => (parseFloat(e[columnKey]) || 0) >= filterSpec.min);
+            }
+            if (field.type === 'number' && filterSpec.max !== undefined) {
+                filtered = filtered.filter(e => (parseFloat(e[columnKey]) || 0) <= filterSpec.max);
+            }
+            if (filterSpec.values && filterSpec.values.length > 0) {
+                filtered = filtered.filter(e => filterSpec.values.includes(String(e[columnKey] || '')));
+            }
+        }
+
+        return filtered;
+    },
+
+    renderFilterBar() {
+        const table = document.querySelector('#adminExpensesTable');
+        if (!table) return;
+
+        const hasFilter = this.searchQuery || Object.keys(this.columnFilters).length > 0;
+        const filterBar = `
+            <div style="display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center;">
+                <input type="text" id="adminExpensesSearchInput" placeholder="거래처, 거래내용, 계정과목 검색"
+                    value="${this.searchQuery.replace(/"/g, '&quot;')}"
+                    style="padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 0.875rem; min-width: 200px;">
+                <button class="btn btn-sm btn-primary" id="adminExpensesSearchBtn">검색</button>
+                ${hasFilter ? '<button class="btn btn-sm btn-outline" id="adminExpensesClearBtn">초기화</button>' : ''}
+            </div>`;
+
+        let container = table.previousElementSibling;
+        if (!container || !container.id?.includes('FilterBar')) {
+            container = document.createElement('div');
+            container.id = 'adminExpensesFilterBar';
+            table.parentNode.insertBefore(container, table);
+        }
+        container.innerHTML = filterBar;
+
+        // 이벤트 리스너
+        document.getElementById('adminExpensesSearchBtn')?.addEventListener('click', () => {
+            this.searchQuery = document.getElementById('adminExpensesSearchInput')?.value?.trim() || '';
+            this.renderTable();
+        });
+
+        document.getElementById('adminExpensesSearchInput')?.addEventListener('keydown', e => {
+            if (e.key === 'Enter') document.getElementById('adminExpensesSearchBtn')?.click();
+        });
+
+        document.getElementById('adminExpensesClearBtn')?.addEventListener('click', () => {
+            this.searchQuery = '';
+            this.columnFilters = {};
+            document.getElementById('adminExpensesSearchInput').value = '';
+            this.renderTable();
+            this.renderFilterBar();
+        });
     },
 
     renderTable() {
@@ -104,12 +175,7 @@ window.AdminExpensesModule = {
         const displayFields = this.FIELDS.filter(f => displayFieldKeys.includes(f.key));
 
         // 필터링된 데이터 생성
-        const filteredExpenses = this.expenses.filter(e => {
-            if (this.searchFilters.vendor && !String(e.vendor || '').includes(this.searchFilters.vendor)) return false;
-            if (this.searchFilters.description && !String(e.description || '').includes(this.searchFilters.description)) return false;
-            if (this.searchFilters.amount && !String(e.amount || '').includes(this.searchFilters.amount)) return false;
-            return true;
-        });
+        const filteredExpenses = this.applyFilters();
 
         // 숫자 필드 통계 계산
         const numericFields = displayFields.filter(f => f.type === 'number' || f.key === 'amount');
@@ -123,7 +189,19 @@ window.AdminExpensesModule = {
 
         // 테이블 헤더 업데이트
         const thead = table.querySelector('thead');
-        const headerRow = `<tr>${displayFields.map(f => `<th>${f.label}</th>`).join('')}<th>관리</th></tr>`;
+
+        // 헤더 행 (필터 버튼 포함)
+        const headerRow = `<tr>${displayFields.map(f => {
+            const hasFilter = this.columnFilters[f.key];
+            const filterColor = hasFilter ? 'color:#3b82f6;' : 'color:#9ca3af;';
+            return `<th style="cursor:pointer;user-select:none;">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                    <span>${f.label}</span>
+                    <button style="border:none;background:none;padding:4px;cursor:pointer;${filterColor}font-size:1rem;opacity:0.7;transition:all 0.2s;"
+                        class="admin-header-filter-btn" data-column="${f.key}" title="필터">🔍</button>
+                </div>
+            </th>`;
+        }).join('')}<th>관리</th></tr>`;
 
         // 통계 행 생성 (숫자 열에만)
         const statsRow = `<tr class="stats-row" style="background-color: #f3f4f6; border-bottom: 1px solid #d1d5db;">
@@ -140,31 +218,7 @@ window.AdminExpensesModule = {
             }).join('')}<th></th>
         </tr>`;
 
-        // 필터 행 생성 (검색 가능한 필드만)
-        const filterRow = `<tr class="filter-row" style="background-color: #f9fafb; border-bottom: 2px solid #e5e7eb;">
-            ${displayFields.map(f => {
-                if (f.key === 'vendor') {
-                    return `<th style="padding: 8px;"><input type="text" placeholder="거래처 검색"
-                        data-filter-key="vendor" class="filter-input"
-                        value="${this.searchFilters.vendor}"
-                        style="width: 100%; padding: 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px;"></th>`;
-                } else if (f.key === 'description') {
-                    return `<th style="padding: 8px;"><input type="text" placeholder="거래내용 검색"
-                        data-filter-key="description" class="filter-input"
-                        value="${this.searchFilters.description}"
-                        style="width: 100%; padding: 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px;"></th>`;
-                } else if (f.key === 'amount') {
-                    return `<th style="padding: 8px;"><input type="text" placeholder="금액 검색"
-                        data-filter-key="amount" class="filter-input"
-                        value="${this.searchFilters.amount}"
-                        style="width: 100%; padding: 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px;"></th>`;
-                } else {
-                    return `<th></th>`;
-                }
-            }).join('')}<th></th>
-        </tr>`;
-
-        thead.innerHTML = headerRow + statsRow + filterRow;
+        thead.innerHTML = headerRow + statsRow;
 
         // 테이블 바디 업데이트
         const tbody = table.querySelector('tbody');
@@ -211,19 +265,18 @@ window.AdminExpensesModule = {
             </tr>`;
         }).join('');
 
-        // Event delegation for filter inputs and action buttons
+        // Event delegation for action buttons and header filters
         table.removeEventListener('click', this._tableHandler);
-        table.removeEventListener('input', this._filterHandler);
-
-        this._filterHandler = (e) => {
-            const filterInput = e.target.closest('.filter-input');
-            if (!filterInput) return;
-            const filterKey = filterInput.dataset.filterKey;
-            this.searchFilters[filterKey] = filterInput.value;
-            this.renderTable();
-        };
 
         this._tableHandler = (e) => {
+            const filterBtn = e.target.closest('.admin-header-filter-btn');
+            if (filterBtn) {
+                e.stopPropagation();
+                const column = filterBtn.dataset.column;
+                this.openColumnFilter(column);
+                return;
+            }
+
             const btn = e.target.closest('[data-action]');
             if (!btn) return;
             const action = btn.dataset.action;
@@ -233,8 +286,68 @@ window.AdminExpensesModule = {
             }
         };
 
-        table.addEventListener('input', this._filterHandler.bind(this));
         table.addEventListener('click', this._tableHandler.bind(this));
+    },
+
+    openColumnFilter(columnKey) {
+        const field = this.FIELDS.find(f => f.key === columnKey);
+        if (!field) return;
+
+        const currentFilter = this.columnFilters[columnKey] || {};
+        let modalContent = '';
+
+        if (field.type === 'number') {
+            modalContent = `
+                <div style="margin-bottom:12px;">
+                    <label style="display:block;margin-bottom:4px;font-weight:500;">최소값</label>
+                    <input type="number" id="filterMin" value="${currentFilter.min || ''}"
+                        style="width:100%;padding:6px;border:1px solid #d1d5db;border-radius:4px;">
+                </div>
+                <div style="margin-bottom:12px;">
+                    <label style="display:block;margin-bottom:4px;font-weight:500;">최대값</label>
+                    <input type="number" id="filterMax" value="${currentFilter.max || ''}"
+                        style="width:100%;padding:6px;border:1px solid #d1d5db;border-radius:4px;">
+                </div>`;
+        } else if (field.type === 'select') {
+            const values = [...new Set(this.expenses.map(e => e[columnKey]).filter(Boolean))];
+            const selectedValues = currentFilter.values || [];
+            modalContent = `
+                <div>${values.map(v => `
+                    <label style="display:block;margin-bottom:6px;">
+                        <input type="checkbox" value="${v}" ${selectedValues.includes(String(v)) ? 'checked' : ''}>
+                        ${v}
+                    </label>
+                `).join('')}</div>`;
+        }
+
+        const modal = window.Utils.createModal('필터', modalContent, [
+            {
+                label: '적용',
+                onClick: () => {
+                    if (field.type === 'number') {
+                        const min = parseFloat(document.getElementById('filterMin')?.value);
+                        const max = parseFloat(document.getElementById('filterMax')?.value);
+                        if (!isNaN(min) || !isNaN(max)) {
+                            this.columnFilters[columnKey] = { min: !isNaN(min) ? min : undefined, max: !isNaN(max) ? max : undefined };
+                        } else {
+                            delete this.columnFilters[columnKey];
+                        }
+                    } else if (field.type === 'select') {
+                        const selected = Array.from(document.querySelectorAll('#filterModal input[type=checkbox]:checked'))
+                            .map(cb => cb.value);
+                        if (selected.length > 0) {
+                            this.columnFilters[columnKey] = { values: selected };
+                        } else {
+                            delete this.columnFilters[columnKey];
+                        }
+                    }
+                    modal.remove();
+                    this.renderTable();
+                    this.renderFilterBar();
+                }
+            }
+        ]);
+        modal.id = 'filterModal';
     },
 
     renderSummary() {

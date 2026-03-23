@@ -387,6 +387,18 @@ window.SalesManagementModule = {
         const fieldMap = {};
         this.ORDER_FIELDS.forEach(f => fieldMap[f.key] = f);
 
+        // 숫자 필드 통계 계산
+        const numericFields = displayFieldKeys
+            .map(key => fieldMap[key])
+            .filter(f => f && f.type === 'number');
+        const stats = {};
+        numericFields.forEach(f => {
+            const values = this.orders.map(o => parseFloat(o[f.key]) || 0).filter(v => v !== 0);
+            const sum = values.reduce((a, b) => a + b, 0);
+            const avg = values.length > 0 ? sum / values.length : 0;
+            stats[f.key] = { sum, avg, count: values.length };
+        });
+
         if (this.orders.length === 0) {
             tbody.innerHTML = `<tr><td colspan="${displayFieldKeys.length + 2}" style="text-align:center">데이터가 없습니다.</td></tr>`;
             return;
@@ -442,17 +454,55 @@ window.SalesManagementModule = {
         }).join('');
 
         // 테이블 헤더 업데이트
-        const thead = table?.querySelector('thead tr');
+        const thead = table?.querySelector('thead');
         if (thead) {
-            // 기존 모든 th 제거
-            Array.from(thead.querySelectorAll('th')).forEach(th => th.remove());
+            // 기존 모든 tr 제거
+            Array.from(thead.querySelectorAll('tr')).forEach(tr => tr.remove());
+
+            // 통계 행 생성
+            const statsRow = document.createElement('tr');
+            statsRow.style.backgroundColor = '#f3f4f6';
+            statsRow.style.borderBottom = '1px solid #d1d5db';
+
+            // 통계 행 체크박스 칸
+            const statsCheckboxTh = document.createElement('th');
+            statsCheckboxTh.style.padding = '4px';
+            statsRow.appendChild(statsCheckboxTh);
+
+            // 필드 통계
+            displayFieldKeys.forEach(key => {
+                const field = fieldMap[key];
+                const th = document.createElement('th');
+                th.style.padding = '4px 8px';
+                th.style.fontSize = '11px';
+                th.style.color = '#666';
+                th.style.textAlign = 'right';
+
+                if (stats[key]) {
+                    const { sum, avg } = stats[key];
+                    th.innerHTML = `<div>합: ${window.Utils.formatNumber(Math.round(sum))}</div>
+                        <div>평: ${window.Utils.formatNumber(Math.round(avg))}</div>`;
+                }
+                statsRow.appendChild(th);
+            });
+
+            // 첨부이미지 및 관리 칸
+            const statsImageTh = document.createElement('th');
+            statsRow.appendChild(statsImageTh);
+            const statsManageTh = document.createElement('th');
+            statsRow.appendChild(statsManageTh);
+
+            thead.appendChild(statsRow);
+
+            // 헤더 행 생성
+            const headerRow = document.createElement('tr');
 
             // 체크박스 헤더 생성
             const checkboxTh = document.createElement('th');
             checkboxTh.style.textAlign = 'center';
             checkboxTh.className = 'header-checkbox-th';
             checkboxTh.innerHTML = '<input type="checkbox" class="header-checkbox">';
-            thead.appendChild(checkboxTh);
+            headerRow.appendChild(checkboxTh);
 
             // 필드 헤더 생성
             displayFieldKeys.forEach(key => {
@@ -483,13 +533,15 @@ window.SalesManagementModule = {
                         if (sortColumn) this.sortOrders(sortColumn);
                     }
                 });
-                thead.appendChild(th);
+                headerRow.appendChild(th);
             });
 
             // 첨부이미지 헤더
             const imageTh = document.createElement('th');
             imageTh.textContent = '첨부이미지';
-            thead.appendChild(imageTh);
+            headerRow.appendChild(imageTh);
+
+            thead.appendChild(headerRow);
 
             // 관리 헤더 생성
             const manageTh = document.createElement('th');

@@ -395,8 +395,9 @@ window.ManufacturingCostsModule = {
                         }
                     }).join('') + '<th></th></tr>';
 
-                // 헤더 행 HTML
+                // 헤더 행 HTML (첫 번째 th는 체크박스용)
                 const headerRowHtml = '<tr>'
+                    + '<th style="text-align:center;"><input type="checkbox" class="header-checkbox"></th>'
                     + displayFieldKeys.map(key => {
                         const field = fieldMap[key];
                         const label = field ? field.label : key;
@@ -414,13 +415,6 @@ window.ManufacturingCostsModule = {
                     }).join('') + '<th>관리</th></tr>';
 
                 thead.innerHTML = statsRowHtml + headerRowHtml;
-
-                // 체크박스 추가
-                const firstHeaderTh = thead.querySelector('tr:last-child th:first-child');
-                if (firstHeaderTh) {
-                    firstHeaderTh.innerHTML = '<input type="checkbox" class="header-checkbox">';
-                    firstHeaderTh.style.textAlign = 'center';
-                }
 
                 // 헤더 이벤트 리스너
                 const headerTr = thead.querySelector('tr:last-child');
