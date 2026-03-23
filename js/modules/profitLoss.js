@@ -160,7 +160,11 @@ window.ProfitLossModule = {
                 e.expenseMonth = String(dateObj.getMonth() + 1).padStart(2,'0');
             }
             return e;
-        }).filter(e => e && e.expenseYear === String(year));
+        }).filter(e => {
+            // 연도 일치하고, 비활성화되지 않은 항목만 포함
+            const isEnabled = e.isEnabled !== '비활성' && e.isEnabled !== false;
+            return e && e.expenseYear === String(year) && isEnabled;
+        });
 
         console.log(`[P&L] ${year}년 판관비 필터링 결과: ${allExpenses.length}개`, allExpenses);
         const expenses = allExpenses;

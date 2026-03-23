@@ -15,6 +15,8 @@ window.AdminExpensesModule = {
           options: ['법인카드','계좌이체','현금','기타'] },
         { key: 'isBizExpense',  label: '비용처리', type: 'select',
           options: ['처리','미처리'] },
+        { key: 'isEnabled',     label: '활성화',   type: 'select',
+          options: ['활성','비활성'], hidden: true },
     ],
 
     expenses: [],
@@ -139,6 +141,15 @@ window.AdminExpensesModule = {
         if (!table) return;
 
         const hasFilter = this.searchQuery || Object.keys(this.columnFilters).length > 0;
+        const selectedCount = table.querySelectorAll('tbody .row-checkbox:checked').length;
+        const bulkActionsHtml = selectedCount > 0 ? `
+            <div style="display: flex; gap: 8px; align-items: center; margin-left: auto;">
+                <span style="color: #666; font-size: 0.875rem;">${selectedCount}개 선택</span>
+                <button class="btn btn-sm btn-warning" id="adminExpensesDisableBtn">비활성화</button>
+                <button class="btn btn-sm btn-danger" id="adminExpensesDeleteBtn">삭제</button>
+            </div>
+        ` : '';
+
         const filterBar = `
             <div style="display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center;">
                 <input type="text" id="adminExpensesSearchInput" placeholder="거래처, 거래내용, 계정과목 검색"
@@ -146,6 +157,7 @@ window.AdminExpensesModule = {
                     style="padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 0.875rem; min-width: 200px;">
                 <button class="btn btn-sm btn-primary" id="adminExpensesSearchBtn">검색</button>
                 ${hasFilter ? '<button class="btn btn-sm btn-outline" id="adminExpensesClearBtn">초기화</button>' : ''}
+                ${bulkActionsHtml}
             </div>`;
 
         let container = table.previousElementSibling;
@@ -173,6 +185,9 @@ window.AdminExpensesModule = {
             this.renderTable();
             this.renderFilterBar();
         });
+
+        document.getElementById('adminExpensesDeleteBtn')?.addEventListener('click', () => this.bulkDelete());
+        document.getElementById('adminExpensesDisableBtn')?.addEventListener('click', () => this.bulkDisable());
     },
 
     renderTable() {
@@ -207,7 +222,9 @@ window.AdminExpensesModule = {
         const thead = table.querySelector('thead');
 
         // 헤더 행 (필터 버튼 포함)
-        const headerRow = `<tr>${displayFields.map(f => {
+        const headerRow = `<tr>
+            <th style="text-align:center;width:40px;"><input type="checkbox" class="header-checkbox" id="adminExpenseSelectAll"></th>
+            ${displayFields.map(f => {
             const hasFilter = this.columnFilters[f.key];
             const filterColor = hasFilter ? 'color:#3b82f6;' : 'color:#9ca3af;';
             return `<th style="cursor:pointer;user-select:none;">
@@ -221,6 +238,7 @@ window.AdminExpensesModule = {
 
         // 통계 행 생성 (숫자 열에만)
         const statsRow = `<tr class="stats-row" style="background-color: #f3f4f6; border-bottom: 1px solid #d1d5db;">
+            <th></th>
             ${displayFields.map(f => {
                 if (stats[f.key]) {
                     const { sum, avg } = stats[f.key];
@@ -269,8 +287,12 @@ window.AdminExpensesModule = {
                 return `<td>${val}</td>`;
             }).join('');
 
+            const isDisabled = e.isEnabled === '비활성' || !e.isEnabled;
+            const rowStyle = isDisabled ? 'opacity:0.5;background-color:#f3f4f6;' : '';
+
             return `
-            <tr>
+            <tr data-id="${e.id}" style="${rowStyle}">
+                <td style="text-align:center;width:40px;"><input type="checkbox" class="row-checkbox" data-id="${e.id}"></td>
                 ${cells}
                 <td style="display:flex; gap:8px; align-items:center;">
                     <button class="btn btn-sm btn-primary"
@@ -283,6 +305,7 @@ window.AdminExpensesModule = {
 
         // Event delegation for action buttons and header filters
         table.removeEventListener('click', this._tableHandler);
+        table.removeEventListener('change', this._checkboxHandler);
 
         this._tableHandler = (e) => {
             const filterBtn = e.target.closest('.admin-header-filter-btn');
@@ -302,7 +325,19 @@ window.AdminExpensesModule = {
             }
         };
 
+        // 체크박스 이벤트
+        this._checkboxHandler = (e) => {
+            if (e.target.id === 'adminExpenseSelectAll') {
+                // 헤더 체크박스: 모든 행 선택/해제
+                const isChecked = e.target.checked;
+                table.querySelectorAll('tbody .row-checkbox').forEach(cb => cb.checked = isChecked);
+            }
+            // 행 체크박스나 헤더 체크박스 변경 시 필터바 업데이트
+            this.renderFilterBar();
+        };
+
         table.addEventListener('click', this._tableHandler.bind(this));
+        table.addEventListener('change', this._checkboxHandler.bind(this));
     },
 
     openColumnFilter(columnKey) {
@@ -500,6 +535,48 @@ window.AdminExpensesModule = {
         if (!(await window.Utils.confirm('이 항목을 삭제하시겠습니까?'))) return;
         await window.firebaseDb.collection('sales').doc('adminExpenses')
             .collection('items').doc(id).delete();
+        this.load();
+    },
+
+    async bulkDelete() {
+        const selectedIds = Array.from(document.querySelectorAll('#adminExpensesTable tbody .row-checkbox:checked'))
+            .map(cb => cb.dataset.id);
+
+        if (selectedIds.length === 0) {
+            window.Utils.alert('선택된 항목이 없습니다.');
+            return;
+        }
+
+        if (!(await window.Utils.confirm(`${selectedIds.length}개 항목을 삭제하시겠습니까?`))) return;
+
+        for (const id of selectedIds) {
+            await window.firebaseDb.collection('sales').doc('adminExpenses')
+                .collection('items').doc(id).delete();
+        }
+        this.load();
+    },
+
+    async bulkDisable() {
+        const selectedIds = Array.from(document.querySelectorAll('#adminExpensesTable tbody .row-checkbox:checked'))
+            .map(cb => cb.dataset.id);
+
+        if (selectedIds.length === 0) {
+            window.Utils.alert('선택된 항목이 없습니다.');
+            return;
+        }
+
+        // 선택된 항목 중 활성/비활성 상태 확인
+        const selectedExpenses = this.expenses.filter(e => selectedIds.includes(e.id));
+        const hasDisabled = selectedExpenses.some(e => e.isEnabled === '비활성' || !e.isEnabled);
+        const action = hasDisabled ? '활성화' : '비활성화';
+
+        if (!(await window.Utils.confirm(`${selectedIds.length}개 항목을 ${action}하시겠습니까?`))) return;
+
+        const newStatus = hasDisabled ? '활성' : '비활성';
+        for (const id of selectedIds) {
+            await window.firebaseDb.collection('sales').doc('adminExpenses')
+                .collection('items').doc(id).update({ isEnabled: newStatus });
+        }
         this.load();
     },
 
