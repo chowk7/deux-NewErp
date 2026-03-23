@@ -352,45 +352,17 @@ window.StockInventoryModule = {
         modal.id = 'filterModal';
     },
 
-    showStoneInfoModal() {
-        return new Promise((resolve) => {
-            const body = `
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label>나석가격</label>
-                        <input type="number" id="stoneCostRef" placeholder="나석가격" step="0.01">
-                    </div>
-                    <div class="form-group">
-                        <label>나석정보</label>
-                        <input type="text" id="stoneInfo" placeholder="나석정보 (예: 나석1개, 다이아 0.5캐럿 등)">
-                    </div>
-                </div>
-            `;
-
-            const modal = window.Utils.createModal('나석 정보 입력', body, [
-                { label: '확인', onClick: async (w) => {
-                    const stoneCostRef = document.getElementById('stoneCostRef')?.value || '';
-                    const stoneInfo = document.getElementById('stoneInfo')?.value || '';
-                    w.closeModal();
-                    resolve({ stoneCostRef: parseFloat(stoneCostRef) || 0, stoneInfo });
-                }}
-            ]);
-        });
-    },
-
     async showForm(itemId = null) {
-        // 새 항목 추가일 때는 먼저 나석 정보 모달 표시
-        let item = itemId ? this.items.find(i => i.id === itemId) : null;
-        if (!itemId) {
-            const stoneData = await this.showStoneInfoModal();
-            item = stoneData;
-        }
+        const item = itemId ? this.items.find(i => i.id === itemId) : null;
         const today = new Date().toISOString().split('T')[0];
-
         const fields = this.FIELDS;
+        const self = this;
 
-        const body = `<div class="form-grid">` + fields.map(f => {
+        // 본 폼 HTML 생성
+        const body = `<div class="form-grid" id="stockFormGrid">` + fields.map(f => {
             let val = item?.[f.key] ?? '';
+
+            // 날짜 필드 처리
             if (f.key === 'manufacturingDate') {
                 if (item && item[f.key]) {
                     const date = item[f.key].toDate ? item[f.key].toDate() : new Date(item[f.key]);
@@ -398,7 +370,24 @@ window.StockInventoryModule = {
                 }
             }
 
-            if (f.type === 'select') {
+            // 필드 타입별 렌더링
+            if (f.type === 'button') {
+                // 나석정보 버튼 필드
+                return `<div class="form-group">
+                    <label>${f.label}</label>
+                    <button type="button" id="stoneInfoBtn" class="btn btn-secondary" style="width:100%;">
+                        나석정보 입력 (${item?.stoneInfo || '미입력'})
+                    </button>
+                    <input type="hidden" name="${f.key}" id="stoneInfoInput" value="${val}">
+                </div>`;
+            } else if (f.type === 'searchable') {
+                // 상품명 검색 필드
+                return `<div class="form-group">
+                    <label>${f.label}</label>
+                    <div id="searchable_productName" data-key="productName" data-value="${val}"></div>
+                    <input type="hidden" name="${f.key}" id="productNameInput" value="${val}">
+                </div>`;
+            } else if (f.type === 'select') {
                 const opts = (f.options || []).map(o => `<option value="${o}" ${val === o ? 'selected' : ''}>${o}</option>`).join('');
                 return `<div class="form-group"><label>${f.label}</label><select name="${f.key}"><option value="">선택</option>${opts}</select></div>`;
             } else if (f.type === 'number') {
@@ -433,9 +422,93 @@ window.StockInventoryModule = {
                         .collection('items').add({...data, createdAt: new Date()});
                 }
                 w.closeModal();
-                this.load();
+                self.load();
             }},
         ]);
+
+        // Searchable select 생성 (상품명)
+        setTimeout(() => {
+            const productNames = this.productRates.map(p => p.productName).filter((v, i, a) => a.indexOf(v) === i);
+            const container = w.querySelector('#searchable_productName');
+            if (container) {
+                window.Utils.createSearchableSelect(
+                    productNames,
+                    item?.productName || '',
+                    null,
+                    '상품명 입력...',
+                    'productName'
+                );
+
+                // 상품명 선택 시 자동정보 로드
+                document.addEventListener('searchableSelected_productName', (e) => {
+                    const selectedName = e.detail.value;
+                    const selectedProduct = this.productRates.find(p => p.productName === selectedName);
+
+                    if (selectedProduct) {
+                        // 자동 채우기
+                        const updates = {
+                            goldWeight: selectedProduct.goldWeight || '',
+                            goldValue: selectedProduct.goldValue || '',
+                            stoneCostRef: selectedProduct.stoneCostRef || '',
+                            stoneInfo: selectedProduct.stoneInfo || '',
+                            manufacturingCost: selectedProduct.manufacturingCost || ''
+                        };
+
+                        Object.entries(updates).forEach(([key, value]) => {
+                            const input = w.querySelector(`[name="${key}"]`);
+                            if (input) input.value = value;
+                        });
+                    }
+                });
+            }
+        }, 100);
+
+        // 나석정보 버튼 이벤트
+        setTimeout(() => {
+            const stoneInfoBtn = w.querySelector('#stoneInfoBtn');
+            if (stoneInfoBtn) {
+                stoneInfoBtn.addEventListener('click', () => {
+                    // 기존 stoneArray 또는 제품단가표에서 나석정보 로드
+                    let existingStones = [];
+                    const stoneInfoInput = w.querySelector('#stoneInfoInput');
+
+                    if (stoneInfoInput && stoneInfoInput.value) {
+                        try {
+                            const parsed = JSON.parse(stoneInfoInput.value);
+                            if (Array.isArray(parsed)) {
+                                existingStones = parsed;
+                            }
+                        } catch(e) {}
+                    }
+
+                    // 제품단가표에서도 확인
+                    if (existingStones.length === 0) {
+                        const productNameInput = w.querySelector('#productNameInput');
+                        if (productNameInput?.value) {
+                            const matchProduct = this.productRates.find(p => p.productName === productNameInput.value);
+                            if (matchProduct?.stones?.length > 0) {
+                                existingStones = JSON.parse(JSON.stringify(matchProduct.stones));
+                            }
+                        }
+                    }
+
+                    // StoneInputModalModule 열기
+                    window.StoneInputModalModule.open(this.diamondRates, existingStones, (stoneArray) => {
+                        const stoneInfoInput = w.querySelector('#stoneInfoInput');
+                        const stoneInfoDisplay = stoneInfoBtn.querySelector('span') || stoneInfoBtn;
+
+                        // stoneArray를 JSON으로 저장
+                        stoneInfoInput.value = JSON.stringify(stoneArray);
+
+                        // 나석정보 문자열로 표시
+                        const stoneText = stoneArray
+                            .map(s => `${s.stoneType} x ${s.stoneQty}`)
+                            .join(', ');
+                        stoneInfoBtn.textContent = `나석정보 입력 (${stoneText})`;
+                    });
+                });
+            }
+        }, 100);
     },
 
     async delete(id) {
