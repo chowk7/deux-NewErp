@@ -90,17 +90,18 @@ window.ProfitLossModule = {
         console.log(`[P&L] ${year}년 주문 데이터: ${orders.length}개`, orders);
 
         // 2. 제조원가 전체 로드 (주문별 매출이익 계산용)
+        // 매출표와 제조원가는 같은 컬렉션(sales/orders/items)에 저장됨
         const mfgSnap = await window.firebaseDb
-            .collection('sales').doc('manufacturingCosts').collection('items')
+            .collection('sales').doc('orders').collection('items')
             .get();
         const mfgCosts = mfgSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         console.log(`[P&L] 제조원가 데이터: ${mfgCosts.length}개`, mfgCosts);
 
         // 주문ID -> 제조원가 매핑
-        // orderId 필드가 우선, 없으면 문서 ID(=orderId)를 사용
+        // 문서 ID(orderNumber)를 기준으로 매핑
         const mfgByOrderId = {};
         mfgCosts.forEach(m => {
-            const orderId = m.orderId || m.id;
+            const orderId = m.orderId || m.id;  // orderId 필드 또는 문서 ID 사용
             if (orderId) {
                 mfgByOrderId[orderId] = m;
             }
@@ -111,22 +112,39 @@ window.ProfitLossModule = {
         const expSnap = await window.firebaseDb
             .collection('sales').doc('adminExpenses').collection('items')
             .get();
+        console.log(`[P&L] 전체 판관비 데이터: ${expSnap.docs.length}개`);
+
         const allExpenses = expSnap.docs.map(d => {
             const e = d.data();
-            // date 필드가 없으면 건너뜀
+            // date 필드가 없으면 경고 후 건너뜀
             if (!e.date) {
-                console.warn('[P&L] date 필드가 없는 판관비 데이터:', e);
+                console.warn(`[P&L] date 필드가 없는 판관비 문서 (${d.id}):`, e);
                 return null;
             }
-            // 기존 데이터에서 expenseYear/expenseMonth가 없으면 date에서 자동 계산
+
+            // date 필드 파싱
+            let dateObj;
+            try {
+                // Firestore Timestamp 또는 일반 Date 문자열
+                dateObj = e.date.toDate ? e.date.toDate() : new Date(e.date);
+                if (isNaN(dateObj.getTime())) {
+                    console.warn(`[P&L] date 필드 파싱 실패 (${d.id}): ${e.date}`);
+                    return null;
+                }
+            } catch (err) {
+                console.warn(`[P&L] date 필드 파싱 오류 (${d.id}):`, err);
+                return null;
+            }
+
+            // expenseYear/expenseMonth 자동 계산 또는 기존값 사용
             if (!e.expenseYear || !e.expenseMonth) {
-                const dateObj = e.date.toDate ? e.date.toDate() : new Date(e.date);
                 e.expenseYear = String(dateObj.getFullYear());
                 e.expenseMonth = String(dateObj.getMonth() + 1).padStart(2,'0');
             }
             return e;
         }).filter(e => e && e.expenseYear === String(year));
-        console.log(`[P&L] ${year}년 판관비 데이터: ${allExpenses.length}개`, allExpenses);
+
+        console.log(`[P&L] ${year}년 판관비 필터링 결과: ${allExpenses.length}개`, allExpenses);
         const expenses = allExpenses;
 
         // 월별 데이터 구성
