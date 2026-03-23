@@ -445,7 +445,7 @@ window.StockInventoryModule = {
 
         // Searchable select 생성 (상품명)
         setTimeout(() => {
-            const productNames = this.productRates.map(p => p.productName).filter((v, i, a) => a.indexOf(v) === i);
+            const productNames = self.productRates.map(p => p.productName).filter((v, i, a) => a.indexOf(v) === i);
             const container = w.querySelector('#searchable_productName');
             if (container) {
                 const selectElement = window.Utils.createSearchableSelect(
@@ -453,7 +453,7 @@ window.StockInventoryModule = {
                     item?.productName || '',
                     (selectedName) => {
                         // 상품명 선택 시 자동정보 로드
-                        const selectedProduct = this.productRates.find(p => p.productName === selectedName);
+                        const selectedProduct = self.productRates.find(p => p.productName === selectedName);
                         if (selectedProduct) {
                             const updates = {
                                 goldWeight: selectedProduct.goldWeight || '',
@@ -561,7 +561,7 @@ window.StockInventoryModule = {
                     if (existingStones.length === 0) {
                         const productNameInput = w.querySelector('#productNameInput');
                         if (productNameInput?.value) {
-                            const matchProduct = this.productRates.find(p => p.productName === productNameInput.value);
+                            const matchProduct = self.productRates.find(p => p.productName === productNameInput.value);
                             if (matchProduct?.stones?.length > 0) {
                                 existingStones = JSON.parse(JSON.stringify(matchProduct.stones));
                             }
@@ -569,7 +569,7 @@ window.StockInventoryModule = {
                     }
 
                     // StoneInputModalModule 열기
-                    window.StoneInputModalModule.open(this.diamondRates, existingStones, (stoneArray) => {
+                    window.StoneInputModalModule.open(self.diamondRates, existingStones, (stoneArray) => {
                         const stoneInfoInput = w.querySelector('#stoneInfoInput');
                         const stoneCostAutoInput = w.querySelector('[name="stoneCostAuto"]');
 
