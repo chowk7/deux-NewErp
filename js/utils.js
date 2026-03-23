@@ -82,6 +82,13 @@ window.Utils = {
     createModal(title, bodyHtml, buttons = []) {
         const wrapper = document.createElement('div');
         wrapper.setAttribute('data-modal', '');
+        let isClosing = false;
+
+        const closeModal = () => {
+            if (isClosing || !wrapper.isConnected) return;
+            isClosing = true;
+            wrapper.remove();
+        };
 
         const buttonsHtml = buttons.map(btn =>
             `<button type="button" class="btn btn-primary modal-action-btn" data-action="${buttons.indexOf(btn)}">${btn.label}</button>`
@@ -107,11 +114,11 @@ window.Utils = {
         `;
 
         // 닫기 버튼
-        wrapper.querySelector('.modal-close-btn').addEventListener('click', () => wrapper.remove());
+        wrapper.querySelector('.modal-close-btn').addEventListener('click', closeModal);
 
         // 취소 버튼
         const cancelBtn = wrapper.querySelector('.modal-cancel-btn');
-        if (cancelBtn) cancelBtn.addEventListener('click', () => wrapper.remove());
+        if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
 
         // 액션 버튼들
         buttons.forEach((btn, idx) => {
@@ -120,6 +127,8 @@ window.Utils = {
                 actionBtn.addEventListener('click', async () => {
                     try {
                         await btn.onClick(wrapper);
+                        // onClick 완료 후 모달이 아직 열려있으면 자동으로 닫지 않음
+                        // (onClick 함수가 필요하면 closeModal() 호출하도록 설계)
                     } catch (err) {
                         console.error('[createModal] 버튼 클릭 오류:', err);
                         this.showNotification('오류가 발생했습니다: ' + (err?.message || err), 'error', 6000);

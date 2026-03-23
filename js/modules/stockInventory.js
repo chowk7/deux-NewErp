@@ -6,12 +6,11 @@ window.StockInventoryModule = {
     FIELDS: [
         { key: 'orderDate',    label: '주문일',     type: 'date' },
         { key: 'manufacturingDate', label: '제작일', type: 'date' },
-        { key: 'customerName', label: '고객명',     type: 'text' },
         { key: 'productName',  label: '상품명',     type: 'text' },
         { key: 'optionName',   label: '옵션명',     type: 'text' },
-        { key: 'orderId',      label: '주문번호',   type: 'text' },
         { key: 'goldValue',    label: '금값',       type: 'number' },
         { key: 'stoneCostRef', label: '나석가격',   type: 'number' },
+        { key: 'stoneInfo',    label: '나석정보',   type: 'text' },
         { key: 'manufacturingCost', label: '제조가격', type: 'number' },
         { key: 'salesProfitRate',   label: '매출이익률(%)', type: 'number' },
         { key: 'purpose',      label: '용도',       type: 'select',
@@ -71,9 +70,7 @@ window.StockInventoryModule = {
         if (this.searchQuery) {
             const q = this.searchQuery.toLowerCase();
             filtered = filtered.filter(e =>
-                (e.customerName && String(e.customerName).toLowerCase().includes(q)) ||
                 (e.productName && String(e.productName).toLowerCase().includes(q)) ||
-                (e.orderId && String(e.orderId).toLowerCase().includes(q)) ||
                 (e.remarks && String(e.remarks).toLowerCase().includes(q))
             );
         }
@@ -112,7 +109,7 @@ window.StockInventoryModule = {
 
         const filterBar = `
             <div style="display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center;">
-                <input type="text" id="stockSearchInput" placeholder="고객명, 상품명, 주문번호, 비고 검색"
+                <input type="text" id="stockSearchInput" placeholder="상품명, 비고 검색"
                     value="${this.searchQuery.replace(/"/g, '&quot;')}"
                     style="padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 0.875rem; min-width: 200px;">
                 <button class="btn btn-sm btn-primary" id="stockSearchBtn">검색</button>
@@ -159,7 +156,7 @@ window.StockInventoryModule = {
         if (!table) return;
 
         const defaultDisplayFields = ['manufacturingDate', 'productName', 'optionName',
-                                       'goldValue', 'stoneCostRef', 'manufacturingCost',
+                                       'goldValue', 'stoneCostRef', 'stoneInfo', 'manufacturingCost',
                                        'salesProfitRate', 'purpose', 'remarks'];
         const displayFieldKeys = window.Utils.getDisplayFields('stockInventory', defaultDisplayFields);
         const displayFields = this.FIELDS.filter(f => displayFieldKeys.includes(f.key));
@@ -343,8 +340,39 @@ window.StockInventoryModule = {
         modal.id = 'filterModal';
     },
 
+    showStoneInfoModal() {
+        return new Promise((resolve) => {
+            const body = `
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>나석가격</label>
+                        <input type="number" id="stoneCostRef" placeholder="나석가격" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label>나석정보</label>
+                        <input type="text" id="stoneInfo" placeholder="나석정보 (예: 나석1개, 다이아 0.5캐럿 등)">
+                    </div>
+                </div>
+            `;
+
+            const modal = window.Utils.createModal('나석 정보 입력', body, [
+                { label: '확인', onClick: async (w) => {
+                    const stoneCostRef = document.getElementById('stoneCostRef')?.value || '';
+                    const stoneInfo = document.getElementById('stoneInfo')?.value || '';
+                    w.remove();
+                    resolve({ stoneCostRef: parseFloat(stoneCostRef) || 0, stoneInfo });
+                }}
+            ]);
+        });
+    },
+
     async showForm(itemId = null) {
-        const item = itemId ? this.items.find(i => i.id === itemId) : null;
+        // 새 항목 추가일 때는 먼저 나석 정보 모달 표시
+        let item = itemId ? this.items.find(i => i.id === itemId) : null;
+        if (!itemId) {
+            const stoneData = await this.showStoneInfoModal();
+            item = stoneData;
+        }
         const today = new Date().toISOString().split('T')[0];
 
         const fields = this.FIELDS.map(f => {
@@ -483,7 +511,7 @@ window.StockInventoryModule = {
 
     openColumnSettings() {
         const defaultDisplayFields = ['manufacturingDate', 'productName', 'optionName',
-                                       'goldValue', 'stoneCostRef', 'manufacturingCost',
+                                       'goldValue', 'stoneCostRef', 'stoneInfo', 'manufacturingCost',
                                        'salesProfitRate', 'purpose', 'remarks'];
         const currentDisplay = window.Utils.getDisplayFields('stockInventory', defaultDisplayFields);
 
