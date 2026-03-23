@@ -1734,15 +1734,15 @@ window.SalesManagementModule = {
                     let skippedRows = 0;
                     let addedCount = 0;
                     rows.forEach((row, idx) => {
-                        // orderId 검증 - 필수 필드
-                        if (!row.orderId) {
-                            console.warn(`[CSV] ${idx + 1}번 행: orderId가 없어서 건너뜀`, row);
+                        // orderId 검증 - 필수 필드 (CSV의 orderNumber 필드를 orderId로 사용)
+                        if (!row.orderNumber) {
+                            console.warn(`[CSV] ${idx + 1}번 행: 주문번호가 없어서 건너뜀`, row);
                             skippedRows++;
                             return;
                         }
 
-                        // orderId를 문서 ID로 사용하여 주문과 연결
-                        const ref = col.doc(row.orderId);
+                        // 주문번호를 orderId로 저장하여 문서 ID로 사용 (주문과 제조원가 연결)
+                        const ref = col.doc(row.orderNumber);
                         addedCount++;
 
                         ['orderDate', 'stoneRequestDate', 'stoneCertificationDate', 'workshopRequestDate',
@@ -1819,9 +1819,10 @@ window.SalesManagementModule = {
                         }
 
                         // orderId를 명시적으로 저장 (P&L 계산에서 제조원가 매핑용)
+                        // orderNumber를 orderId로 저장하여 제조원가와 연결
                         addBatch.set(ref, {
                             ...row,
-                            orderId: row.orderId,  // orderId 필드 명시
+                            orderId: row.orderNumber,  // orderNumber를 orderId로 저장
                             createdAt: new Date(),
                             updatedAt: new Date()
                         });
