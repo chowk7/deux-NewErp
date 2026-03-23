@@ -468,24 +468,46 @@ window.StockInventoryModule = {
                                 if (input) input.value = value;
                             });
 
-                            // 나석정보 자동입력 (productRates의 stones 배열)
-                            const stones = selectedProduct.stones || [];
+                            // 나석정보 자동입력
+                            // productRates stones 형식: {type, qty}
+                            // stoneInputModal 형식: {stoneType, stoneQty, stonePrice, totalPrice, warrantyFee}
+                            const rawStones = selectedProduct.stones || [];
                             const stoneInfoInput = w.querySelector('#stoneInfoInput');
                             const stoneInfoBtn = w.querySelector('#stoneInfoBtn');
-                            if (stoneInfoInput && Array.isArray(stones) && stones.length > 0) {
-                                stoneInfoInput.value = JSON.stringify(stones);
-                                const stoneText = stones.map(s => `${s.stoneType} x ${s.stoneQty}`).join(', ');
-                                if (stoneInfoBtn) stoneInfoBtn.textContent = `나석정보 입력 (${stoneText})`;
+                            const stoneCostAutoInput = w.querySelector('[name="stoneCostAuto"]');
+                            if (stoneInfoInput && Array.isArray(rawStones) && rawStones.length > 0) {
+                                const convertedStones = rawStones
+                                    .filter(s => s.type && s.qty > 0)
+                                    .map((s, i) => {
+                                        const rate = self.diamondRates.find(d => d.diamondType === s.type);
+                                        const stonePrice = rate ? (parseFloat(rate.costWithoutVat) || 0) : 0;
+                                        const stoneQty = s.qty || 0;
+                                        return {
+                                            id: `stone_auto_${Date.now()}_${i}`,
+                                            stoneType: s.type,
+                                            stoneQty: stoneQty,
+                                            stoneCert: '',
+                                            stonePrice: stonePrice,
+                                            totalPrice: stonePrice * stoneQty,
+                                            warrantyFee: 0
+                                        };
+                                    });
 
-                                // 나석가격(자동) 재계산
-                                const totalStoneCost = stones.reduce((sum, s) => sum + (s.totalPrice || 0), 0);
-                                const stoneCostAutoInput = w.querySelector('[name="stoneCostAuto"]');
-                                if (stoneCostAutoInput) stoneCostAutoInput.value = totalStoneCost;
+                                if (convertedStones.length > 0) {
+                                    stoneInfoInput.value = JSON.stringify(convertedStones);
+                                    const stoneText = convertedStones.map(s => `${s.stoneType} x ${s.stoneQty}`).join(', ');
+                                    if (stoneInfoBtn) stoneInfoBtn.textContent = `나석정보 입력 (${stoneText})`;
+                                    const totalStoneCost = convertedStones.reduce((sum, s) => sum + (s.totalPrice || 0), 0);
+                                    if (stoneCostAutoInput) stoneCostAutoInput.value = totalStoneCost;
+                                } else {
+                                    stoneInfoInput.value = '';
+                                    if (stoneInfoBtn) stoneInfoBtn.textContent = '나석정보 입력 (미입력)';
+                                    if (stoneCostAutoInput) stoneCostAutoInput.value = '';
+                                }
                             } else if (stoneInfoInput) {
                                 // 나석 없는 경우 초기화
                                 stoneInfoInput.value = '';
                                 if (stoneInfoBtn) stoneInfoBtn.textContent = '나석정보 입력 (미입력)';
-                                const stoneCostAutoInput = w.querySelector('[name="stoneCostAuto"]');
                                 if (stoneCostAutoInput) stoneCostAutoInput.value = '';
                             }
 
