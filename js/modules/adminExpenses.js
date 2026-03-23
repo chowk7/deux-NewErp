@@ -186,6 +186,18 @@ window.AdminExpensesModule = {
         const today = new Date().toISOString().split('T')[0];
         const now = new Date();
 
+        // 한글 날짜 형식 파싱 함수 ("2026. 2. 11." → Date)
+        const parseKoreanDate = (dateStr) => {
+            if (!dateStr) return null;
+            // "2026. 2. 11." 형식
+            const match = String(dateStr).match(/(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\./);
+            if (match) {
+                return new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
+            }
+            // ISO 형식 "2026-02-11"
+            return new Date(dateStr);
+        };
+
         // 이전 거래처와 거래내용 값 수집
         const vendors = [...new Set(this.expenses.map(e => e.vendor).filter(Boolean))];
         const descriptions = [...new Set(this.expenses.map(e => e.description).filter(Boolean))];
@@ -199,7 +211,16 @@ window.AdminExpensesModule = {
 
         const body = `<div class="form-grid" id="expenseFormGrid">` + fields.map(f => {
             let val = exp?.[f.key] ?? '';
-            if (f.key === 'date' && !val) val = today;
+            // date 필드 처리: 기존 값이 있으면 ISO 형식으로 변환
+            if (f.key === 'date') {
+                if (exp && exp.date) {
+                    // 기존 데이터에서 Timestamp 또는 문자열 형식 처리
+                    const dateObj = exp.date.toDate ? exp.date.toDate() : parseKoreanDate(exp.date);
+                    val = dateObj?.toISOString().split('T')[0] || today;
+                } else {
+                    val = today;
+                }
+            }
 
             if (f.type === 'select') {
                 const opts = (f.options || []).map(o =>
@@ -226,10 +247,16 @@ window.AdminExpensesModule = {
 
                 // date를 Firestore Timestamp로 변환하고, 연도/월 자동 계산
                 if (data.date && typeof data.date === 'string') {
-                    const dateObj = new Date(data.date);
-                    data.date = firebase.firestore.Timestamp.fromDate(dateObj);
-                    data.expenseYear = String(dateObj.getFullYear());
-                    data.expenseMonth = String(dateObj.getMonth() + 1).padStart(2,'0');
+                    let dateObj = new Date(data.date);
+                    // 기존 한글 형식이 들어오면 파싱
+                    if (isNaN(dateObj.getTime())) {
+                        dateObj = parseKoreanDate(data.date);
+                    }
+                    if (dateObj && !isNaN(dateObj.getTime())) {
+                        data.date = firebase.firestore.Timestamp.fromDate(dateObj);
+                        data.expenseYear = String(dateObj.getFullYear());
+                        data.expenseMonth = String(dateObj.getMonth() + 1).padStart(2,'0');
+                    }
                 }
 
                 if (expId) {
@@ -270,23 +297,45 @@ window.AdminExpensesModule = {
     downloadData()     { window.Utils.downloadCsvData(this.FIELDS, this.expenses, '판관비.csv'); },
     openCsvUpload() {
         window.Utils.openCsvUploadModal(this.FIELDS, async (rows) => {
+            // 한글 날짜 형식 파싱 함수 ("2026. 2. 11." → Date)
+            const parseKoreanDate = (dateStr) => {
+                if (!dateStr) return null;
+                // "2026. 2. 11." 형식
+                const match = String(dateStr).match(/(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\./);
+                if (match) {
+                    return new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
+                }
+                // ISO 형식 "2026-02-11"
+                return new Date(dateStr);
+            };
+
             const batch = window.firebaseDb.batch();
+            let savedCount = 0;
             rows.forEach(r => {
                 r.amount = parseFloat(r.amount) || 0;
 
                 // date를 Firestore Timestamp로 변환하고, 연도/월 자동 계산
                 if (r.date && typeof r.date === 'string') {
-                    const dateObj = new Date(r.date);
-                    r.date = firebase.firestore.Timestamp.fromDate(dateObj);
-                    r.expenseYear = String(dateObj.getFullYear());
-                    r.expenseMonth = String(dateObj.getMonth() + 1).padStart(2,'0');
+                    let dateObj = new Date(r.date);
+                    // 기존 한글 형식이 들어오면 파싱
+                    if (isNaN(dateObj.getTime())) {
+                        dateObj = parseKoreanDate(r.date);
+                    }
+                    if (dateObj && !isNaN(dateObj.getTime())) {
+                        r.date = firebase.firestore.Timestamp.fromDate(dateObj);
+                        r.expenseYear = String(dateObj.getFullYear());
+                        r.expenseMonth = String(dateObj.getMonth() + 1).padStart(2,'0');
+                        savedCount++;
+                    } else {
+                        console.warn('[CSV] date 파싱 실패:', r.date);
+                    }
                 }
 
                 const ref = window.firebaseDb.collection('sales').doc('adminExpenses').collection('items').doc();
                 batch.set(ref, { ...r, createdAt: new Date(), updatedAt: new Date() });
             });
             await batch.commit();
-            window.Utils.showNotification(`${rows.length}개 항목이 저장되었습니다.`, 'success');
+            window.Utils.showNotification(`${savedCount}개 항목이 저장되었습니다.`, 'success');
             this.load();
         });
     },

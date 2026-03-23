@@ -114,6 +114,18 @@ window.ProfitLossModule = {
             .get();
         console.log(`[P&L] 전체 판관비 데이터: ${expSnap.docs.length}개`);
 
+        // 한글 날짜 형식 파싱 함수 ("2026. 2. 11." → Date)
+        const parseKoreanDate = (dateStr) => {
+            if (!dateStr) return null;
+            // "2026. 2. 11." 형식
+            const match = String(dateStr).match(/(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\./);
+            if (match) {
+                return new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
+            }
+            // ISO 형식 "2026-02-11"
+            return new Date(dateStr);
+        };
+
         const allExpenses = expSnap.docs.map(d => {
             const e = d.data();
             // date 필드가 없으면 경고 후 건너뜀
@@ -125,9 +137,15 @@ window.ProfitLossModule = {
             // date 필드 파싱
             let dateObj;
             try {
-                // Firestore Timestamp 또는 일반 Date 문자열
-                dateObj = e.date.toDate ? e.date.toDate() : new Date(e.date);
-                if (isNaN(dateObj.getTime())) {
+                // Firestore Timestamp
+                if (e.date.toDate) {
+                    dateObj = e.date.toDate();
+                } else {
+                    // 한글 형식 또는 ISO 문자열
+                    dateObj = parseKoreanDate(e.date);
+                }
+
+                if (!dateObj || isNaN(dateObj.getTime())) {
                     console.warn(`[P&L] date 필드 파싱 실패 (${d.id}): ${e.date}`);
                     return null;
                 }
