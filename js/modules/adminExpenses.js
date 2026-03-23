@@ -91,6 +91,17 @@ window.AdminExpensesModule = {
             return data;
         });
 
+        // 가장 최근 연도로 자동 설정
+        const availableYears = [...new Set(this.expenses
+            .filter(e => e.expenseYear)
+            .map(e => parseInt(e.expenseYear)))]
+            .sort((a, b) => b - a);
+        if (availableYears.length > 0) {
+            this.filterYear = availableYears[0];
+            const yearSelect = document.getElementById('expenseYearFilter');
+            if (yearSelect) yearSelect.value = this.filterYear;
+        }
+
         // 메뉴 활성화 후 연도 필터링
         if (this.filterYear) {
             this.expenses = this.expenses.filter(e => e.expenseYear === String(this.filterYear));

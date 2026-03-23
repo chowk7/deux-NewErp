@@ -157,7 +157,7 @@ window.StockInventoryModule = {
 
         const defaultDisplayFields = ['manufacturingDate', 'productName', 'optionName',
                                        'goldValue', 'stoneCostRef', 'stoneInfo', 'manufacturingCost',
-                                       'salesProfitRate', 'purpose', 'remarks'];
+                                       'purpose', 'remarks'];
         const displayFieldKeys = window.Utils.getDisplayFields('stockInventory', defaultDisplayFields);
         const displayFields = this.FIELDS.filter(f => displayFieldKeys.includes(f.key));
         const fieldMap = {};
@@ -512,7 +512,7 @@ window.StockInventoryModule = {
     openColumnSettings() {
         const defaultDisplayFields = ['manufacturingDate', 'productName', 'optionName',
                                        'goldValue', 'stoneCostRef', 'stoneInfo', 'manufacturingCost',
-                                       'salesProfitRate', 'purpose', 'remarks'];
+                                       'purpose', 'remarks'];
         const currentDisplay = window.Utils.getDisplayFields('stockInventory', defaultDisplayFields);
 
         const checkboxesHtml = this.FIELDS.map(f => {
