@@ -19,9 +19,10 @@ window.StockInventoryModule = {
         { key: 'goldWeight',   label: '금중량',     type: 'number' },
         { key: 'goldValue',    label: '금값',       type: 'number' },
         { key: 'laborCost',    label: '공임비',     type: 'number' },
-        { key: 'stoneCostRef', label: '나석가격(수동입력)', type: 'number' },
         { key: 'stoneInfo',    label: '나석정보',   type: 'button' },
-        { key: 'manufacturingCost', label: '제조가격', type: 'number' },
+        { key: 'stoneCostAuto', label: '나석가격(자동)', type: 'readonly' },
+        { key: 'stoneCostRef', label: '나석가격(수동입력)', type: 'number' },
+        { key: 'manufacturingCost', label: '제조가격', type: 'readonly' },
         { key: 'purpose',      label: '용도',       type: 'select',
           options: ['재고', '샘플', '실패재고', '기타'] },
         { key: 'remarks',      label: '비고',       type: 'text' },
@@ -495,6 +496,25 @@ window.StockInventoryModule = {
             if (optionNameInput) optionNameInput.value = optionName;
         };
 
+        // 제조가격 자동 계산
+        const calculateManufacturingCost = () => {
+            const goldValue = parseFloat(w.querySelector('[name="goldValue"]')?.value || 0);
+            const laborCost = parseFloat(w.querySelector('[name="laborCost"]')?.value || 0);
+            const stoneCostRef = parseFloat(w.querySelector('[name="stoneCostRef"]')?.value || 0);
+            const stoneCostAuto = parseFloat(w.querySelector('[name="stoneCostAuto"]')?.value || 0);
+
+            // 나석가격(수동입력)이 있으면 사용, 없으면 나석가격(자동) 사용
+            const stonePrice = stoneCostRef > 0 ? stoneCostRef : stoneCostAuto;
+
+            // 제조가격 = (금값 + 공임비 + 나석가격) * 1.1
+            const manufacturingCost = (goldValue + laborCost + stonePrice) * 1.1;
+
+            const manufacturingCostInput = w.querySelector('[name="manufacturingCost"]');
+            if (manufacturingCostInput) {
+                manufacturingCostInput.value = isNaN(manufacturingCost) ? '' : manufacturingCost.toFixed(2);
+            }
+        };
+
         setTimeout(() => {
             // 옵션명에 영향을 주는 필드들에 이벤트 리스너 추가
             ['length', 'color', 'size', 'lockType', 'chainThickness', 'backSupport'].forEach(key => {
@@ -506,6 +526,17 @@ window.StockInventoryModule = {
             });
             // 초기 값으로 옵션명 계산
             updateOptionName();
+
+            // 제조가격 계산에 영향을 주는 필드들에 이벤트 리스너 추가
+            ['goldValue', 'laborCost', 'stoneCostRef'].forEach(key => {
+                const el = w.querySelector(`[name="${key}"]`);
+                if (el) {
+                    el.addEventListener('change', calculateManufacturingCost);
+                    el.addEventListener('input', calculateManufacturingCost);
+                }
+            });
+            // 초기 값으로 제조가격 계산
+            calculateManufacturingCost();
         }, 150);
 
         // 나석정보 버튼 이벤트
@@ -540,7 +571,7 @@ window.StockInventoryModule = {
                     // StoneInputModalModule 열기
                     window.StoneInputModalModule.open(this.diamondRates, existingStones, (stoneArray) => {
                         const stoneInfoInput = w.querySelector('#stoneInfoInput');
-                        const stoneInfoDisplay = stoneInfoBtn.querySelector('span') || stoneInfoBtn;
+                        const stoneCostAutoInput = w.querySelector('[name="stoneCostAuto"]');
 
                         // stoneArray를 JSON으로 저장
                         stoneInfoInput.value = JSON.stringify(stoneArray);
@@ -550,6 +581,15 @@ window.StockInventoryModule = {
                             .map(s => `${s.stoneType} x ${s.stoneQty}`)
                             .join(', ');
                         stoneInfoBtn.textContent = `나석정보 입력 (${stoneText})`;
+
+                        // 총 나석가격(자동) 계산
+                        const totalStoneCost = stoneArray.reduce((sum, s) => sum + (s.totalPrice || 0), 0);
+                        if (stoneCostAutoInput) {
+                            stoneCostAutoInput.value = totalStoneCost;
+                        }
+
+                        // 제조가격 자동 계산
+                        calculateManufacturingCost();
                     });
                 });
             }
