@@ -5,6 +5,7 @@ window.StockInventoryModule = {
 
     FIELDS: [
         { key: 'orderDate',    label: '주문일',     type: 'date' },
+        { key: 'manufacturingDate', label: '제작일', type: 'date' },
         { key: 'customerName', label: '고객명',     type: 'text' },
         { key: 'productName',  label: '상품명',     type: 'text' },
         { key: 'optionName',   label: '옵션명',     type: 'text' },
@@ -39,6 +40,9 @@ window.StockInventoryModule = {
 
         document.getElementById('downloadStockDataBtn')
             ?.addEventListener('click', () => this.downloadData());
+
+        document.getElementById('stockColumnSettingsBtn')
+            ?.addEventListener('click', () => this.openColumnSettings());
 
         await this.load();
     },
@@ -154,8 +158,8 @@ window.StockInventoryModule = {
         const table = document.querySelector('#stockInventoryTable');
         if (!table) return;
 
-        const defaultDisplayFields = ['orderDate', 'customerName', 'productName', 'optionName',
-                                       'orderId', 'goldValue', 'stoneCostRef', 'manufacturingCost',
+        const defaultDisplayFields = ['manufacturingDate', 'productName', 'optionName',
+                                       'goldValue', 'stoneCostRef', 'manufacturingCost',
                                        'salesProfitRate', 'purpose', 'remarks'];
         const displayFieldKeys = window.Utils.getDisplayFields('stockInventory', defaultDisplayFields);
         const displayFields = this.FIELDS.filter(f => displayFieldKeys.includes(f.key));
@@ -219,8 +223,8 @@ window.StockInventoryModule = {
         tbody.innerHTML = pageItems.map(item => {
             const cells = displayFields.map(f => {
                 let val = item[f.key] || '-';
-                if (f.key === 'orderDate' && item.orderDate) {
-                    const date = item.orderDate.toDate ? item.orderDate.toDate() : new Date(item.orderDate);
+                if ((f.key === 'orderDate' || f.key === 'manufacturingDate') && item[f.key]) {
+                    const date = item[f.key].toDate ? item[f.key].toDate() : new Date(item[f.key]);
                     val = date.toLocaleDateString('ko-KR');
                 }
                 if (f.type === 'number' && item[f.key] !== undefined) {
@@ -358,11 +362,11 @@ window.StockInventoryModule = {
 
         const body = `<div class="form-grid">` + fields.map(f => {
             let val = item?.[f.key] ?? '';
-            if (f.key === 'orderDate') {
-                if (item && item.orderDate) {
-                    const date = item.orderDate.toDate ? item.orderDate.toDate() : new Date(item.orderDate);
+            if (f.key === 'orderDate' || f.key === 'manufacturingDate') {
+                if (item && item[f.key]) {
+                    const date = item[f.key].toDate ? item[f.key].toDate() : new Date(item[f.key]);
                     val = date.toISOString().split('T')[0];
-                } else {
+                } else if (f.key === 'orderDate') {
                     val = today;
                 }
             }
@@ -391,8 +395,17 @@ window.StockInventoryModule = {
                     return;
                 }
 
-                const date = new Date(data.orderDate);
-                data.orderDate = firebase.firestore.Timestamp.fromDate(date);
+                // orderDate를 Firestore Timestamp로 변환
+                const orderDate = new Date(data.orderDate);
+                data.orderDate = firebase.firestore.Timestamp.fromDate(orderDate);
+
+                // manufacturingDate도 Firestore Timestamp로 변환 (있으면)
+                if (data.manufacturingDate) {
+                    const mfgDate = new Date(data.manufacturingDate);
+                    data.manufacturingDate = firebase.firestore.Timestamp.fromDate(mfgDate);
+                } else {
+                    delete data.manufacturingDate;
+                }
 
                 if (itemId) {
                     await window.firebaseDb.collection('sales').doc('stockInventory')
@@ -441,11 +454,20 @@ window.StockInventoryModule = {
             let count = 0;
 
             rows.forEach(r => {
+                // orderDate 처리
                 if (r.orderDate && typeof r.orderDate === 'string') {
                     const date = new Date(r.orderDate);
                     if (!isNaN(date.getTime())) {
                         r.orderDate = firebase.firestore.Timestamp.fromDate(date);
                         count++;
+                    }
+                }
+
+                // manufacturingDate 처리
+                if (r.manufacturingDate && typeof r.manufacturingDate === 'string') {
+                    const date = new Date(r.manufacturingDate);
+                    if (!isNaN(date.getTime())) {
+                        r.manufacturingDate = firebase.firestore.Timestamp.fromDate(date);
                     }
                 }
 
@@ -457,5 +479,43 @@ window.StockInventoryModule = {
             window.Utils.showNotification(`${count}개 항목이 저장되었습니다.`, 'success');
             this.load();
         });
+    },
+
+    openColumnSettings() {
+        const defaultDisplayFields = ['manufacturingDate', 'productName', 'optionName',
+                                       'goldValue', 'stoneCostRef', 'manufacturingCost',
+                                       'salesProfitRate', 'purpose', 'remarks'];
+        const currentDisplay = window.Utils.getDisplayFields('stockInventory', defaultDisplayFields);
+
+        const checkboxesHtml = this.FIELDS.map(f => {
+            const isChecked = currentDisplay.includes(f.key);
+            return `<div style="margin-bottom: 8px;">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                    <input type="checkbox" class="col-checkbox" value="${f.key}" ${isChecked ? 'checked' : ''}>
+                    <span>${f.label}</span>
+                </label>
+            </div>`;
+        }).join('');
+
+        const body = `<div style="padding: 8px;">
+            <p style="margin-bottom: 12px; font-size: 0.875rem; color: #666;">
+                표시할 열을 선택하세요:
+            </p>
+            ${checkboxesHtml}
+        </div>`;
+
+        const modal = window.Utils.createModal('표시항목 설정', body, [
+            { label: '적용', onClick: () => {
+                const selected = Array.from(document.querySelectorAll('.col-checkbox:checked'))
+                    .map(cb => cb.value);
+                if (selected.length === 0) {
+                    window.Utils.alert('최소 하나 이상의 열을 선택하세요.');
+                    return;
+                }
+                window.Utils.setDisplayFields('stockInventory', selected);
+                modal.remove();
+                this.renderTable();
+            }},
+        ]);
     },
 };

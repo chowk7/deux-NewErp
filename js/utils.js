@@ -465,6 +465,10 @@ window.Utils = {
         return saved.length > 0 ? saved : allFieldKeys;
     },
 
+    setDisplayFields(tableKey, fieldKeys) {
+        sessionStorage.setItem(`${tableKey}_displayFields`, JSON.stringify(fieldKeys));
+    },
+
     /**
      * 알림 표시
      * @param {string} message - 메시지
