@@ -74,7 +74,23 @@ window.AdminExpensesModule = {
         }
 
         const snap = await query.get();
-        this.expenses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        this.expenses = snap.docs.map(d => {
+            const data = { id: d.id, ...d.data() };
+
+            // date가 있는데 expenseMonth가 없으면 자동 추출
+            if (data.date && !data.expenseMonth) {
+                let dateObj = data.date;
+                if (dateObj.toDate) {
+                    dateObj = dateObj.toDate();
+                }
+                if (dateObj instanceof Date && !isNaN(dateObj.getTime())) {
+                    data.expenseYear = String(dateObj.getFullYear());
+                    data.expenseMonth = String(dateObj.getMonth() + 1).padStart(2, '0');
+                }
+            }
+
+            return data;
+        });
 
         if (this.filterMonth) {
             this.expenses = this.expenses.filter(e =>
