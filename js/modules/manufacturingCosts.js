@@ -352,32 +352,79 @@ window.ManufacturingCostsModule = {
                     </tr>`;
             }).join('');
 
+            // 필터링된 데이터에 대한 통계 계산
+            const numericFields = [...this.HEADER_FIELDS, ...this.BASE_FIELDS, ...this.STONE_FIELDS]
+                .filter(f => f.type === 'number' && displayFieldKeys.includes(f.key));
+            const stats = {};
+            numericFields.forEach(f => {
+                const values = this.filteredCosts
+                    .map(c => {
+                        let val = c[f.key];
+                        if (f.key === 'salesProfitRate') val = parseFloat(val) || 0;
+                        else val = parseFloat(val) || 0;
+                        return val;
+                    })
+                    .filter(v => v !== 0);
+                const sum = values.reduce((a, b) => a + b, 0);
+                const avg = values.length > 0 ? sum / values.length : 0;
+                stats[f.key] = { sum, avg, count: values.length };
+            });
+
             // 테이블 헤더 업데이트
-            const thead = mfgTable.querySelector('thead tr');
+            const thead = mfgTable.querySelector('thead');
             if (thead) {
                 const checkboxTh = document.createElement('th');
                 checkboxTh.style.textAlign = 'center';
                 checkboxTh.className = 'header-checkbox-th';
                 checkboxTh.innerHTML = '<input type="checkbox" class="header-checkbox">';
 
-                thead.innerHTML = displayFieldKeys.map(key => {
-                    const field = fieldMap[key];
-                    const label = field ? field.label : key;
-                    const isSorted = this.mfgSortState.column === key;
-                    const indicator = isSorted ? (this.mfgSortState.direction === 'asc' ? ' ▲' : ' ▼') : '';
-                    const hasFilter = this.mfgColumnFilters[key];
-                    const filterColor = hasFilter ? 'color:#3b82f6;' : 'color:#9ca3af;';
-                    return `<th data-column="${key}" style="cursor:pointer;user-select:none;">
-                        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-                            <span style="cursor:pointer;user-select:none;" data-sort-column="${key}">${label}${indicator}</span>
-                            <button style="border:none;background:none;padding:4px;cursor:pointer;${filterColor}font-size:1rem;opacity:0.7;transition:all 0.2s;"
-                                class="mfg-header-filter-btn" data-column="${key}" title="필터">🔍</button>
-                        </div>
-                    </th>`;
-                }).join('') + '<th>관리</th>';
-                thead.insertBefore(checkboxTh, thead.firstChild);
+                // 통계 행 HTML
+                const statsRowHtml = '<tr style="background-color:#f3f4f6;border-bottom:1px solid #d1d5db;">'
+                    + '<th style="text-align:center;padding:4px;"></th>'
+                    + displayFieldKeys.map(key => {
+                        if (stats[key]) {
+                            const { sum, avg } = stats[key];
+                            const formattedSum = key === 'salesProfitRate' ? Math.round(avg) + '%' : window.Utils.formatNumber(Math.round(sum));
+                            const formattedAvg = key === 'salesProfitRate' ? Math.round(avg) + '%' : window.Utils.formatNumber(Math.round(avg));
+                            return `<th style="padding:4px 8px;font-size:11px;color:#666;text-align:right;">
+                                <div>합: ${formattedSum}</div>
+                                <div>평: ${formattedAvg}</div>
+                            </th>`;
+                        } else {
+                            return '<th></th>';
+                        }
+                    }).join('') + '<th></th></tr>';
 
-                thead.querySelectorAll('th[data-column]').forEach(th => {
+                // 헤더 행 HTML
+                const headerRowHtml = '<tr>'
+                    + displayFieldKeys.map(key => {
+                        const field = fieldMap[key];
+                        const label = field ? field.label : key;
+                        const isSorted = this.mfgSortState.column === key;
+                        const indicator = isSorted ? (this.mfgSortState.direction === 'asc' ? ' ▲' : ' ▼') : '';
+                        const hasFilter = this.mfgColumnFilters[key];
+                        const filterColor = hasFilter ? 'color:#3b82f6;' : 'color:#9ca3af;';
+                        return `<th data-column="${key}" style="cursor:pointer;user-select:none;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                                <span style="cursor:pointer;user-select:none;" data-sort-column="${key}">${label}${indicator}</span>
+                                <button style="border:none;background:none;padding:4px;cursor:pointer;${filterColor}font-size:1rem;opacity:0.7;transition:all 0.2s;"
+                                    class="mfg-header-filter-btn" data-column="${key}" title="필터">🔍</button>
+                            </div>
+                        </th>`;
+                    }).join('') + '<th>관리</th></tr>';
+
+                thead.innerHTML = statsRowHtml + headerRowHtml;
+
+                // 체크박스 추가
+                const firstHeaderTh = thead.querySelector('tr:last-child th:first-child');
+                if (firstHeaderTh) {
+                    firstHeaderTh.innerHTML = '<input type="checkbox" class="header-checkbox">';
+                    firstHeaderTh.style.textAlign = 'center';
+                }
+
+                // 헤더 이벤트 리스너
+                const headerTr = thead.querySelector('tr:last-child');
+                headerTr.querySelectorAll('th[data-column]').forEach(th => {
                     th.addEventListener('click', (e) => {
                         const filterBtn = e.target.closest('.mfg-header-filter-btn');
                         if (filterBtn) {
