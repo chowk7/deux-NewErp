@@ -456,17 +456,41 @@ window.StockInventoryModule = {
                         // 상품명 선택 시 자동정보 로드
                         const selectedProduct = self.productRates.find(p => p.productName === selectedName);
                         if (selectedProduct) {
+                            // 숫자 필드 자동입력 (사용자가 수기로 변경 가능)
                             const updates = {
-                                goldWeight: selectedProduct.goldWeight || '',
+                                goldWeight: selectedProduct.goldWeight14k || selectedProduct.goldWeight || '',
                                 goldValue: selectedProduct.goldValue || '',
-                                stoneCostRef: selectedProduct.stoneCostRef || '',
-                                stoneInfo: selectedProduct.stoneInfo || '',
-                                manufacturingCost: selectedProduct.manufacturingCost || ''
+                                laborCost: selectedProduct.laborCost || '',
+                                stoneCostRef: selectedProduct.stoneCost || selectedProduct.stoneCostRef || '',
                             };
                             Object.entries(updates).forEach(([key, value]) => {
                                 const input = w.querySelector(`[name="${key}"]`);
                                 if (input) input.value = value;
                             });
+
+                            // 나석정보 자동입력 (productRates의 stones 배열)
+                            const stones = selectedProduct.stones || [];
+                            const stoneInfoInput = w.querySelector('#stoneInfoInput');
+                            const stoneInfoBtn = w.querySelector('#stoneInfoBtn');
+                            if (stoneInfoInput && Array.isArray(stones) && stones.length > 0) {
+                                stoneInfoInput.value = JSON.stringify(stones);
+                                const stoneText = stones.map(s => `${s.stoneType} x ${s.stoneQty}`).join(', ');
+                                if (stoneInfoBtn) stoneInfoBtn.textContent = `나석정보 입력 (${stoneText})`;
+
+                                // 나석가격(자동) 재계산
+                                const totalStoneCost = stones.reduce((sum, s) => sum + (s.totalPrice || 0), 0);
+                                const stoneCostAutoInput = w.querySelector('[name="stoneCostAuto"]');
+                                if (stoneCostAutoInput) stoneCostAutoInput.value = totalStoneCost;
+                            } else if (stoneInfoInput) {
+                                // 나석 없는 경우 초기화
+                                stoneInfoInput.value = '';
+                                if (stoneInfoBtn) stoneInfoBtn.textContent = '나석정보 입력 (미입력)';
+                                const stoneCostAutoInput = w.querySelector('[name="stoneCostAuto"]');
+                                if (stoneCostAutoInput) stoneCostAutoInput.value = '';
+                            }
+
+                            // 제조가격 재계산
+                            calculateManufacturingCost();
                         }
                         // productNameInput 업데이트
                         const productNameInput = w.querySelector('#productNameInput');
