@@ -73,6 +73,66 @@ window.Utils = {
     },
 
     /**
+     * 버튼 배열을 받는 모달
+     * @param {string} title - 제목
+     * @param {string} bodyHtml - 바디 HTML
+     * @param {Array} buttons - 버튼 배열 [{label, onClick}, ...]
+     * @returns {HTMLElement} - 모달 wrapper
+     */
+    createModal(title, bodyHtml, buttons = []) {
+        const wrapper = document.createElement('div');
+        wrapper.setAttribute('data-modal', '');
+
+        const buttonsHtml = buttons.map(btn =>
+            `<button type="button" class="btn btn-primary modal-action-btn" data-action="${buttons.indexOf(btn)}">${btn.label}</button>`
+        ).join('');
+
+        wrapper.innerHTML = `
+            <div class="modal-overlay">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>${title}</h3>
+                        <button type="button" class="modal-close-btn" aria-label="닫기">✕</button>
+                    </div>
+                    <div id="modalDialog">
+                        ${bodyHtml}
+                    </div>
+                    ${buttons.length > 0 ? `
+                    <div class="modal-footer">
+                        ${buttonsHtml}
+                        <button type="button" class="btn btn-secondary modal-cancel-btn">취소</button>
+                    </div>` : ''}
+                </div>
+            </div>
+        `;
+
+        // 닫기 버튼
+        wrapper.querySelector('.modal-close-btn').addEventListener('click', () => wrapper.remove());
+
+        // 취소 버튼
+        const cancelBtn = wrapper.querySelector('.modal-cancel-btn');
+        if (cancelBtn) cancelBtn.addEventListener('click', () => wrapper.remove());
+
+        // 액션 버튼들
+        buttons.forEach((btn, idx) => {
+            const actionBtn = wrapper.querySelector(`[data-action="${idx}"]`);
+            if (actionBtn) {
+                actionBtn.addEventListener('click', async () => {
+                    try {
+                        await btn.onClick(wrapper);
+                    } catch (err) {
+                        console.error('[createModal] 버튼 클릭 오류:', err);
+                        this.showNotification('오류가 발생했습니다: ' + (err?.message || err), 'error', 6000);
+                    }
+                });
+            }
+        });
+
+        document.body.appendChild(wrapper);
+        return wrapper;
+    },
+
+    /**
      * 확인 모달
      */
     confirm(message, confirmLabel = '삭제') {
