@@ -210,6 +210,8 @@ window.ProfitLossModule = {
                 revenue, cogs, grossProfit, grossMargin,
                 ...expByType,
                 totalExpenses, operatingProfit, operatingMargin,
+                adminExpenses: expByType['판관비'] || 0,
+                adminExpensesCount: monthExp.length,
             };
         });
 
