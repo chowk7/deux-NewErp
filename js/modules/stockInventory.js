@@ -5,11 +5,13 @@ window.StockInventoryModule = {
 
     FIELDS: [
         { key: 'manufacturingDate', label: '제작일', type: 'date' },
-        { key: 'productName',  label: '상품명',     type: 'text' },
+        { key: 'productName',  label: '상품명',     type: 'searchable' },
         { key: 'optionName',   label: '옵션명',     type: 'text' },
+        { key: 'goldWeight',   label: '금중량',     type: 'number' },
         { key: 'goldValue',    label: '금값',       type: 'number' },
-        { key: 'stoneCostRef', label: '나석가격',   type: 'number' },
-        { key: 'stoneInfo',    label: '나석정보',   type: 'text' },
+        { key: 'laborCost',    label: '공임비',     type: 'number' },
+        { key: 'stoneCostRef', label: '나석가격(수동입력)', type: 'number' },
+        { key: 'stoneInfo',    label: '나석정보',   type: 'button' },
         { key: 'manufacturingCost', label: '제조가격', type: 'number' },
         { key: 'purpose',      label: '용도',       type: 'select',
           options: ['재고', '샘플', '실패재고', '기타'] },
@@ -24,6 +26,8 @@ window.StockInventoryModule = {
     searchQuery: '',
     sortState: { column: null, direction: 'asc' },
     columnFilters: {},
+    productRates: [],
+    diamondRates: [],
 
     async init() {
         document.getElementById('addStockItemBtn')
@@ -52,6 +56,16 @@ window.StockInventoryModule = {
                 .get();
 
             this.items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+            // 제품가격표 로드
+            const priceSnap = await window.firebaseDb
+                .collection('sales').doc('productRates').collection('items').get();
+            this.productRates = priceSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+            // 나석단가표 로드
+            const diamondSnap = await window.firebaseDb
+                .collection('master').doc('diamondRates').collection('items').get();
+            this.diamondRates = diamondSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
             this.applyFilters();
             this.renderTable();
