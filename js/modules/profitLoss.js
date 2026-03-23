@@ -180,9 +180,11 @@ window.ProfitLossModule = {
             let grossProfit = 0;
             monthOrders.forEach(o => {
                 revenue += o.salesAmount || 0;
-                // 주문별 매출이익 = 매출액 - 제조원가
+                // 주문별 매출이익 = 매출*(1-수수료율/100) - 제조원가
+                const commissionRate = o.commissionRate || 0;
+                const netSalesAmount = (o.salesAmount || 0) * (1 - commissionRate / 100);
                 const mfg = mfgByOrderId[o.id];
-                const profit = (o.salesAmount || 0) - (mfg?.manufacturingCost || 0);
+                const profit = netSalesAmount - (mfg?.manufacturingCost || 0);
                 grossProfit += profit;
             });
 
