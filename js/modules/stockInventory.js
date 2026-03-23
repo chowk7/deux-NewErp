@@ -6,7 +6,16 @@ window.StockInventoryModule = {
     FIELDS: [
         { key: 'manufacturingDate', label: '제작일', type: 'date' },
         { key: 'productName',  label: '상품명',     type: 'searchable' },
-        { key: 'optionName',   label: '옵션명',     type: 'text' },
+        { key: 'length',       label: '길이(cm)',   type: 'number' },
+        { key: 'color',        label: '색상',       type: 'select',
+          options: ['14K화이트','14K옐로우','14K로즈','18K화이트','18K옐로우','18K로즈'] },
+        { key: 'size',         label: '사이즈',     type: 'text' },
+        { key: 'lockType',     label: '잠금장치',   type: 'select',
+          options: ['언더락','싱글고리형'] },
+        { key: 'chainThickness', label: '체인굵기', type: 'text' },
+        { key: 'backSupport',  label: '뒷침',       type: 'select',
+          options: ['일반','프리미엄'] },
+        { key: 'optionName',   label: '옵션명(자동생성)', type: 'readonly' },
         { key: 'goldWeight',   label: '금중량',     type: 'number' },
         { key: 'goldValue',    label: '금값',       type: 'number' },
         { key: 'laborCost',    label: '공임비',     type: 'number' },
@@ -64,7 +73,7 @@ window.StockInventoryModule = {
 
             // 나석단가표 로드
             const diamondSnap = await window.firebaseDb
-                .collection('master').doc('diamondRates').collection('items').get();
+                .collection('prices').doc('diamondRates').collection('items').get();
             this.diamondRates = diamondSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
             this.applyFilters();
@@ -380,6 +389,13 @@ window.StockInventoryModule = {
                     </button>
                     <input type="hidden" name="${f.key}" id="stoneInfoInput" value="${val}">
                 </div>`;
+            } else if (f.type === 'readonly') {
+                // 옵션명처럼 자동생성되는 필드
+                return `<div class="form-group">
+                    <label>${f.label}</label>
+                    <input type="text" name="${f.key}" id="${f.key}" value="${val}" readonly
+                        style="background-color:#f3f4f6; cursor:not-allowed;">
+                </div>`;
             } else if (f.type === 'searchable') {
                 // 상품명 검색 필드
                 return `<div class="form-group">
@@ -389,13 +405,13 @@ window.StockInventoryModule = {
                 </div>`;
             } else if (f.type === 'select') {
                 const opts = (f.options || []).map(o => `<option value="${o}" ${val === o ? 'selected' : ''}>${o}</option>`).join('');
-                return `<div class="form-group"><label>${f.label}</label><select name="${f.key}"><option value="">선택</option>${opts}</select></div>`;
+                return `<div class="form-group"><label>${f.label}</label><select name="${f.key}" data-option-field="true"><option value="">선택</option>${opts}</select></div>`;
             } else if (f.type === 'number') {
-                return `<div class="form-group"><label>${f.label}</label><input type="number" name="${f.key}" value="${val}" step="0.01"></div>`;
+                return `<div class="form-group"><label>${f.label}</label><input type="number" name="${f.key}" value="${val}" step="0.01" data-option-field="true"></div>`;
             } else if (f.type === 'date') {
                 return `<div class="form-group"><label>${f.label}</label><input type="date" name="${f.key}" value="${val}"></div>`;
             } else {
-                return `<div class="form-group"><label>${f.label}</label><input type="text" name="${f.key}" value="${val}"></div>`;
+                return `<div class="form-group"><label>${f.label}</label><input type="text" name="${f.key}" value="${val}" data-option-field="true"></div>`;
             }
         }).join('') + '</div>';
 
@@ -431,37 +447,66 @@ window.StockInventoryModule = {
             const productNames = this.productRates.map(p => p.productName).filter((v, i, a) => a.indexOf(v) === i);
             const container = w.querySelector('#searchable_productName');
             if (container) {
-                window.Utils.createSearchableSelect(
+                const selectElement = window.Utils.createSearchableSelect(
                     productNames,
                     item?.productName || '',
-                    null,
+                    (selectedName) => {
+                        // 상품명 선택 시 자동정보 로드
+                        const selectedProduct = this.productRates.find(p => p.productName === selectedName);
+                        if (selectedProduct) {
+                            const updates = {
+                                goldWeight: selectedProduct.goldWeight || '',
+                                goldValue: selectedProduct.goldValue || '',
+                                stoneCostRef: selectedProduct.stoneCostRef || '',
+                                stoneInfo: selectedProduct.stoneInfo || '',
+                                manufacturingCost: selectedProduct.manufacturingCost || ''
+                            };
+                            Object.entries(updates).forEach(([key, value]) => {
+                                const input = w.querySelector(`[name="${key}"]`);
+                                if (input) input.value = value;
+                            });
+                        }
+                        // productNameInput 업데이트
+                        const productNameInput = w.querySelector('#productNameInput');
+                        if (productNameInput) productNameInput.value = selectedName;
+                    },
                     '상품명 입력...',
                     'productName'
                 );
-
-                // 상품명 선택 시 자동정보 로드
-                document.addEventListener('searchableSelected_productName', (e) => {
-                    const selectedName = e.detail.value;
-                    const selectedProduct = this.productRates.find(p => p.productName === selectedName);
-
-                    if (selectedProduct) {
-                        // 자동 채우기
-                        const updates = {
-                            goldWeight: selectedProduct.goldWeight || '',
-                            goldValue: selectedProduct.goldValue || '',
-                            stoneCostRef: selectedProduct.stoneCostRef || '',
-                            stoneInfo: selectedProduct.stoneInfo || '',
-                            manufacturingCost: selectedProduct.manufacturingCost || ''
-                        };
-
-                        Object.entries(updates).forEach(([key, value]) => {
-                            const input = w.querySelector(`[name="${key}"]`);
-                            if (input) input.value = value;
-                        });
-                    }
-                });
+                // 선택 요소를 컨테이너에 추가
+                container.innerHTML = '';
+                container.appendChild(selectElement);
             }
         }, 100);
+
+        // 옵션명 자동생성 로직
+        const updateOptionName = () => {
+            const length = w.querySelector('[name="length"]')?.value || '';
+            const color = w.querySelector('[name="color"]')?.value || '';
+            const size = w.querySelector('[name="size"]')?.value || '';
+            const lockType = w.querySelector('[name="lockType"]')?.value || '';
+            const chainThickness = w.querySelector('[name="chainThickness"]')?.value || '';
+            const backSupport = w.querySelector('[name="backSupport"]')?.value || '';
+
+            const parts = [length, color, size, lockType, chainThickness, backSupport].filter(p => p);
+            const optionName = parts.join('/');
+
+            const optionNameInput = w.querySelector('[name="optionName"]');
+            if (optionNameInput) optionNameInput.value = optionName;
+        };
+
+        setTimeout(() => {
+            // 옵션명에 영향을 주는 필드들에 이벤트 리스너 추가
+            ['length', 'color', 'size', 'lockType', 'chainThickness', 'backSupport'].forEach(key => {
+                const el = w.querySelector(`[name="${key}"]`);
+                if (el) {
+                    el.addEventListener('change', updateOptionName);
+                    el.addEventListener('input', updateOptionName);
+                }
+            });
+            // 초기 값으로 옵션명 계산
+            updateOptionName();
+        }, 150);
 
         // 나석정보 버튼 이벤트
         setTimeout(() => {
