@@ -12,6 +12,7 @@ window.PromotionModule = {
     savedPromotions: [],
     activeCategory: '전체',
     currentMode: 'fixed',   // 'fixed' | 'additional'
+    _perProductRates: {},   // { [productId]: { fixedRate?: number, addRate?: number } }
 
     // 테이블에서 선택 가능한 기본 정보 컬럼
     DISPLAY_FIELDS: [
@@ -315,6 +316,9 @@ window.PromotionModule = {
         const wrap = document.getElementById('promoTableWrap');
         if (!wrap) return;
 
+        // 전체 시뮬레이션 시 개별 오버라이드 초기화
+        this._perProductRates = {};
+
         const filtered = this._filteredProducts();
         if (filtered.length === 0) {
             wrap.innerHTML = '<p style="color:#9ca3af;text-align:center;padding:20px;">해당하는 제품이 없습니다.</p>';
@@ -332,14 +336,18 @@ window.PromotionModule = {
         const fieldMap    = {};
         this.DISPLAY_FIELDS.forEach(f => fieldMap[f.key] = f);
 
+        const inputStyle = (color, border) =>
+            `width:65px;text-align:center;padding:2px 4px;border:1px solid ${border};border-radius:4px;` +
+            `background:transparent;color:${color};font-weight:600;font-size:0.85rem;`;
+
         // 컬럼 그룹 헤더 (colspan)
         const groupHeader = `<tr>
             <th colspan="${displayKeys.length}" style="background:#f9fafb;"></th>
             <th colspan="4" style="text-align:center;background:#faf5ff;color:#7c3aed;border-left:2px solid #c4b5fd;">
-                전체 할인율 설정 (${fixedRate}%)
+                전체 할인율 설정 (${fixedRate}%) — 행별 직접 수정 가능
             </th>
             <th colspan="4" style="text-align:center;background:#fff7ed;color:#ea580c;border-left:2px solid #fdba74;">
-                추가 할인 (+${additionalRate}%)
+                추가 할인 (+${additionalRate}%) — 행별 직접 수정 가능
             </th>
         </tr>`;
 
@@ -363,9 +371,9 @@ window.PromotionModule = {
 
             const baseCells = displayKeys.map(k => {
                 const val = p[k];
-                if (k === 'category')        return `<td style="text-align:center;">${this._normalizeCategory(val)}</td>`;
-                if (k === 'discountRate')    return `<td style="text-align:center;">${fmtRate(parseFloat(val)||0)}</td>`;
-                if (k === 'ownMallProfitRate') return `<td style="text-align:center;">${fmtRate(parseFloat(val)||0)}</td>`;
+                if (k === 'category')          return `<td style="text-align:center;">${this._normalizeCategory(val)}</td>`;
+                if (k === 'discountRate')       return `<td style="text-align:center;">${fmtRate(parseFloat(val)||0)}</td>`;
+                if (k === 'ownMallProfitRate')  return `<td style="text-align:center;">${fmtRate(parseFloat(val)||0)}</td>`;
                 if (k !== 'productCode' && k !== 'ownCode' && k !== 'productName') {
                     const n = parseFloat(val);
                     if (!isNaN(n)) return `<td style="text-align:right;">${fmt(n)}</td>`;
@@ -373,16 +381,24 @@ window.PromotionModule = {
                 return `<td>${val || '-'}</td>`;
             }).join('');
 
-            return `<tr>
+            return `<tr data-pid="${p.id}">
                 ${baseCells}
-                <td style="text-align:center;font-weight:600;color:#7c3aed;background:#faf5ff;border-left:2px solid #c4b5fd;">${fmtRate(fixed.promoRate)}</td>
-                <td style="text-align:right;background:#faf5ff;">${fmt(fixed.promoPrice)}${diffSpan(fixed.promoPrice - origPrice, fmt)}</td>
-                <td style="text-align:right;background:#faf5ff;${colorStyle(fixed.promoProfit)}">${fmt(fixed.promoProfit)}${diffSpan(fixed.promoProfit - origProfit, fmt)}</td>
-                <td style="text-align:center;background:#faf5ff;${colorStyle(fixed.promoProfitRate)}">${fmtRate(fixed.promoProfitRate)}</td>
-                <td style="text-align:center;font-weight:600;color:#ea580c;background:#fff7ed;border-left:2px solid #fdba74;">${fmtRate(add.promoRate)}</td>
-                <td style="text-align:right;background:#fff7ed;">${fmt(add.promoPrice)}${diffSpan(add.promoPrice - origPrice, fmt)}</td>
-                <td style="text-align:right;background:#fff7ed;${colorStyle(add.promoProfit)}">${fmt(add.promoProfit)}${diffSpan(add.promoProfit - origProfit, fmt)}</td>
-                <td style="text-align:center;background:#fff7ed;${colorStyle(add.promoProfitRate)}">${fmtRate(add.promoProfitRate)}</td>
+                <td style="text-align:center;background:#faf5ff;border-left:2px solid #c4b5fd;padding:4px;">
+                    <input type="number" class="promo-rate-input" data-pid="${p.id}" data-type="fixed"
+                        value="${fixedRate}" min="0" max="100" step="0.5"
+                        style="${inputStyle('#7c3aed', '#c4b5fd')}">
+                </td>
+                <td data-cell="fixedPrice" style="text-align:right;background:#faf5ff;">${fmt(fixed.promoPrice)}${diffSpan(fixed.promoPrice - origPrice, fmt)}</td>
+                <td data-cell="fixedProfit" style="text-align:right;background:#faf5ff;${colorStyle(fixed.promoProfit)}">${fmt(fixed.promoProfit)}${diffSpan(fixed.promoProfit - origProfit, fmt)}</td>
+                <td data-cell="fixedProfitRate" style="text-align:center;background:#faf5ff;${colorStyle(fixed.promoProfitRate)}">${fmtRate(fixed.promoProfitRate)}</td>
+                <td style="text-align:center;background:#fff7ed;border-left:2px solid #fdba74;padding:4px;">
+                    <input type="number" class="promo-rate-input" data-pid="${p.id}" data-type="add"
+                        value="${additionalRate}" min="0" max="100" step="0.5"
+                        style="${inputStyle('#ea580c', '#fdba74')}">
+                </td>
+                <td data-cell="addPrice" style="text-align:right;background:#fff7ed;">${fmt(add.promoPrice)}${diffSpan(add.promoPrice - origPrice, fmt)}</td>
+                <td data-cell="addProfit" style="text-align:right;background:#fff7ed;${colorStyle(add.promoProfit)}">${fmt(add.promoProfit)}${diffSpan(add.promoProfit - origProfit, fmt)}</td>
+                <td data-cell="addProfitRate" style="text-align:center;background:#fff7ed;${colorStyle(add.promoProfitRate)}">${fmtRate(add.promoProfitRate)}</td>
             </tr>`;
         }).join('');
 
@@ -390,6 +406,62 @@ window.PromotionModule = {
             <thead>${groupHeader}${colHeader}</thead>
             <tbody>${rows}</tbody>
         </table>`;
+
+        // 행별 할인율 직접 수정 이벤트 (이벤트 위임)
+        wrap.oninput = (e) => {
+            const input = e.target.closest('.promo-rate-input');
+            if (!input) return;
+            const rate = parseFloat(input.value);
+            if (isNaN(rate) || rate < 0 || rate > 100) return;
+            const pid  = input.dataset.pid;
+            const type = input.dataset.type;
+            if (!this._perProductRates[pid]) this._perProductRates[pid] = {};
+            if (type === 'fixed') this._perProductRates[pid].fixedRate = rate;
+            else                  this._perProductRates[pid].addRate   = rate;
+            this._updateProductRowCells(pid);
+        };
+    },
+
+    // 행별 할인율 변경 시 계산 셀 업데이트
+    _updateProductRowCells(pid) {
+        const p = this.products.find(pr => pr.id === pid);
+        if (!p) return;
+
+        const globalFixed = this._fixedRate();
+        const globalAdd   = this._addRate();
+        const override    = this._perProductRates[pid] || {};
+        const rowFixed    = override.fixedRate !== undefined ? override.fixedRate : globalFixed;
+        const rowAdd      = override.addRate   !== undefined ? override.addRate   : globalAdd;
+
+        const fixed = this._calcPromoItem(p, 'fixed', rowFixed);
+        const add   = this._calcPromoItem(p, 'additional', rowAdd);
+        const origPrice  = parseFloat(p.discountPrice) || 0;
+        const origProfit = parseFloat(p.ownMallProfit)  || 0;
+
+        const fmt        = n => window.Utils.formatNumber(Math.round(n));
+        const fmtRate    = n => (Math.round(n * 10) / 10) + '%';
+        const colorStyle = v => v >= 0 ? 'color:#16a34a;font-weight:500;' : 'color:#dc2626;font-weight:500;';
+        const diffSpan   = (v, fmtFn) => v !== 0
+            ? `<span style="${colorStyle(v)}font-size:0.75rem;margin-left:3px;">(${v>=0?'+':''}${fmtFn(v)})</span>`
+            : '';
+
+        const wrap = document.getElementById('promoTableWrap');
+        const row  = wrap?.querySelector(`tr[data-pid="${pid}"]`);
+        if (!row) return;
+
+        const set = (cell, html, style) => {
+            const el = row.querySelector(`[data-cell="${cell}"]`);
+            if (!el) return;
+            el.innerHTML = html;
+            el.style.cssText = style;
+        };
+
+        set('fixedPrice',      `${fmt(fixed.promoPrice)}${diffSpan(fixed.promoPrice - origPrice, fmt)}`,    'text-align:right;background:#faf5ff;');
+        set('fixedProfit',     `${fmt(fixed.promoProfit)}${diffSpan(fixed.promoProfit - origProfit, fmt)}`,  `text-align:right;background:#faf5ff;${colorStyle(fixed.promoProfit)}`);
+        set('fixedProfitRate', fmtRate(fixed.promoProfitRate),                                               `text-align:center;background:#faf5ff;${colorStyle(fixed.promoProfitRate)}`);
+        set('addPrice',        `${fmt(add.promoPrice)}${diffSpan(add.promoPrice - origPrice, fmt)}`,         'text-align:right;background:#fff7ed;');
+        set('addProfit',       `${fmt(add.promoProfit)}${diffSpan(add.promoProfit - origProfit, fmt)}`,      `text-align:right;background:#fff7ed;${colorStyle(add.promoProfit)}`);
+        set('addProfitRate',   fmtRate(add.promoProfitRate),                                                 `text-align:center;background:#fff7ed;${colorStyle(add.promoProfitRate)}`);
     },
 
     // ───── 저장 / 보기 / 불러오기 / 삭제 ─────
@@ -400,7 +472,11 @@ window.PromotionModule = {
 
         const filtered = this._filteredProducts();
         const items = filtered.map(p => {
-            const { promoRate, promoPrice, promoProfit, promoProfitRate } = this._calcPromoItem(p, mode, rate);
+            const override = this._perProductRates[p.id] || {};
+            const effectiveRate = mode === 'fixed'
+                ? (override.fixedRate !== undefined ? override.fixedRate : rate)
+                : (override.addRate   !== undefined ? override.addRate   : rate);
+            const { promoRate, promoPrice, promoProfit, promoProfitRate } = this._calcPromoItem(p, mode, effectiveRate);
             return {
                 productId:            p.id,
                 productCode:          p.productCode || '',
