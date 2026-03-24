@@ -16,6 +16,7 @@ window.StockInventoryModule = {
         { key: 'backSupport',  label: '뒷침',       type: 'select',
           options: ['일반','프리미엄'] },
         { key: 'optionName',   label: '옵션명(자동생성)', type: 'readonly' },
+        { key: 'productWeight', label: '제품중량(g)', type: 'number' },
         { key: 'goldWeight',   label: '금중량',     type: 'number' },
         { key: 'goldValue',    label: '금값',       type: 'number' },
         { key: 'laborCost',    label: '공임비',     type: 'number' },
