@@ -760,6 +760,8 @@ window.ManufacturingCostsModule = {
         const salesField = { key: 'salesAmount', label: '매출금액(이익계산용)', type: 'number', calc: false };
         // 주문번호 필드 추가
         const orderField = { key: 'orderId', label: '주문번호(연결)', type: 'text', calc: false };
+        // 수수료율 필드 (읽기전용 - 매출표에서 연동)
+        const commissionRateField = { key: 'commissionRate', label: '수수료율(%)', type: 'number', calc: false };
 
         // 금시세가 0이거나 없을 때 금재고에서 최신 평단가 로드
         let goldAvgPrice = null;
@@ -801,7 +803,7 @@ window.ManufacturingCostsModule = {
                 if (!val && goldAvgPrice) val = Math.round(goldAvgPrice);
             }
             // 주문번호(orderId)와 매출금액(salesAmount)은 수정 불가
-            const isReadOnly = f.key === 'orderId' || f.key === 'salesAmount' || f.calc;
+            const isReadOnly = f.key === 'orderId' || f.key === 'salesAmount' || f.key === 'commissionRate' || f.calc;
             const isRequired = !isReadOnly && f.type !== 'checkbox' && required.includes(f.key);
 
             // "입력 완료" 체크박스 특별 처리
@@ -853,6 +855,7 @@ window.ManufacturingCostsModule = {
             <div class="form-grid">
                 ${makeInput(orderField)}
                 ${makeInput(salesField)}
+                ${makeInput(commissionRateField)}
                 ${fieldsBeforeStone.map(makeInput).join('')}
                 ${stoneSection}
                 ${fieldsAfterStone.map(makeInput).join('')}
@@ -917,10 +920,12 @@ window.ManufacturingCostsModule = {
         const stoneInfoBtn = wrapper.querySelector('#stoneInfoBtn');
         if (stoneInfoBtn) {
             stoneInfoBtn.addEventListener('click', () => {
-                // 1. stoneArray (JSON, {stoneType/stoneQty} 형식) 우선 사용
+                // 1. stoneArray: 현재 폼의 hidden input 우선 → 원본 데이터 순으로 읽기
                 let existingStones = [];
                 try {
-                    const parsed = JSON.parse(cost?.stoneArray || '[]');
+                    const stoneArrayEl = wrapper.querySelector('#stoneArrayInput');
+                    const currentValue = stoneArrayEl?.value || cost?.stoneArray || '[]';
+                    const parsed = JSON.parse(currentValue);
                     if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].stoneType) {
                         existingStones = parsed;
                     }
