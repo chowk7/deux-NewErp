@@ -174,10 +174,13 @@ window.StoneInputModalModule = {
         const diamond = this.diamondRates.find(d => d.diamondType === diamondType);
 
         if (diamond) {
-            const price = parseFloat(diamond.costWithoutVat) || 0;
+            const stoneCertSelect = wrapper?.querySelector('#stoneCertSelect');
+            const cert = stoneCertSelect?.value || '';
+            const basePrice = parseFloat(diamond.costWithVat) || 0;
+            const warrantyFee = this.getWarrantyFee(diamond, cert) * 0.8;
             const display = wrapper.querySelector('#stonePriceDisplay');
             if (display) {
-                display.value = price;
+                display.value = basePrice + warrantyFee;
             }
         }
     },
@@ -222,11 +225,12 @@ window.StoneInputModalModule = {
             return;
         }
 
-        // 단가: 사용자가 수동 입력한 값 우선 사용
+        // 단가: 사용자가 수동 입력한 값 우선 사용, 없으면 VAT포함가 + 보증서추가금(80%) 자동 산출
         const priceDisplay = wrapper.querySelector('#stonePriceDisplay');
-        const stonePrice = parseFloat(priceDisplay?.value) || parseFloat(diamond.costWithoutVat) || 0;
+        const basePrice = parseFloat(diamond.costWithVat) || 0;
+        const warrantyFee = this.getWarrantyFee(diamond, cert) * 0.8;
+        const stonePrice = parseFloat(priceDisplay?.value) || (basePrice + warrantyFee);
         const totalPrice = stonePrice * qty;
-        const warrantyFee = this.getWarrantyFee(diamond, cert);
 
         const stoneData = {
             id: this.currentEditId || `stone_${Date.now()}_${Math.random()}`,
@@ -235,7 +239,7 @@ window.StoneInputModalModule = {
             stoneCert: cert,
             stonePrice: stonePrice,
             totalPrice: totalPrice,
-            warrantyFee: warrantyFee
+            warrantyFee: 0   // 보증서 추가금이 단가에 포함되므로 별도 추가금 없음
         };
 
         if (this.currentEditId) {
