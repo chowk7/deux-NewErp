@@ -16,6 +16,7 @@ window.SalesManagementModule = {
           options: ['R(반지)','N(목걸이)','B(팔찌)','E(귀걸이)','기타'] },
         { key: 'productCode',     label: '상품코드',      type: 'text',   defaultRequired: false },
         { key: 'length',          label: '길이(cm)',      type: 'number', defaultRequired: false },
+        { key: 'productWeight',   label: '제품중량(g)',   type: 'number', defaultRequired: false },
         { key: 'color',           label: '색상',          type: 'select', defaultRequired: false,
           options: ['14K화이트','14K옐로우','14K로즈','18K화이트','18K옐로우','18K로즈'] },
         { key: 'size',            label: '사이즈',        type: 'text',   defaultRequired: false },
@@ -68,7 +69,7 @@ window.SalesManagementModule = {
             ...this.ORDER_FIELDS,
             { key: 'separator1', label: '--- 제조원가 ---', type: 'text' },
             // 제조원가 필드 (calc 필드 제외, 단 goldValue, manufacturingCost는 입력용으로 포함)
-            { key: 'productWeight',   label: '제품중량(참고g)', type: 'number' },
+            // productWeight는 ORDER_FIELDS에 포함되어 있으므로 제외
             { key: 'stoneWeight',     label: '나석중량(참고ct)',type: 'number' },
             { key: 'goldWeight14k',   label: '금중량14K(g)',    type: 'number' },
             { key: 'goldWeightPure',  label: '금중량순금해리(g)',type: 'number' },
