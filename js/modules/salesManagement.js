@@ -874,7 +874,7 @@ window.SalesManagementModule = {
                     }
                 }
 
-                ['orderAmount','salesAmount','commissionRate','length'].forEach(k => {
+                ['orderAmount','salesAmount','commissionRate','length','productWeight'].forEach(k => {
                     if (data[k] !== undefined) data[k] = parseFloat(data[k]) || 0;
                 });
 

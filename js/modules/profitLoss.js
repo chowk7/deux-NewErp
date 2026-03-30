@@ -89,26 +89,9 @@ window.ProfitLossModule = {
         const orders = ordersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         console.log(`[P&L] ${year}년 주문 데이터: ${orders.length}개`, orders);
 
-        // 2. 제조원가 전체 로드 (주문별 매출이익 계산용)
-        // 매출표와 제조원가는 같은 컬렉션(sales/orders/items)에 저장됨
-        const mfgSnap = await window.firebaseDb
-            .collection('sales').doc('orders').collection('items')
-            .get();
-        const mfgCosts = mfgSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        console.log(`[P&L] 제조원가 데이터: ${mfgCosts.length}개`, mfgCosts);
-
-        // 주문ID -> 제조원가 매핑
-        // 문서 ID(orderNumber)를 기준으로 매핑
-        const mfgByOrderId = {};
-        mfgCosts.forEach(m => {
-            const orderId = m.orderId || m.id;  // orderId 필드 또는 문서 ID 사용
-            if (orderId) {
-                mfgByOrderId[orderId] = m;
-            }
-        });
-        console.log(`[P&L] orderId 매핑: ${Object.keys(mfgByOrderId).length}개`, mfgByOrderId);
-
-        // 3. 판관비는 판관비 날짜 기준으로 집계
+        // 2. 판관비는 판관비 날짜 기준으로 집계
+        // 참고: 매출표와 제조원가는 같은 컬렉션(sales/orders/items)의 동일 문서에 저장됨
+        // 따라서 orders 쿼리 결과에 이미 manufacturingCost가 포함되어 있음
         const expSnap = await window.firebaseDb
             .collection('sales').doc('adminExpenses').collection('items')
             .get();
@@ -185,8 +168,7 @@ window.ProfitLossModule = {
                 // 주문별 매출이익 = 매출*(1-수수료율/100) - 제조원가
                 const commissionRate = o.commissionRate || 0;
                 const netSalesAmount = (o.salesAmount || 0) * (1 - commissionRate / 100);
-                const mfg = mfgByOrderId[o.id];
-                const profit = netSalesAmount - (mfg?.manufacturingCost || 0);
+                const profit = netSalesAmount - (o.manufacturingCost || 0);
                 grossProfit += profit;
             });
 
