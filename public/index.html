@@ -636,36 +636,9 @@
                 </main>
             </div>
 
-            <!-- 모바일 하단 네비게이션 -->
-            <nav class="mobile-bottom-nav">
-                <a href="#" data-menu="orders" class="bottom-nav-item">
-                    <span class="bottom-nav-icon">📋</span>
-                    <span class="bottom-nav-label">매출표</span>
-                </a>
-                <a href="#" id="bottomNavImweb" class="bottom-nav-item">
-                    <span class="bottom-nav-icon">🌐</span>
-                    <span class="bottom-nav-label">아임웹</span>
-                </a>
-                <a href="#" data-menu="dashboard" class="bottom-nav-item active">
-                    <span class="bottom-nav-icon">🏠</span>
-                    <span class="bottom-nav-label">통합관리</span>
-                </a>
-                <a href="#" data-menu="manufacturing-costs" class="bottom-nav-item">
-                    <span class="bottom-nav-icon">🏭</span>
-                    <span class="bottom-nav-label">제조관리</span>
-                </a>
-                <a href="#" data-menu="order-management" class="bottom-nav-item">
-                    <span class="bottom-nav-icon">🚚</span>
-                    <span class="bottom-nav-label">배송관리</span>
-                </a>
-                <a href="#" data-menu="admin-expenses" class="bottom-nav-item">
-                    <span class="bottom-nav-icon">💼</span>
-                    <span class="bottom-nav-label">판관비</span>
-                </a>
-                <a href="#" data-menu="profit-loss" class="bottom-nav-item">
-                    <span class="bottom-nav-icon">📈</span>
-                    <span class="bottom-nav-label">P&amp;L</span>
-                </a>
+            <!-- 모바일 하단 액션 바 (섹션별 동적 렌더링) -->
+            <nav class="mobile-bottom-nav" id="mobileActionBar">
+                <!-- 섹션 전환 시 app.js의 renderMobileActions()에 의해 채워짐 -->
             </nav>
         </div>
     </div>

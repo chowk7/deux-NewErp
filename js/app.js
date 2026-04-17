@@ -3,6 +3,77 @@
  * Handles page navigation, menu system, and overall app state
  */
 
+const MOBILE_ACTIONS = {
+    dashboard:            [],
+    'diamond-rates':      [
+        { icon: '➕', label: '새항목',  btnId: 'addDiamondRateBtn' },
+        { icon: '📤', label: 'CSV업로드', btnId: 'csvUploadDiamondBtn' },
+        { icon: '⚙️', label: '필수항목', btnId: 'diamondRequiredSettingsBtn' },
+        { icon: '📋', label: '표시항목', btnId: 'diamondDisplaySettingsBtn' },
+    ],
+    'product-rates':      [
+        { icon: '➕', label: '새항목',  btnId: 'addProductRateBtn' },
+        { icon: '📤', label: 'CSV업로드', btnId: 'csvUploadProductBtn' },
+        { icon: '⚙️', label: '필수항목', btnId: 'productRequiredSettingsBtn' },
+        { icon: '📋', label: '표시항목', btnId: 'productDisplaySettingsBtn' },
+    ],
+    'new-product-pricing': [
+        { icon: '➕', label: '새항목',  btnId: 'addNewProductPricingBtn' },
+        { icon: '🗑️', label: '삭제',    btnId: 'bulkDeleteNewProductPricingBtn' },
+    ],
+    'gold-inventory':     [
+        { icon: '➕', label: '구매입력', btnId: 'addGoldInventoryBtn' },
+        { icon: '📥', label: 'CSV업로드', btnId: 'csvUploadGoldBtn' },
+    ],
+    customers:            [
+        { icon: '➕', label: '새고객',  btnId: 'addCustomerBtn' },
+        { icon: '📤', label: 'CSV업로드', btnId: 'csvUploadCustomerBtn' },
+        { icon: '📋', label: '표시항목', btnId: 'customerDisplaySettingsBtn' },
+    ],
+    'option-charges':     [
+        { icon: '➕', label: '새옵션',  btnId: 'addOptionChargeBtn' },
+        { icon: '📤', label: 'CSV업로드', btnId: 'csvUploadOptionBtn' },
+        { icon: '⚙️', label: '필수항목', btnId: 'optionRequiredSettingsBtn' },
+        { icon: '📋', label: '표시항목', btnId: 'optionDisplaySettingsBtn' },
+    ],
+    'price-settings':     [],
+    orders:               [
+        { icon: '➕', label: '새주문',  btnId: 'addOrderBtn' },
+        { icon: '🌐', label: '아임웹',  btnId: 'importImwebBtn' },
+        { icon: '📤', label: 'CSV업로드', btnId: 'csvUploadIntegratedBtn' },
+        { icon: '⚙️', label: '필수항목', btnId: 'ordersRequiredSettingsBtn' },
+        { icon: '📋', label: '표시항목', btnId: 'ordersDisplaySettingsBtn' },
+    ],
+    'manufacturing-costs': [
+        { icon: '⚙️', label: '필수항목', btnId: 'mfgRequiredSettingsBtn' },
+        { icon: '📋', label: '표시항목', btnId: 'mfgDisplaySettingsBtn' },
+    ],
+    'admin-expenses':     [
+        { icon: '➕', label: '새항목',  btnId: 'addAdminExpenseBtn' },
+        { icon: '📤', label: 'CSV업로드', btnId: 'csvUploadAdminBtn' },
+        { icon: '📋', label: '표시항목', btnId: 'adminDisplaySettingsBtn' },
+    ],
+    'profit-loss':        [
+        { icon: '📊', label: '계산',    btnId: 'calcPlBtn' },
+        { icon: '💾', label: '다운로드', btnId: 'downloadPlDataBtn' },
+    ],
+    'order-management':   [
+        { icon: '📋', label: '표시항목', btnId: 'orderMgmtDisplaySettingsBtn' },
+    ],
+    promotion:            [
+        { icon: '🔍', label: '시뮬레이션', btnId: 'promoCalcBtn' },
+        { icon: '💾', label: '저장',    btnId: 'promoSaveBtn' },
+        { icon: '📋', label: '표시항목', btnId: 'promoDisplaySettingsBtn' },
+    ],
+    notes:                [
+        { icon: '➕', label: '새노트',  btnId: 'newNoteBtn' },
+    ],
+    images:               [],
+    'word-templates':     [
+        { icon: '📤', label: '업로드',  btnId: 'uploadTemplateBtn' },
+    ],
+};
+
 class DiamonJewelryApp {
     constructor() {
         this.currentUser = null;
@@ -87,8 +158,8 @@ class DiamonJewelryApp {
             section.classList.add('hidden');
         });
 
-        // 모든 네비게이션 요소에서 active 제거 (사이드바 + 드로어 + 하단 네비)
-        document.querySelectorAll('.nav-link, .bottom-nav-item, .drawer-nav-link').forEach(link => {
+        // 모든 네비게이션 요소에서 active 제거 (사이드바 + 드로어)
+        document.querySelectorAll('.nav-link, .drawer-nav-link').forEach(link => {
             link.classList.remove('active');
         });
 
@@ -97,8 +168,9 @@ class DiamonJewelryApp {
             el.classList.add('active');
         });
 
-        // 모바일 드로어 닫기
+        // 모바일 드로어 닫기 및 하단 액션 바 갱신
         this.closeMobileDrawer();
+        this.renderMobileActions(menuId);
 
         // 해당하는 섹션 보이기
         const sectionMap = {
@@ -251,24 +323,30 @@ class DiamonJewelryApp {
         if (drawerLogoutBtn) {
             drawerLogoutBtn.addEventListener('click', () => this.logout());
         }
-
-        // Imweb bottom nav button triggers imweb import (not a section switch)
-        const bottomNavImweb = document.getElementById('bottomNavImweb');
-        if (bottomNavImweb) {
-            bottomNavImweb.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (window.ImwebIntegrationModule) {
-                    window.ImwebIntegrationModule.fetchImwebOrders();
-                }
-            });
-        }
     }
 
     closeMobileDrawer() {
         document.getElementById('mobileDrawer')?.classList.remove('open');
         document.getElementById('mobileDrawerOverlay')?.classList.remove('active');
         document.body.style.overflow = '';
+    }
+
+    renderMobileActions(menuId) {
+        const bar = document.getElementById('mobileActionBar');
+        if (!bar) return;
+        const actions = MOBILE_ACTIONS[menuId] || [];
+        bar.innerHTML = actions.map(a =>
+            `<button class="mobile-action-item" data-target="${a.btnId || ''}">` +
+            `<span class="mobile-action-icon">${a.icon}</span>` +
+            `<span class="mobile-action-label">${a.label}</span>` +
+            `</button>`
+        ).join('');
+        bar.querySelectorAll('.mobile-action-item').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const target = document.getElementById(btn.dataset.target);
+                if (target) target.click();
+            });
+        });
     }
 
     /**
