@@ -137,8 +137,9 @@ window.SalesManagementModule = {
     },
 
     openOrderDisplaySettings() {
-        const defaultKeys = ['orderDate', 'orderNumber', 'customerName', 'productName', 'orderAmount', 'salesAmount'];
-        window.Utils.openDisplayFieldsModal('orders', this.ORDER_FIELDS,
+        const defaultKeys = ['orderDate', 'orderNumber', 'customerName', 'productName', 'orderAmount', 'salesAmount', '__imageColumn'];
+        const fieldsWithImage = [...this.ORDER_FIELDS, { key: '__imageColumn', label: '첨부이미지' }];
+        window.Utils.openDisplayFieldsModal('orders', fieldsWithImage,
             () => this.loadOrders(),
             defaultKeys);
     },
@@ -338,23 +339,25 @@ window.SalesManagementModule = {
         if (!tbody) return;
 
         // 기본 표시 필드 (표시항목 설정이 없을 때)
-        const defaultDisplayFields = ['orderDate', 'orderNumber', 'customerName', 'productName', 'orderAmount', 'salesAmount'];
+        const defaultDisplayFields = ['orderDate', 'orderNumber', 'customerName', 'productName', 'orderAmount', 'salesAmount', '__imageColumn'];
 
         // sessionStorage에서 선택된 필드 로드
-        const displayFieldKeys = window.Utils.getDisplayFields('orders',
-            defaultDisplayFields.length > 0 ? defaultDisplayFields : this.ORDER_FIELDS.map(f => f.key));
+        const displayFieldKeys = window.Utils.getDisplayFields('orders', defaultDisplayFields);
+        const showImageColumn = displayFieldKeys.includes('__imageColumn');
+        const dataFieldKeys = displayFieldKeys.filter(k => k !== '__imageColumn');
 
         // 필드 객체 매핑
         const fieldMap = {};
         this.ORDER_FIELDS.forEach(f => fieldMap[f.key] = f);
 
         if (this.orders.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="${displayFieldKeys.length + 2}" style="text-align:center">데이터가 없습니다.</td></tr>`;
+            const colCount = dataFieldKeys.length + 2 + (showImageColumn ? 1 : 0);
+            tbody.innerHTML = `<tr><td colspan="${colCount}" style="text-align:center">데이터가 없습니다.</td></tr>`;
             return;
         }
 
         tbody.innerHTML = this.orders.map(o => {
-            const cells = displayFieldKeys.map(key => {
+            const cells = dataFieldKeys.map(key => {
                 const field = fieldMap[key];
                 if (!field) return '<td>-</td>';
 
@@ -392,7 +395,7 @@ window.SalesManagementModule = {
                 <tr data-id="${o.id}">
                     <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${o.id}"></td>
                     ${cells}
-                    <td style="font-size:0.8rem;">${imageCell}</td>
+                    ${showImageColumn ? `<td style="font-size:0.8rem;">${imageCell}</td>` : ''}
                     <td>
                         <button class="btn btn-sm btn-primary"
                             data-action="showOrderForm" data-id="${o.id}">수정</button>
@@ -416,7 +419,7 @@ window.SalesManagementModule = {
             thead.appendChild(checkboxTh);
 
             // 필드 헤더 생성
-            displayFieldKeys.forEach(key => {
+            dataFieldKeys.forEach(key => {
                 const field = fieldMap[key];
                 const th = document.createElement('th');
                 const label = field ? field.label : key;
@@ -433,10 +436,12 @@ window.SalesManagementModule = {
                 thead.appendChild(th);
             });
 
-            // 첨부이미지 헤더
-            const imageTh = document.createElement('th');
-            imageTh.textContent = '첨부이미지';
-            thead.appendChild(imageTh);
+            // 첨부이미지 헤더 (표시항목에서 선택된 경우만)
+            if (showImageColumn) {
+                const imageTh = document.createElement('th');
+                imageTh.textContent = '첨부이미지';
+                thead.appendChild(imageTh);
+            }
 
             // 관리 헤더 생성
             const manageTh = document.createElement('th');

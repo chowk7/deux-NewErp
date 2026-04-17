@@ -36,9 +36,10 @@ window.OrderManagementModule = {
     },
 
     openDisplaySettings() {
-        const defaultKeys = ['orderNumber', 'customerName', 'productName', 'stoneRequested', 'workshopRequested', 'productionComplete', 'shippingReady', 'delivered'];
+        const defaultKeys = ['orderNumber', 'customerName', 'productName', 'stoneRequested', 'workshopRequested', 'productionComplete', 'shippingReady', 'delivered', '__imageColumn'];
+        const fieldsWithImage = [...this.STATUS_FIELDS, { key: '__imageColumn', label: '첨부이미지' }];
         window.Utils.openDisplayFieldsModal('orderManagement',
-            [...this.STATUS_FIELDS],
+            fieldsWithImage,
             () => this.load(),
             defaultKeys);
     },
@@ -85,8 +86,10 @@ window.OrderManagementModule = {
         const tbody = table?.querySelector('tbody');
         if (!tbody) return;
 
-        const defaultDisplayFields = ['orderNumber', 'customerName', 'productName', 'stoneRequested', 'workshopRequested', 'productionComplete', 'shippingReady', 'delivered'];
+        const defaultDisplayFields = ['orderNumber', 'customerName', 'productName', 'stoneRequested', 'workshopRequested', 'productionComplete', 'shippingReady', 'delivered', '__imageColumn'];
         const displayFieldKeys = window.Utils.getDisplayFields('orderManagement', defaultDisplayFields);
+        const showImageColumn = displayFieldKeys.includes('__imageColumn');
+        const dataFieldKeys = displayFieldKeys.filter(k => k !== '__imageColumn');
 
         const dynamicFields = [
             { key: 'orderNumber',  label: '주문번호', type: 'text' },
@@ -99,12 +102,13 @@ window.OrderManagementModule = {
         displayFields.forEach(f => fieldMap[f.key] = f);
 
         if (this.items.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="${displayFieldKeys.length + 4}" style="text-align:center">데이터가 없습니다.</td></tr>`;
+            const colCount = dataFieldKeys.length + 2 + (showImageColumn ? 1 : 0);
+            tbody.innerHTML = `<tr><td colspan="${colCount}" style="text-align:center">데이터가 없습니다.</td></tr>`;
             return;
         }
 
         tbody.innerHTML = this.items.map(item => {
-            const cells = displayFieldKeys.map(key => {
+            const cells = dataFieldKeys.map(key => {
                 const field = fieldMap[key];
                 if (!field) return '<td>-</td>';
                 if (field.type === 'checkbox') {
@@ -134,7 +138,7 @@ window.OrderManagementModule = {
                 <tr data-id="${item.id}">
                     <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${item.id}"></td>
                     ${cells}
-                    <td>${imageLinks}</td>
+                    ${showImageColumn ? `<td>${imageLinks}</td>` : ''}
                     <td>
                         <button class="btn btn-sm btn-primary" data-action="showForm" data-id="${item.id}">수정</button>
                     </td>
@@ -148,11 +152,13 @@ window.OrderManagementModule = {
             checkboxTh.style.textAlign = 'center';
             checkboxTh.className = 'header-checkbox-th';
             checkboxTh.innerHTML = '<input type="checkbox" class="header-checkbox">';
-            const statusHeaders = displayFieldKeys.map(key => {
+            const statusHeaders = dataFieldKeys.map(key => {
                 const field = fieldMap[key];
                 return `<th>${field ? field.label.replace('여부', '') : key}</th>`;
             }).join('');
-            thead.innerHTML = statusHeaders + '<th>첨부이미지</th><th>관리</th>';
+            thead.innerHTML = statusHeaders
+                + (showImageColumn ? '<th>첨부이미지</th>' : '')
+                + '<th>관리</th>';
             thead.insertBefore(checkboxTh, thead.firstChild);
         }
 
