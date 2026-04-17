@@ -87,16 +87,18 @@ class DiamonJewelryApp {
             section.classList.add('hidden');
         });
 
-        // 모든 메뉴 링크에서 active 제거
-        document.querySelectorAll('.nav-link').forEach(link => {
+        // 모든 네비게이션 요소에서 active 제거 (사이드바 + 드로어 + 하단 네비)
+        document.querySelectorAll('.nav-link, .bottom-nav-item, .drawer-nav-link').forEach(link => {
             link.classList.remove('active');
         });
 
-        // 클릭한 메뉴에 active 추가
-        const activeLink = document.querySelector(`[data-menu="${menuId}"]`);
-        if (activeLink) {
-            activeLink.classList.add('active');
-        }
+        // 동일한 data-menu를 가진 모든 요소에 active 추가
+        document.querySelectorAll(`[data-menu="${menuId}"]`).forEach(el => {
+            el.classList.add('active');
+        });
+
+        // 모바일 드로어 닫기
+        this.closeMobileDrawer();
 
         // 해당하는 섹션 보이기
         const sectionMap = {
@@ -107,6 +109,7 @@ class DiamonJewelryApp {
             'option-charges': 'optionChargesContent',
             'price-settings': 'priceSettingsContent',
             'orders': 'ordersContent',
+            'order-management': 'orderManagementContent',
             'manufacturing-costs': 'manufacturingCostsContent',
             'admin-expenses': 'adminExpensesContent',
             'profit-loss': 'profitLossContent',
@@ -149,6 +152,8 @@ class DiamonJewelryApp {
                         await window.NewProductPricingModule.load();
                     } else if (window.PromotionModule && menuId === 'promotion') {
                         await window.PromotionModule.load();
+                    } else if (window.OrderManagementModule && menuId === 'order-management') {
+                        await window.OrderManagementModule.load();
                     } else if (menuId === 'notes') {
                         notes.loadNotes().then(() => notes.renderNotes());
                     }
@@ -184,6 +189,7 @@ class DiamonJewelryApp {
         this.setupPriceManagementModule();
         this.setupSalesManagementModule();
         this.setupNewModules();
+        this.setupMobileNav();
         this.loadDashboard();
     }
 
@@ -202,6 +208,67 @@ class DiamonJewelryApp {
         if (userEmailElement && this.currentUser) {
             userEmailElement.textContent = this.currentUser.email;
         }
+        const drawerEmail = document.getElementById('drawerUserEmail');
+        if (drawerEmail && this.currentUser) {
+            drawerEmail.textContent = this.currentUser.email;
+        }
+        const drawerAvatar = document.getElementById('drawerUserAvatar');
+        if (drawerAvatar && this.currentUser) {
+            drawerAvatar.textContent = this.currentUser.email.charAt(0).toUpperCase();
+        }
+    }
+
+    setupMobileNav() {
+        if (this._mobileNavSetup) return;
+        this._mobileNavSetup = true;
+
+        const menuBtn = document.getElementById('mobileMenuBtn');
+        const drawer = document.getElementById('mobileDrawer');
+        const overlay = document.getElementById('mobileDrawerOverlay');
+
+        if (menuBtn) {
+            menuBtn.addEventListener('click', () => {
+                drawer.classList.add('open');
+                overlay.classList.add('active');
+                document.body.style.overflow = 'hidden';
+            });
+        }
+
+        if (overlay) {
+            overlay.addEventListener('click', () => this.closeMobileDrawer());
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') this.closeMobileDrawer();
+        });
+
+        // Drawer links close the drawer after navigation (navigation handled by [data-menu] listener)
+        document.querySelectorAll('.drawer-nav-link[data-menu]').forEach(link => {
+            link.addEventListener('click', () => this.closeMobileDrawer());
+        });
+
+        const drawerLogoutBtn = document.getElementById('drawerLogoutBtn');
+        if (drawerLogoutBtn) {
+            drawerLogoutBtn.addEventListener('click', () => this.logout());
+        }
+
+        // Imweb bottom nav button triggers imweb import (not a section switch)
+        const bottomNavImweb = document.getElementById('bottomNavImweb');
+        if (bottomNavImweb) {
+            bottomNavImweb.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (window.ImwebIntegrationModule) {
+                    window.ImwebIntegrationModule.fetchImwebOrders();
+                }
+            });
+        }
+    }
+
+    closeMobileDrawer() {
+        document.getElementById('mobileDrawer')?.classList.remove('open');
+        document.getElementById('mobileDrawerOverlay')?.classList.remove('active');
+        document.body.style.overflow = '';
     }
 
     /**
