@@ -87,6 +87,13 @@ class DiamonJewelryApp {
     }
 
     setupEventListeners() {
+        // 뒤로가기 버튼으로 섹션 간 이동 지원
+        window.addEventListener('popstate', (e) => {
+            if (this.currentPage !== 'dashboard') return;
+            const menuId = e.state?.menuId;
+            if (menuId) this.handleMenuClick(menuId, true);
+        });
+
         // 로그인/회원가입 토글
         const signupToggle = document.getElementById('signupToggle');
         const loginToggle = document.getElementById('loginToggle');
@@ -152,7 +159,7 @@ class DiamonJewelryApp {
      * 메뉴 클릭 처리
      * @param {string} menuId - 메뉴 항목 ID
      */
-    async handleMenuClick(menuId) {
+    async handleMenuClick(menuId, skipPushState = false) {
         // 모든 콘텐츠 섹션 숨기기
         document.querySelectorAll('.content-section').forEach(section => {
             section.classList.add('hidden');
@@ -235,6 +242,11 @@ class DiamonJewelryApp {
                 }
             }
         }
+
+        // 브라우저 히스토리 업데이트 (뒤로가기 지원)
+        if (!skipPushState && history.state?.menuId !== menuId) {
+            history.pushState({ menuId }, '', '#' + menuId);
+        }
     }
 
     /**
@@ -262,7 +274,22 @@ class DiamonJewelryApp {
         this.setupSalesManagementModule();
         this.setupNewModules();
         this.setupMobileNav();
-        this.loadDashboard();
+
+        // URL 해시로 초기 섹션 결정, 없으면 dashboard
+        const validMenuIds = ['dashboard','diamond-rates','product-rates','new-product-pricing',
+            'gold-inventory','customers','option-charges','price-settings','orders',
+            'order-management','manufacturing-costs','admin-expenses','profit-loss',
+            'promotion','notes','images','word-templates'];
+        const hash = location.hash.replace('#', '');
+        const startMenu = validMenuIds.includes(hash) ? hash : 'dashboard';
+
+        history.replaceState({ menuId: startMenu }, '', '#' + startMenu);
+
+        if (startMenu !== 'dashboard') {
+            this.handleMenuClick(startMenu, true);
+        } else {
+            this.loadDashboard();
+        }
     }
 
     /**
