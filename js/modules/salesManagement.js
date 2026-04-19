@@ -848,6 +848,7 @@ window.SalesManagementModule = {
                     }
                 }
                 w.remove();
+                this.allOrders = [];
                 this.loadOrders();
             }
         );

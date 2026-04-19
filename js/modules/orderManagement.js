@@ -36,12 +36,15 @@ window.OrderManagementModule = {
     },
 
     openDisplaySettings() {
-        const defaultKeys = ['orderNumber', 'customerName', 'productName', 'stoneRequested', 'workshopRequested', 'productionComplete', 'shippingReady', 'delivered', '__imageColumn'];
-        const fieldsWithImage = [...this.STATUS_FIELDS, { key: '__imageColumn', label: '첨부이미지' }];
-        window.Utils.openDisplayFieldsModal('orderManagement',
-            fieldsWithImage,
-            () => this.load(),
-            defaultKeys);
+        const dynamicFields = [
+            { key: 'orderDate',    label: '주문일',   type: 'date' },
+            { key: 'orderNumber',  label: '주문번호', type: 'text' },
+            { key: 'customerName', label: '고객명',   type: 'text' },
+            { key: 'productName',  label: '상품명',   type: 'text' },
+        ];
+        const defaultKeys = ['orderDate', 'orderNumber', 'customerName', 'productName', 'stoneRequested', 'workshopRequested', 'productionComplete', 'shippingReady', 'delivered', '__imageColumn'];
+        const fieldsWithImage = [...dynamicFields, ...this.STATUS_FIELDS, { key: '__imageColumn', label: '첨부이미지' }];
+        window.Utils.openDisplayFieldsModal('orderManagement', fieldsWithImage, () => this.load(), defaultKeys);
     },
 
     async load(page = 1) {
