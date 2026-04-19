@@ -27,8 +27,11 @@ window.OrderManagementModule = {
 
     items: [],
     allItems: [],
+    filteredItems: [],
     pageSize: 50,
     currentPage: 1,
+    selectedYear: 'all',
+    searchQuery: '',
 
     async init() {
         document.getElementById('orderMgmtDisplaySettingsBtn')
@@ -47,6 +50,95 @@ window.OrderManagementModule = {
         window.Utils.openDisplayFieldsModal('orderManagement', fieldsWithImage, () => this.load(), defaultKeys);
     },
 
+    getItemYears() {
+        const years = new Set();
+        this.allItems.forEach(o => {
+            const raw = o.orderDate;
+            const date = raw?.toDate ? raw.toDate() : (raw ? new Date(raw) : null);
+            if (date && !isNaN(date.getTime())) years.add(String(date.getFullYear()));
+        });
+        return Array.from(years).sort((a, b) => b - a);
+    },
+
+    applyFilters() {
+        let data = this.allItems;
+        if (this.selectedYear !== 'all') {
+            data = data.filter(o => {
+                const raw = o.orderDate;
+                const date = raw?.toDate ? raw.toDate() : (raw ? new Date(raw) : null);
+                return date && String(date.getFullYear()) === this.selectedYear;
+            });
+        }
+        if (this.searchQuery) {
+            const q = this.searchQuery.toLowerCase();
+            data = data.filter(o =>
+                (o.customerName || '').toLowerCase().includes(q) ||
+                (o.productName  || '').toLowerCase().includes(q)
+            );
+        }
+        this.filteredItems = data;
+    },
+
+    renderFilterBar() {
+        const container = document.getElementById('orderMgmtFilterBar');
+        if (!container) return;
+
+        const years = this.getItemYears();
+        const yearBtns = ['all', ...years].map(y =>
+            `<button class="btn btn-sm orderMgmt-year-btn ${this.selectedYear === y ? 'btn-primary' : 'btn-outline'}" data-year="${y}">${y === 'all' ? '전체' : y + '년'}</button>`
+        ).join('');
+
+        const hasFilter = this.searchQuery || this.selectedYear !== 'all';
+        container.innerHTML = `
+            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:10px 0 12px;">
+                <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+                    <span style="font-size:0.85rem;color:#6b7280;white-space:nowrap;">연도</span>
+                    ${yearBtns}
+                </div>
+                <div style="display:flex;gap:6px;align-items:center;margin-left:auto;flex-wrap:wrap;">
+                    <input type="text" id="orderMgmtSearchInput" placeholder="고객명 또는 상품명"
+                        value="${this.searchQuery.replace(/"/g, '&quot;')}"
+                        style="padding:6px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:0.875rem;width:200px;">
+                    <button class="btn btn-sm btn-primary" id="orderMgmtSearchBtn">검색</button>
+                    ${hasFilter ? '<button class="btn btn-sm btn-outline" id="orderMgmtClearBtn">초기화</button>' : ''}
+                </div>
+            </div>`;
+
+        const rerender = () => {
+            this.applyFilters();
+            const startIdx = (this.currentPage - 1) * this.pageSize;
+            this.items = this.filteredItems.slice(startIdx, startIdx + this.pageSize);
+            this.renderTable();
+            this.renderPagination();
+            this.renderFilterBar();
+        };
+
+        container.querySelectorAll('.orderMgmt-year-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.selectedYear = btn.dataset.year;
+                this.currentPage = 1;
+                rerender();
+            });
+        });
+
+        document.getElementById('orderMgmtSearchBtn')?.addEventListener('click', () => {
+            this.searchQuery = document.getElementById('orderMgmtSearchInput')?.value?.trim() || '';
+            this.currentPage = 1;
+            rerender();
+        });
+
+        document.getElementById('orderMgmtSearchInput')?.addEventListener('keydown', e => {
+            if (e.key === 'Enter') document.getElementById('orderMgmtSearchBtn')?.click();
+        });
+
+        document.getElementById('orderMgmtClearBtn')?.addEventListener('click', () => {
+            this.selectedYear = 'all';
+            this.searchQuery = '';
+            this.currentPage = 1;
+            rerender();
+        });
+    },
+
     async load(page = 1) {
         try {
             this.currentPage = page || 1;
@@ -59,11 +151,14 @@ window.OrderManagementModule = {
                 this.allItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             }
 
+            this.applyFilters();
+
             const startIdx = (this.currentPage - 1) * this.pageSize;
-            this.items = this.allItems.slice(startIdx, startIdx + this.pageSize);
+            this.items = this.filteredItems.slice(startIdx, startIdx + this.pageSize);
 
             this.renderTable();
             this.renderPagination();
+            this.renderFilterBar();
         } catch (error) {
             console.error('[OrderManagement] load 실패:', error);
             window.Utils.showNotification('주문관리 로드 실패', 'error');
@@ -198,7 +293,7 @@ window.OrderManagementModule = {
         const paginationContainer = document.getElementById('orderManagementPagination');
         if (!paginationContainer) return;
 
-        const totalCount = this.allItems.length;
+        const totalCount = this.filteredItems.length;
         const totalPages = Math.ceil(totalCount / this.pageSize);
         const maxPageButtons = 5;
         let startPage = Math.max(1, this.currentPage - Math.floor(maxPageButtons / 2));
@@ -245,7 +340,7 @@ window.OrderManagementModule = {
             if (this.currentPage > 1) this.load(this.currentPage - 1);
         });
         document.getElementById('orderMgmtNextPageBtn')?.addEventListener('click', () => {
-            const totalPages = Math.ceil(this.allItems.length / this.pageSize);
+            const totalPages = Math.ceil(this.filteredItems.length / this.pageSize);
             if (this.currentPage < totalPages) this.load(this.currentPage + 1);
         });
         document.querySelectorAll('.orderMgmt-page-btn').forEach(btn => {
