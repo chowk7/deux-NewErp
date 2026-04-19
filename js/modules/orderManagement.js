@@ -240,7 +240,7 @@ window.OrderManagementModule = {
                 const field = fieldMap[key];
                 if (!field) return '<td>-</td>';
                 if (field.type === 'checkbox') {
-                    return `<td>${this._statusBadge(item[key])} ${field.label.replace('여부', '')}</td>`;
+                    return `<td style="text-align:center;"><input type="checkbox" class="status-checkbox" data-id="${item.id}" data-field="${key}" ${item[key] ? 'checked' : ''}></td>`;
                 }
                 if (field.type === 'date') {
                     let val = item[key];
@@ -322,6 +322,26 @@ window.OrderManagementModule = {
                     this.updateBulkDeleteBtn?.();
                 });
             }
+
+            table.querySelectorAll('tbody .status-checkbox').forEach(cb => {
+                cb.addEventListener('change', async () => {
+                    const id = cb.dataset.id;
+                    const field = cb.dataset.field;
+                    const newVal = cb.checked;
+                    try {
+                        await window.firebaseDb.collection('sales').doc('orders')
+                            .collection('items').doc(id)
+                            .update({ [field]: newVal, updatedAt: new Date() });
+                        const inAll = this.allItems.find(i => i.id === id);
+                        if (inAll) inAll[field] = newVal;
+                        const inCurr = this.items.find(i => i.id === id);
+                        if (inCurr) inCurr[field] = newVal;
+                    } catch (err) {
+                        window.Utils.showNotification('상태 업데이트 실패', 'error');
+                        cb.checked = !newVal;
+                    }
+                });
+            });
         }
     },
 
