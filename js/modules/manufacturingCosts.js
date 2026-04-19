@@ -48,7 +48,7 @@ window.ManufacturingCostsModule = {
     currentPage: 1,
     selectedYear: 'all',
     searchQuery: '',
-    mfgSortState: { column: null, direction: 'asc' },
+    mfgSortState: { column: 'orderDate', direction: 'desc' },
 
     async init() {
         // 나석단가표 로드
@@ -125,6 +125,20 @@ window.ManufacturingCostsModule = {
                 (o.customerName || '').toLowerCase().includes(q) ||
                 (o.productName || '').toLowerCase().includes(q)
             );
+        }
+        if (this.mfgSortState.column) {
+            const col = this.mfgSortState.column;
+            const dir = this.mfgSortState.direction === 'asc' ? 1 : -1;
+            data = [...data].sort((a, b) => {
+                let av = a[col], bv = b[col];
+                if (av?.toDate) av = av.toDate();
+                if (bv?.toDate) bv = bv.toDate();
+                if (av instanceof Date && bv instanceof Date) return (av - bv) * dir;
+                if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
+                av = av == null ? '' : String(av);
+                bv = bv == null ? '' : String(bv);
+                return av.localeCompare(bv, 'ko') * dir;
+            });
         }
         this.filteredCosts = data;
     },
@@ -414,28 +428,12 @@ window.ManufacturingCostsModule = {
             this.mfgSortState.column = column;
             this.mfgSortState.direction = 'asc';
         }
-
-        const dir = this.mfgSortState.direction === 'asc' ? 1 : -1;
-        const col = column;
-
-        this.costs.sort((a, b) => {
-            let av = a[col], bv = b[col];
-
-            // 날짜
-            if (av && av.toDate) av = av.toDate();
-            if (bv && bv.toDate) bv = bv.toDate();
-            if (av instanceof Date && bv instanceof Date) return (av - bv) * dir;
-
-            // 숫자
-            if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
-
-            // 문자열
-            av = av == null ? '' : String(av);
-            bv = bv == null ? '' : String(bv);
-            return av.localeCompare(bv, 'ko') * dir;
-        });
-
+        this.currentPage = 1;
+        this.applyMfgFilters();
+        this.costs = this.filteredCosts.slice(0, this.pageSize);
         this.renderTable();
+        this.renderPagination();
+        this.renderMfgFilterBar();
     },
 
     renderPagination() {

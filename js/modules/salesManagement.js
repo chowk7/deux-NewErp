@@ -58,7 +58,7 @@ window.SalesManagementModule = {
     selectedYear: 'all',
     searchQuery: '',
     showUndeliveredOnly: false,
-    orderSortState: { column: null, direction: 'asc' },
+    orderSortState: { column: 'orderDate', direction: 'desc' },
 
     async init() {
         // 통합 CSV 필드 초기화 (매출 + 제조원가 + 주문관리)
@@ -175,6 +175,20 @@ window.SalesManagementModule = {
                 (o.productName || '').toLowerCase().includes(q)
             );
         }
+        if (this.orderSortState.column) {
+            const col = this.orderSortState.column;
+            const dir = this.orderSortState.direction === 'asc' ? 1 : -1;
+            data = [...data].sort((a, b) => {
+                let av = a[col], bv = b[col];
+                if (av?.toDate) av = av.toDate();
+                if (bv?.toDate) bv = bv.toDate();
+                if (av instanceof Date && bv instanceof Date) return (av - bv) * dir;
+                if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
+                av = av == null ? '' : String(av);
+                bv = bv == null ? '' : String(bv);
+                return av.localeCompare(bv, 'ko') * dir;
+            });
+        }
         this.filteredOrders = data;
     },
 
@@ -277,7 +291,6 @@ window.SalesManagementModule = {
             const startIdx = (this.currentPage - 1) * this.pageSize;
             const endIdx = startIdx + this.pageSize;
             this.orders = this.filteredOrders.slice(startIdx, endIdx);
-            this.orderSortState = { column: null, direction: 'asc' };
             this.renderOrdersTable();
             this.renderPagination();
             this.renderOrderFilterBar();
@@ -288,49 +301,18 @@ window.SalesManagementModule = {
     },
 
     sortOrders(column) {
-        // 같은 컬럼 클릭 시 방향 전환, 다른 컬럼 클릭 시 asc로 정렬
         if (this.orderSortState.column === column) {
             this.orderSortState.direction = this.orderSortState.direction === 'asc' ? 'desc' : 'asc';
         } else {
             this.orderSortState.column = column;
             this.orderSortState.direction = 'asc';
         }
-
-        // 데이터 정렬
-        this.orders.sort((a, b) => {
-            let aVal = a[column];
-            let bVal = b[column];
-
-            // Firestore Timestamp 처리
-            if (aVal?.toDate) aVal = aVal.toDate();
-            if (bVal?.toDate) bVal = bVal.toDate();
-
-            // null/undefined 처리
-            if (aVal == null && bVal == null) return 0;
-            if (aVal == null) return 1;
-            if (bVal == null) return -1;
-
-            // 숫자 비교
-            if (typeof aVal === 'number' && typeof bVal === 'number') {
-                return this.orderSortState.direction === 'asc' ? aVal - bVal : bVal - aVal;
-            }
-
-            // 날짜 비교
-            if (aVal instanceof Date && bVal instanceof Date) {
-                return this.orderSortState.direction === 'asc' ? aVal - bVal : bVal - aVal;
-            }
-
-            // 문자열 비교
-            const aStr = String(aVal).toLowerCase();
-            const bStr = String(bVal).toLowerCase();
-            if (this.orderSortState.direction === 'asc') {
-                return aStr.localeCompare(bStr, 'ko-KR');
-            } else {
-                return bStr.localeCompare(aStr, 'ko-KR');
-            }
-        });
-
+        this.currentPage = 1;
+        this.applyOrderFilters();
+        this.orders = this.filteredOrders.slice(0, this.pageSize);
         this.renderOrdersTable();
+        this.renderPagination();
+        this.renderOrderFilterBar();
     },
 
     renderOrdersTable() {

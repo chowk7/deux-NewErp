@@ -32,6 +32,7 @@ window.OrderManagementModule = {
     currentPage: 1,
     selectedYear: 'all',
     searchQuery: '',
+    sortState: { column: 'orderDate', direction: 'desc' },
 
     async init() {
         document.getElementById('orderMgmtDisplaySettingsBtn')
@@ -76,7 +77,36 @@ window.OrderManagementModule = {
                 (o.productName  || '').toLowerCase().includes(q)
             );
         }
+        if (this.sortState.column) {
+            const col = this.sortState.column;
+            const dir = this.sortState.direction === 'asc' ? 1 : -1;
+            data = [...data].sort((a, b) => {
+                let av = a[col], bv = b[col];
+                if (av?.toDate) av = av.toDate();
+                if (bv?.toDate) bv = bv.toDate();
+                if (av instanceof Date && bv instanceof Date) return (av - bv) * dir;
+                if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
+                av = av == null ? '' : String(av);
+                bv = bv == null ? '' : String(bv);
+                return av.localeCompare(bv, 'ko') * dir;
+            });
+        }
         this.filteredItems = data;
+    },
+
+    sortItems(column) {
+        if (this.sortState.column === column) {
+            this.sortState.direction = this.sortState.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+            this.sortState.column = column;
+            this.sortState.direction = 'asc';
+        }
+        this.currentPage = 1;
+        this.applyFilters();
+        this.items = this.filteredItems.slice(0, this.pageSize);
+        this.renderTable();
+        this.renderPagination();
+        this.renderFilterBar();
     },
 
     renderFilterBar() {
@@ -252,12 +282,18 @@ window.OrderManagementModule = {
             checkboxTh.innerHTML = '<input type="checkbox" class="header-checkbox">';
             const statusHeaders = dataFieldKeys.map(key => {
                 const field = fieldMap[key];
-                return `<th>${field ? field.label.replace('여부', '') : key}</th>`;
+                const label = field ? field.label.replace('여부', '') : key;
+                const isSorted = this.sortState.column === key;
+                const arrow = isSorted ? (this.sortState.direction === 'asc' ? ' ▲' : ' ▼') : '';
+                return `<th data-column="${key}" style="cursor:pointer;user-select:none;">${label}${arrow}</th>`;
             }).join('');
             thead.innerHTML = statusHeaders
                 + (showImageColumn ? '<th>첨부이미지</th>' : '')
                 + '<th>관리</th>';
             thead.insertBefore(checkboxTh, thead.firstChild);
+            thead.querySelectorAll('th[data-column]').forEach(th => {
+                th.addEventListener('click', () => this.sortItems(th.dataset.column));
+            });
         }
 
         if (table) {
