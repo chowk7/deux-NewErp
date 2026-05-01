@@ -688,7 +688,7 @@ window.ManufacturingCostsModule = {
                     ${cost?.stoneQty_text || '나석정보가 입력되지 않았습니다'}
                 </div>
                 <input type="hidden" name="stoneQty_text" id="stoneQtyInput" value="${cost?.stoneQty_text || ''}">
-                <input type="hidden" name="stoneArray" id="stoneArrayInput" value='${JSON.stringify(cost?.stones || [])}'>
+                <input type="hidden" name="stoneArray" id="stoneArrayInput" value='${cost?.stoneArray || JSON.stringify([])}'>
             </div>
         `;
 
@@ -726,8 +726,11 @@ window.ManufacturingCostsModule = {
         const stoneInfoBtn = wrapper.querySelector('#stoneInfoBtn');
         if (stoneInfoBtn) {
             stoneInfoBtn.addEventListener('click', () => {
-                // 1. 이미 수정된 나석 정보가 있으면 사용
-                let existingStones = cost?.stones || [];
+                // 1. 이미 저장된 가공된 나석 정보가 있으면 사용 (stoneArray = processed format)
+                let existingStones = [];
+                if (cost?.stoneArray) {
+                    try { existingStones = JSON.parse(cost.stoneArray); } catch (e) {}
+                }
 
                 // 2. 없으면 제품단가표에서 기본 나석 정보 로드 (상품명 우선, 다음 productCode)
                 if (existingStones.length === 0) {
