@@ -48,7 +48,7 @@ window.ManufacturingCostsModule = {
     currentPage: 1,
     selectedYear: 'all',
     searchQuery: '',
-    mfgSortState: { column: null, direction: 'asc' },
+    mfgSortState: { column: 'orderDate', direction: 'desc' },
 
     async init() {
         // 나석단가표 로드
@@ -125,6 +125,20 @@ window.ManufacturingCostsModule = {
                 (o.customerName || '').toLowerCase().includes(q) ||
                 (o.productName || '').toLowerCase().includes(q)
             );
+        }
+        if (this.mfgSortState.column) {
+            const col = this.mfgSortState.column;
+            const dir = this.mfgSortState.direction === 'asc' ? 1 : -1;
+            data = [...data].sort((a, b) => {
+                let av = a[col], bv = b[col];
+                if (av?.toDate) av = av.toDate();
+                if (bv?.toDate) bv = bv.toDate();
+                if (av instanceof Date && bv instanceof Date) return (av - bv) * dir;
+                if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
+                av = av == null ? '' : String(av);
+                bv = bv == null ? '' : String(bv);
+                return av.localeCompare(bv, 'ko') * dir;
+            });
         }
         this.filteredCosts = data;
     },
@@ -414,28 +428,12 @@ window.ManufacturingCostsModule = {
             this.mfgSortState.column = column;
             this.mfgSortState.direction = 'asc';
         }
-
-        const dir = this.mfgSortState.direction === 'asc' ? 1 : -1;
-        const col = column;
-
-        this.costs.sort((a, b) => {
-            let av = a[col], bv = b[col];
-
-            // 날짜
-            if (av && av.toDate) av = av.toDate();
-            if (bv && bv.toDate) bv = bv.toDate();
-            if (av instanceof Date && bv instanceof Date) return (av - bv) * dir;
-
-            // 숫자
-            if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
-
-            // 문자열
-            av = av == null ? '' : String(av);
-            bv = bv == null ? '' : String(bv);
-            return av.localeCompare(bv, 'ko') * dir;
-        });
-
+        this.currentPage = 1;
+        this.applyMfgFilters();
+        this.costs = this.filteredCosts.slice(0, this.pageSize);
         this.renderTable();
+        this.renderPagination();
+        this.renderMfgFilterBar();
     },
 
     renderPagination() {
@@ -690,7 +688,7 @@ window.ManufacturingCostsModule = {
                     ${cost?.stoneQty_text || '나석정보가 입력되지 않았습니다'}
                 </div>
                 <input type="hidden" name="stoneQty_text" id="stoneQtyInput" value="${cost?.stoneQty_text || ''}">
-                <input type="hidden" name="stoneArray" id="stoneArrayInput" value='${JSON.stringify(cost?.stones || [])}'>
+                <input type="hidden" name="stoneArray" id="stoneArrayInput" value='${cost?.stoneArray || JSON.stringify([])}'>
             </div>
         `;
 
@@ -719,6 +717,7 @@ window.ManufacturingCostsModule = {
                     .collection('items').doc(costId)
                     .update({ ...calculated, updatedAt: new Date() });
                 w.remove();
+                this.allCosts = [];
                 this.load();
             }
         );
@@ -727,8 +726,11 @@ window.ManufacturingCostsModule = {
         const stoneInfoBtn = wrapper.querySelector('#stoneInfoBtn');
         if (stoneInfoBtn) {
             stoneInfoBtn.addEventListener('click', () => {
-                // 1. 이미 수정된 나석 정보가 있으면 사용
-                let existingStones = cost?.stones || [];
+                // 1. 이미 저장된 가공된 나석 정보가 있으면 사용 (stoneArray = processed format)
+                let existingStones = [];
+                if (cost?.stoneArray) {
+                    try { existingStones = JSON.parse(cost.stoneArray); } catch (e) {}
+                }
 
                 // 2. 없으면 제품단가표에서 기본 나석 정보 로드 (상품명 우선, 다음 productCode)
                 if (existingStones.length === 0) {
@@ -832,6 +834,7 @@ window.ManufacturingCostsModule = {
                 }
 
                 await batch.commit();
+                this.allCosts = [];
                 this.load();
                 window.Utils.showNotification('제조원가 정보가 업로드되었습니다. (자동 계산 적용됨)', 'success');
             }

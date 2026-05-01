@@ -3,6 +3,77 @@
  * Handles page navigation, menu system, and overall app state
  */
 
+const MOBILE_ACTIONS = {
+    dashboard:            [],
+    'diamond-rates':      [
+        { icon: '➕', label: '새항목',  btnId: 'addDiamondRateBtn' },
+        { icon: '📤', label: 'CSV업로드', btnId: 'csvUploadDiamondBtn' },
+        { icon: '⚙️', label: '필수항목', btnId: 'diamondRequiredSettingsBtn' },
+        { icon: '📋', label: '표시항목', btnId: 'diamondDisplaySettingsBtn' },
+    ],
+    'product-rates':      [
+        { icon: '➕', label: '새항목',  btnId: 'addProductRateBtn' },
+        { icon: '📤', label: 'CSV업로드', btnId: 'csvUploadProductBtn' },
+        { icon: '⚙️', label: '필수항목', btnId: 'productRequiredSettingsBtn' },
+        { icon: '📋', label: '표시항목', btnId: 'productDisplaySettingsBtn' },
+    ],
+    'new-product-pricing': [
+        { icon: '➕', label: '새항목',  btnId: 'addNewProductPricingBtn' },
+        { icon: '🗑️', label: '삭제',    btnId: 'bulkDeleteNewProductPricingBtn' },
+    ],
+    'gold-inventory':     [
+        { icon: '➕', label: '구매입력', btnId: 'addGoldInventoryBtn' },
+        { icon: '📥', label: 'CSV업로드', btnId: 'csvUploadGoldBtn' },
+    ],
+    customers:            [
+        { icon: '➕', label: '새고객',  btnId: 'addCustomerBtn' },
+        { icon: '📤', label: 'CSV업로드', btnId: 'csvUploadCustomerBtn' },
+        { icon: '📋', label: '표시항목', btnId: 'customerDisplaySettingsBtn' },
+    ],
+    'option-charges':     [
+        { icon: '➕', label: '새옵션',  btnId: 'addOptionChargeBtn' },
+        { icon: '📤', label: 'CSV업로드', btnId: 'csvUploadOptionBtn' },
+        { icon: '⚙️', label: '필수항목', btnId: 'optionRequiredSettingsBtn' },
+        { icon: '📋', label: '표시항목', btnId: 'optionDisplaySettingsBtn' },
+    ],
+    'price-settings':     [],
+    orders:               [
+        { icon: '➕', label: '새주문',  btnId: 'addOrderBtn' },
+        { icon: '🌐', label: '아임웹',  btnId: 'importImwebBtn' },
+        { icon: '📤', label: 'CSV업로드', btnId: 'csvUploadIntegratedBtn' },
+        { icon: '⚙️', label: '필수항목', btnId: 'ordersRequiredSettingsBtn' },
+        { icon: '📋', label: '표시항목', btnId: 'ordersDisplaySettingsBtn' },
+    ],
+    'manufacturing-costs': [
+        { icon: '⚙️', label: '필수항목', btnId: 'mfgRequiredSettingsBtn' },
+        { icon: '📋', label: '표시항목', btnId: 'mfgDisplaySettingsBtn' },
+    ],
+    'admin-expenses':     [
+        { icon: '➕', label: '새항목',  btnId: 'addAdminExpenseBtn' },
+        { icon: '📤', label: 'CSV업로드', btnId: 'csvUploadAdminBtn' },
+        { icon: '📋', label: '표시항목', btnId: 'adminDisplaySettingsBtn' },
+    ],
+    'profit-loss':        [
+        { icon: '📊', label: '계산',    btnId: 'calcPlBtn' },
+        { icon: '💾', label: '다운로드', btnId: 'downloadPlDataBtn' },
+    ],
+    'order-management':   [
+        { icon: '📋', label: '표시항목', btnId: 'orderMgmtDisplaySettingsBtn' },
+    ],
+    promotion:            [
+        { icon: '🔍', label: '시뮬레이션', btnId: 'promoCalcBtn' },
+        { icon: '💾', label: '저장',    btnId: 'promoSaveBtn' },
+        { icon: '📋', label: '표시항목', btnId: 'promoDisplaySettingsBtn' },
+    ],
+    notes:                [
+        { icon: '➕', label: '새노트',  btnId: 'newNoteBtn' },
+    ],
+    images:               [],
+    'word-templates':     [
+        { icon: '📤', label: '업로드',  btnId: 'uploadTemplateBtn' },
+    ],
+};
+
 class DiamonJewelryApp {
     constructor() {
         this.currentUser = null;
@@ -16,6 +87,13 @@ class DiamonJewelryApp {
     }
 
     setupEventListeners() {
+        // 뒤로가기 버튼으로 섹션 간 이동 지원
+        window.addEventListener('popstate', (e) => {
+            if (this.currentPage !== 'dashboard') return;
+            const menuId = e.state?.menuId;
+            if (menuId) this.handleMenuClick(menuId, true);
+        });
+
         // 로그인/회원가입 토글
         const signupToggle = document.getElementById('signupToggle');
         const loginToggle = document.getElementById('loginToggle');
@@ -81,22 +159,25 @@ class DiamonJewelryApp {
      * 메뉴 클릭 처리
      * @param {string} menuId - 메뉴 항목 ID
      */
-    async handleMenuClick(menuId) {
+    async handleMenuClick(menuId, skipPushState = false) {
         // 모든 콘텐츠 섹션 숨기기
         document.querySelectorAll('.content-section').forEach(section => {
             section.classList.add('hidden');
         });
 
-        // 모든 메뉴 링크에서 active 제거
-        document.querySelectorAll('.nav-link').forEach(link => {
+        // 모든 네비게이션 요소에서 active 제거 (사이드바 + 드로어)
+        document.querySelectorAll('.nav-link, .drawer-nav-link').forEach(link => {
             link.classList.remove('active');
         });
 
-        // 클릭한 메뉴에 active 추가
-        const activeLink = document.querySelector(`[data-menu="${menuId}"]`);
-        if (activeLink) {
-            activeLink.classList.add('active');
-        }
+        // 동일한 data-menu를 가진 모든 요소에 active 추가
+        document.querySelectorAll(`[data-menu="${menuId}"]`).forEach(el => {
+            el.classList.add('active');
+        });
+
+        // 모바일 드로어 닫기 및 하단 액션 바 갱신
+        this.closeMobileDrawer();
+        this.renderMobileActions(menuId);
 
         // 해당하는 섹션 보이기
         const sectionMap = {
@@ -107,6 +188,7 @@ class DiamonJewelryApp {
             'option-charges': 'optionChargesContent',
             'price-settings': 'priceSettingsContent',
             'orders': 'ordersContent',
+            'order-management': 'orderManagementContent',
             'manufacturing-costs': 'manufacturingCostsContent',
             'admin-expenses': 'adminExpensesContent',
             'profit-loss': 'profitLossContent',
@@ -149,6 +231,8 @@ class DiamonJewelryApp {
                         await window.NewProductPricingModule.load();
                     } else if (window.PromotionModule && menuId === 'promotion') {
                         await window.PromotionModule.load();
+                    } else if (window.OrderManagementModule && menuId === 'order-management') {
+                        await window.OrderManagementModule.load();
                     } else if (menuId === 'notes') {
                         notes.loadNotes().then(() => notes.renderNotes());
                     }
@@ -157,6 +241,11 @@ class DiamonJewelryApp {
                     window.Utils.showNotification(`데이터 로드 실패: ${error.message}`, 'error');
                 }
             }
+        }
+
+        // 브라우저 히스토리 업데이트 (뒤로가기 지원)
+        if (!skipPushState && history.state?.menuId !== menuId) {
+            history.pushState({ menuId }, '', '#' + menuId);
         }
     }
 
@@ -184,7 +273,23 @@ class DiamonJewelryApp {
         this.setupPriceManagementModule();
         this.setupSalesManagementModule();
         this.setupNewModules();
-        this.loadDashboard();
+        this.setupMobileNav();
+
+        // URL 해시로 초기 섹션 결정, 없으면 dashboard
+        const validMenuIds = ['dashboard','diamond-rates','product-rates','new-product-pricing',
+            'gold-inventory','customers','option-charges','price-settings','orders',
+            'order-management','manufacturing-costs','admin-expenses','profit-loss',
+            'promotion','notes','images','word-templates'];
+        const hash = location.hash.replace('#', '');
+        const startMenu = validMenuIds.includes(hash) ? hash : 'dashboard';
+
+        history.replaceState({ menuId: startMenu }, '', '#' + startMenu);
+
+        if (startMenu !== 'dashboard') {
+            this.handleMenuClick(startMenu, true);
+        } else {
+            this.loadDashboard();
+        }
     }
 
     /**
@@ -202,6 +307,73 @@ class DiamonJewelryApp {
         if (userEmailElement && this.currentUser) {
             userEmailElement.textContent = this.currentUser.email;
         }
+        const drawerEmail = document.getElementById('drawerUserEmail');
+        if (drawerEmail && this.currentUser) {
+            drawerEmail.textContent = this.currentUser.email;
+        }
+        const drawerAvatar = document.getElementById('drawerUserAvatar');
+        if (drawerAvatar && this.currentUser) {
+            drawerAvatar.textContent = this.currentUser.email.charAt(0).toUpperCase();
+        }
+    }
+
+    setupMobileNav() {
+        if (this._mobileNavSetup) return;
+        this._mobileNavSetup = true;
+
+        const menuBtn = document.getElementById('mobileMenuBtn');
+        const drawer = document.getElementById('mobileDrawer');
+        const overlay = document.getElementById('mobileDrawerOverlay');
+
+        if (menuBtn) {
+            menuBtn.addEventListener('click', () => {
+                drawer.classList.add('open');
+                overlay.classList.add('active');
+                document.body.style.overflow = 'hidden';
+            });
+        }
+
+        if (overlay) {
+            overlay.addEventListener('click', () => this.closeMobileDrawer());
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') this.closeMobileDrawer();
+        });
+
+        // Drawer links close the drawer after navigation (navigation handled by [data-menu] listener)
+        document.querySelectorAll('.drawer-nav-link[data-menu]').forEach(link => {
+            link.addEventListener('click', () => this.closeMobileDrawer());
+        });
+
+        const drawerLogoutBtn = document.getElementById('drawerLogoutBtn');
+        if (drawerLogoutBtn) {
+            drawerLogoutBtn.addEventListener('click', () => this.logout());
+        }
+    }
+
+    closeMobileDrawer() {
+        document.getElementById('mobileDrawer')?.classList.remove('open');
+        document.getElementById('mobileDrawerOverlay')?.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+
+    renderMobileActions(menuId) {
+        const bar = document.getElementById('mobileActionBar');
+        if (!bar) return;
+        const actions = MOBILE_ACTIONS[menuId] || [];
+        bar.innerHTML = actions.map(a =>
+            `<button class="mobile-action-item" data-target="${a.btnId || ''}">` +
+            `<span class="mobile-action-icon">${a.icon}</span>` +
+            `<span class="mobile-action-label">${a.label}</span>` +
+            `</button>`
+        ).join('');
+        bar.querySelectorAll('.mobile-action-item').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const target = document.getElementById(btn.dataset.target);
+                if (target) target.click();
+            });
+        });
     }
 
     /**

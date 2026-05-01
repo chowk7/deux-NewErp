@@ -27,8 +27,12 @@ window.OrderManagementModule = {
 
     items: [],
     allItems: [],
+    filteredItems: [],
     pageSize: 50,
     currentPage: 1,
+    selectedYear: 'all',
+    searchQuery: '',
+    sortState: { column: 'orderDate', direction: 'desc' },
 
     async init() {
         document.getElementById('orderMgmtDisplaySettingsBtn')
@@ -36,11 +40,133 @@ window.OrderManagementModule = {
     },
 
     openDisplaySettings() {
-        const defaultKeys = ['orderNumber', 'customerName', 'productName', 'stoneRequested', 'workshopRequested', 'productionComplete', 'shippingReady', 'delivered'];
-        window.Utils.openDisplayFieldsModal('orderManagement',
-            [...this.STATUS_FIELDS],
-            () => this.load(),
-            defaultKeys);
+        const dynamicFields = [
+            { key: 'orderDate',    label: '주문일',   type: 'date' },
+            { key: 'orderNumber',  label: '주문번호', type: 'text' },
+            { key: 'customerName', label: '고객명',   type: 'text' },
+            { key: 'productName',  label: '상품명',   type: 'text' },
+        ];
+        const defaultKeys = ['orderDate', 'orderNumber', 'customerName', 'productName', 'stoneRequested', 'workshopRequested', 'productionComplete', 'shippingReady', 'delivered', '__imageColumn'];
+        const fieldsWithImage = [...dynamicFields, ...this.STATUS_FIELDS, { key: '__imageColumn', label: '첨부이미지' }];
+        window.Utils.openDisplayFieldsModal('orderManagement', fieldsWithImage, () => this.load(), defaultKeys);
+    },
+
+    getItemYears() {
+        const years = new Set();
+        this.allItems.forEach(o => {
+            const raw = o.orderDate;
+            const date = raw?.toDate ? raw.toDate() : (raw ? new Date(raw) : null);
+            if (date && !isNaN(date.getTime())) years.add(String(date.getFullYear()));
+        });
+        return Array.from(years).sort((a, b) => b - a);
+    },
+
+    applyFilters() {
+        let data = this.allItems;
+        if (this.selectedYear !== 'all') {
+            data = data.filter(o => {
+                const raw = o.orderDate;
+                const date = raw?.toDate ? raw.toDate() : (raw ? new Date(raw) : null);
+                return date && String(date.getFullYear()) === this.selectedYear;
+            });
+        }
+        if (this.searchQuery) {
+            const q = this.searchQuery.toLowerCase();
+            data = data.filter(o =>
+                (o.customerName || '').toLowerCase().includes(q) ||
+                (o.productName  || '').toLowerCase().includes(q)
+            );
+        }
+        if (this.sortState.column) {
+            const col = this.sortState.column;
+            const dir = this.sortState.direction === 'asc' ? 1 : -1;
+            data = [...data].sort((a, b) => {
+                let av = a[col], bv = b[col];
+                if (av?.toDate) av = av.toDate();
+                if (bv?.toDate) bv = bv.toDate();
+                if (av instanceof Date && bv instanceof Date) return (av - bv) * dir;
+                if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
+                av = av == null ? '' : String(av);
+                bv = bv == null ? '' : String(bv);
+                return av.localeCompare(bv, 'ko') * dir;
+            });
+        }
+        this.filteredItems = data;
+    },
+
+    sortItems(column) {
+        if (this.sortState.column === column) {
+            this.sortState.direction = this.sortState.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+            this.sortState.column = column;
+            this.sortState.direction = 'asc';
+        }
+        this.currentPage = 1;
+        this.applyFilters();
+        this.items = this.filteredItems.slice(0, this.pageSize);
+        this.renderTable();
+        this.renderPagination();
+        this.renderFilterBar();
+    },
+
+    renderFilterBar() {
+        const container = document.getElementById('orderMgmtFilterBar');
+        if (!container) return;
+
+        const years = this.getItemYears();
+        const yearBtns = ['all', ...years].map(y =>
+            `<button class="btn btn-sm orderMgmt-year-btn ${this.selectedYear === y ? 'btn-primary' : 'btn-outline'}" data-year="${y}">${y === 'all' ? '전체' : y + '년'}</button>`
+        ).join('');
+
+        const hasFilter = this.searchQuery || this.selectedYear !== 'all';
+        container.innerHTML = `
+            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:10px 0 12px;">
+                <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+                    <span style="font-size:0.85rem;color:#6b7280;white-space:nowrap;">연도</span>
+                    ${yearBtns}
+                </div>
+                <div style="display:flex;gap:6px;align-items:center;margin-left:auto;flex-wrap:wrap;">
+                    <input type="text" id="orderMgmtSearchInput" placeholder="고객명 또는 상품명"
+                        value="${this.searchQuery.replace(/"/g, '&quot;')}"
+                        style="padding:6px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:0.875rem;width:200px;">
+                    <button class="btn btn-sm btn-primary" id="orderMgmtSearchBtn">검색</button>
+                    ${hasFilter ? '<button class="btn btn-sm btn-outline" id="orderMgmtClearBtn">초기화</button>' : ''}
+                </div>
+            </div>`;
+
+        const rerender = () => {
+            this.applyFilters();
+            const startIdx = (this.currentPage - 1) * this.pageSize;
+            this.items = this.filteredItems.slice(startIdx, startIdx + this.pageSize);
+            this.renderTable();
+            this.renderPagination();
+            this.renderFilterBar();
+        };
+
+        container.querySelectorAll('.orderMgmt-year-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.selectedYear = btn.dataset.year;
+                this.currentPage = 1;
+                rerender();
+            });
+        });
+
+        document.getElementById('orderMgmtSearchBtn')?.addEventListener('click', () => {
+            this.searchQuery = document.getElementById('orderMgmtSearchInput')?.value?.trim() || '';
+            this.currentPage = 1;
+            rerender();
+        });
+
+        document.getElementById('orderMgmtSearchInput')?.addEventListener('keydown', e => {
+            if (e.key === 'Enter') document.getElementById('orderMgmtSearchBtn')?.click();
+        });
+
+        document.getElementById('orderMgmtClearBtn')?.addEventListener('click', () => {
+            this.selectedYear = 'all';
+            this.searchQuery = '';
+            this.currentPage = 1;
+            rerender();
+        });
     },
 
     async load(page = 1) {
@@ -55,11 +181,14 @@ window.OrderManagementModule = {
                 this.allItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             }
 
+            this.applyFilters();
+
             const startIdx = (this.currentPage - 1) * this.pageSize;
-            this.items = this.allItems.slice(startIdx, startIdx + this.pageSize);
+            this.items = this.filteredItems.slice(startIdx, startIdx + this.pageSize);
 
             this.renderTable();
             this.renderPagination();
+            this.renderFilterBar();
         } catch (error) {
             console.error('[OrderManagement] load 실패:', error);
             window.Utils.showNotification('주문관리 로드 실패', 'error');
@@ -85,8 +214,10 @@ window.OrderManagementModule = {
         const tbody = table?.querySelector('tbody');
         if (!tbody) return;
 
-        const defaultDisplayFields = ['orderNumber', 'customerName', 'productName', 'stoneRequested', 'workshopRequested', 'productionComplete', 'shippingReady', 'delivered'];
+        const defaultDisplayFields = ['orderNumber', 'customerName', 'productName', 'stoneRequested', 'workshopRequested', 'productionComplete', 'shippingReady', 'delivered', '__imageColumn'];
         const displayFieldKeys = window.Utils.getDisplayFields('orderManagement', defaultDisplayFields);
+        const showImageColumn = displayFieldKeys.includes('__imageColumn');
+        const dataFieldKeys = displayFieldKeys.filter(k => k !== '__imageColumn');
 
         const dynamicFields = [
             { key: 'orderNumber',  label: '주문번호', type: 'text' },
@@ -99,16 +230,17 @@ window.OrderManagementModule = {
         displayFields.forEach(f => fieldMap[f.key] = f);
 
         if (this.items.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="${displayFieldKeys.length + 4}" style="text-align:center">데이터가 없습니다.</td></tr>`;
+            const colCount = dataFieldKeys.length + 2 + (showImageColumn ? 1 : 0);
+            tbody.innerHTML = `<tr><td colspan="${colCount}" style="text-align:center">데이터가 없습니다.</td></tr>`;
             return;
         }
 
         tbody.innerHTML = this.items.map(item => {
-            const cells = displayFieldKeys.map(key => {
+            const cells = dataFieldKeys.map(key => {
                 const field = fieldMap[key];
                 if (!field) return '<td>-</td>';
                 if (field.type === 'checkbox') {
-                    return `<td>${this._statusBadge(item[key])} ${field.label.replace('여부', '')}</td>`;
+                    return `<td style="text-align:center;"><input type="checkbox" class="status-checkbox" data-id="${item.id}" data-field="${key}" ${item[key] ? 'checked' : ''}></td>`;
                 }
                 if (field.type === 'date') {
                     let val = item[key];
@@ -134,7 +266,7 @@ window.OrderManagementModule = {
                 <tr data-id="${item.id}">
                     <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${item.id}"></td>
                     ${cells}
-                    <td>${imageLinks}</td>
+                    ${showImageColumn ? `<td>${imageLinks}</td>` : ''}
                     <td>
                         <button class="btn btn-sm btn-primary" data-action="showForm" data-id="${item.id}">수정</button>
                     </td>
@@ -148,12 +280,20 @@ window.OrderManagementModule = {
             checkboxTh.style.textAlign = 'center';
             checkboxTh.className = 'header-checkbox-th';
             checkboxTh.innerHTML = '<input type="checkbox" class="header-checkbox">';
-            const statusHeaders = displayFieldKeys.map(key => {
+            const statusHeaders = dataFieldKeys.map(key => {
                 const field = fieldMap[key];
-                return `<th>${field ? field.label.replace('여부', '') : key}</th>`;
+                const label = field ? field.label.replace('여부', '') : key;
+                const isSorted = this.sortState.column === key;
+                const arrow = isSorted ? (this.sortState.direction === 'asc' ? ' ▲' : ' ▼') : '';
+                return `<th data-column="${key}" style="cursor:pointer;user-select:none;">${label}${arrow}</th>`;
             }).join('');
-            thead.innerHTML = statusHeaders + '<th>첨부이미지</th><th>관리</th>';
+            thead.innerHTML = statusHeaders
+                + (showImageColumn ? '<th>첨부이미지</th>' : '')
+                + '<th>관리</th>';
             thead.insertBefore(checkboxTh, thead.firstChild);
+            thead.querySelectorAll('th[data-column]').forEach(th => {
+                th.addEventListener('click', () => this.sortItems(th.dataset.column));
+            });
         }
 
         if (table) {
@@ -182,6 +322,26 @@ window.OrderManagementModule = {
                     this.updateBulkDeleteBtn?.();
                 });
             }
+
+            table.querySelectorAll('tbody .status-checkbox').forEach(cb => {
+                cb.addEventListener('change', async () => {
+                    const id = cb.dataset.id;
+                    const field = cb.dataset.field;
+                    const newVal = cb.checked;
+                    try {
+                        await window.firebaseDb.collection('sales').doc('orders')
+                            .collection('items').doc(id)
+                            .update({ [field]: newVal, updatedAt: new Date() });
+                        const inAll = this.allItems.find(i => i.id === id);
+                        if (inAll) inAll[field] = newVal;
+                        const inCurr = this.items.find(i => i.id === id);
+                        if (inCurr) inCurr[field] = newVal;
+                    } catch (err) {
+                        window.Utils.showNotification('상태 업데이트 실패', 'error');
+                        cb.checked = !newVal;
+                    }
+                });
+            });
         }
     },
 
@@ -189,7 +349,7 @@ window.OrderManagementModule = {
         const paginationContainer = document.getElementById('orderManagementPagination');
         if (!paginationContainer) return;
 
-        const totalCount = this.allItems.length;
+        const totalCount = this.filteredItems.length;
         const totalPages = Math.ceil(totalCount / this.pageSize);
         const maxPageButtons = 5;
         let startPage = Math.max(1, this.currentPage - Math.floor(maxPageButtons / 2));
@@ -236,7 +396,7 @@ window.OrderManagementModule = {
             if (this.currentPage > 1) this.load(this.currentPage - 1);
         });
         document.getElementById('orderMgmtNextPageBtn')?.addEventListener('click', () => {
-            const totalPages = Math.ceil(this.allItems.length / this.pageSize);
+            const totalPages = Math.ceil(this.filteredItems.length / this.pageSize);
             if (this.currentPage < totalPages) this.load(this.currentPage + 1);
         });
         document.querySelectorAll('.orderMgmt-page-btn').forEach(btn => {

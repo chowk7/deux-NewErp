@@ -58,7 +58,7 @@ window.SalesManagementModule = {
     selectedYear: 'all',
     searchQuery: '',
     showUndeliveredOnly: false,
-    orderSortState: { column: null, direction: 'asc' },
+    orderSortState: { column: 'orderDate', direction: 'desc' },
 
     async init() {
         // 통합 CSV 필드 초기화 (매출 + 제조원가 + 주문관리)
@@ -137,8 +137,9 @@ window.SalesManagementModule = {
     },
 
     openOrderDisplaySettings() {
-        const defaultKeys = ['orderDate', 'orderNumber', 'customerName', 'productName', 'orderAmount', 'salesAmount'];
-        window.Utils.openDisplayFieldsModal('orders', this.ORDER_FIELDS,
+        const defaultKeys = ['orderDate', 'orderNumber', 'customerName', 'productName', 'orderAmount', 'salesAmount', '__imageColumn'];
+        const fieldsWithImage = [...this.ORDER_FIELDS, { key: '__imageColumn', label: '첨부이미지' }];
+        window.Utils.openDisplayFieldsModal('orders', fieldsWithImage,
             () => this.loadOrders(),
             defaultKeys);
     },
@@ -173,6 +174,20 @@ window.SalesManagementModule = {
                 (o.customerName || '').toLowerCase().includes(q) ||
                 (o.productName || '').toLowerCase().includes(q)
             );
+        }
+        if (this.orderSortState.column) {
+            const col = this.orderSortState.column;
+            const dir = this.orderSortState.direction === 'asc' ? 1 : -1;
+            data = [...data].sort((a, b) => {
+                let av = a[col], bv = b[col];
+                if (av?.toDate) av = av.toDate();
+                if (bv?.toDate) bv = bv.toDate();
+                if (av instanceof Date && bv instanceof Date) return (av - bv) * dir;
+                if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
+                av = av == null ? '' : String(av);
+                bv = bv == null ? '' : String(bv);
+                return av.localeCompare(bv, 'ko') * dir;
+            });
         }
         this.filteredOrders = data;
     },
@@ -276,7 +291,6 @@ window.SalesManagementModule = {
             const startIdx = (this.currentPage - 1) * this.pageSize;
             const endIdx = startIdx + this.pageSize;
             this.orders = this.filteredOrders.slice(startIdx, endIdx);
-            this.orderSortState = { column: null, direction: 'asc' };
             this.renderOrdersTable();
             this.renderPagination();
             this.renderOrderFilterBar();
@@ -287,49 +301,18 @@ window.SalesManagementModule = {
     },
 
     sortOrders(column) {
-        // 같은 컬럼 클릭 시 방향 전환, 다른 컬럼 클릭 시 asc로 정렬
         if (this.orderSortState.column === column) {
             this.orderSortState.direction = this.orderSortState.direction === 'asc' ? 'desc' : 'asc';
         } else {
             this.orderSortState.column = column;
             this.orderSortState.direction = 'asc';
         }
-
-        // 데이터 정렬
-        this.orders.sort((a, b) => {
-            let aVal = a[column];
-            let bVal = b[column];
-
-            // Firestore Timestamp 처리
-            if (aVal?.toDate) aVal = aVal.toDate();
-            if (bVal?.toDate) bVal = bVal.toDate();
-
-            // null/undefined 처리
-            if (aVal == null && bVal == null) return 0;
-            if (aVal == null) return 1;
-            if (bVal == null) return -1;
-
-            // 숫자 비교
-            if (typeof aVal === 'number' && typeof bVal === 'number') {
-                return this.orderSortState.direction === 'asc' ? aVal - bVal : bVal - aVal;
-            }
-
-            // 날짜 비교
-            if (aVal instanceof Date && bVal instanceof Date) {
-                return this.orderSortState.direction === 'asc' ? aVal - bVal : bVal - aVal;
-            }
-
-            // 문자열 비교
-            const aStr = String(aVal).toLowerCase();
-            const bStr = String(bVal).toLowerCase();
-            if (this.orderSortState.direction === 'asc') {
-                return aStr.localeCompare(bStr, 'ko-KR');
-            } else {
-                return bStr.localeCompare(aStr, 'ko-KR');
-            }
-        });
-
+        this.currentPage = 1;
+        this.applyOrderFilters();
+        this.orders = this.filteredOrders.slice(0, this.pageSize);
         this.renderOrdersTable();
+        this.renderPagination();
+        this.renderOrderFilterBar();
     },
 
     renderOrdersTable() {
@@ -338,23 +321,25 @@ window.SalesManagementModule = {
         if (!tbody) return;
 
         // 기본 표시 필드 (표시항목 설정이 없을 때)
-        const defaultDisplayFields = ['orderDate', 'orderNumber', 'customerName', 'productName', 'orderAmount', 'salesAmount'];
+        const defaultDisplayFields = ['orderDate', 'orderNumber', 'customerName', 'productName', 'orderAmount', 'salesAmount', '__imageColumn'];
 
         // sessionStorage에서 선택된 필드 로드
-        const displayFieldKeys = window.Utils.getDisplayFields('orders',
-            defaultDisplayFields.length > 0 ? defaultDisplayFields : this.ORDER_FIELDS.map(f => f.key));
+        const displayFieldKeys = window.Utils.getDisplayFields('orders', defaultDisplayFields);
+        const showImageColumn = displayFieldKeys.includes('__imageColumn');
+        const dataFieldKeys = displayFieldKeys.filter(k => k !== '__imageColumn');
 
         // 필드 객체 매핑
         const fieldMap = {};
         this.ORDER_FIELDS.forEach(f => fieldMap[f.key] = f);
 
         if (this.orders.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="${displayFieldKeys.length + 2}" style="text-align:center">데이터가 없습니다.</td></tr>`;
+            const colCount = dataFieldKeys.length + 2 + (showImageColumn ? 1 : 0);
+            tbody.innerHTML = `<tr><td colspan="${colCount}" style="text-align:center">데이터가 없습니다.</td></tr>`;
             return;
         }
 
         tbody.innerHTML = this.orders.map(o => {
-            const cells = displayFieldKeys.map(key => {
+            const cells = dataFieldKeys.map(key => {
                 const field = fieldMap[key];
                 if (!field) return '<td>-</td>';
 
@@ -392,7 +377,7 @@ window.SalesManagementModule = {
                 <tr data-id="${o.id}">
                     <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${o.id}"></td>
                     ${cells}
-                    <td style="font-size:0.8rem;">${imageCell}</td>
+                    ${showImageColumn ? `<td style="font-size:0.8rem;">${imageCell}</td>` : ''}
                     <td>
                         <button class="btn btn-sm btn-primary"
                             data-action="showOrderForm" data-id="${o.id}">수정</button>
@@ -416,7 +401,7 @@ window.SalesManagementModule = {
             thead.appendChild(checkboxTh);
 
             // 필드 헤더 생성
-            displayFieldKeys.forEach(key => {
+            dataFieldKeys.forEach(key => {
                 const field = fieldMap[key];
                 const th = document.createElement('th');
                 const label = field ? field.label : key;
@@ -433,10 +418,12 @@ window.SalesManagementModule = {
                 thead.appendChild(th);
             });
 
-            // 첨부이미지 헤더
-            const imageTh = document.createElement('th');
-            imageTh.textContent = '첨부이미지';
-            thead.appendChild(imageTh);
+            // 첨부이미지 헤더 (표시항목에서 선택된 경우만)
+            if (showImageColumn) {
+                const imageTh = document.createElement('th');
+                imageTh.textContent = '첨부이미지';
+                thead.appendChild(imageTh);
+            }
 
             // 관리 헤더 생성
             const manageTh = document.createElement('th');
@@ -843,6 +830,7 @@ window.SalesManagementModule = {
                     }
                 }
                 w.remove();
+                this.allOrders = [];
                 this.loadOrders();
             }
         );

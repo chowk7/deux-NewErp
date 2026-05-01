@@ -480,40 +480,250 @@ th.resizable .col-resize-handle.dragging {
     border-bottom: none;
 }
 
+/* ===== 모바일 메뉴 버튼 ===== */
+.mobile-menu-btn {
+    display: none;
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 8px;
+    color: var(--text-dark);
+    line-height: 1;
+    border-radius: var(--border-radius);
+    flex-shrink: 0;
+}
+
+/* ===== 모바일 드로어 오버레이 ===== */
+.mobile-drawer-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 300;
+}
+.mobile-drawer-overlay.active { display: block; }
+
+/* ===== 모바일 슬라이드 드로어 ===== */
+.mobile-drawer {
+    position: fixed;
+    top: 0;
+    left: -290px;
+    width: 290px;
+    height: 100vh;
+    background: white;
+    z-index: 400;
+    transition: left 0.25s ease;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 2px 0 12px rgba(0, 0, 0, 0.15);
+}
+.mobile-drawer.open { left: 0; }
+
+.mobile-drawer-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 20px 16px;
+    background: var(--primary-color);
+    color: white;
+    flex-shrink: 0;
+}
+.drawer-header-icon {
+    font-size: 1.35rem;
+    background: white;
+    border-radius: 8px;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.drawer-header-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.mobile-drawer-nav {
+    flex: 1;
+    overflow-y: auto;
+    padding-bottom: 8px;
+}
+.drawer-section-label {
+    padding: 14px 16px 4px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--text-light);
+    letter-spacing: 0.06em;
+    border-top: 1px solid var(--border-color);
+    margin-top: 4px;
+}
+.drawer-section-label:first-child { border-top: none; margin-top: 0; }
+
+.drawer-nav-link {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 13px 16px;
+    color: var(--text-dark);
+    text-decoration: none;
+    font-size: 0.925rem;
+    transition: background 0.15s;
+}
+.drawer-nav-link:hover { background: var(--light-bg); }
+.drawer-nav-link.active {
+    background: rgba(200, 121, 80, 0.1);
+    color: var(--primary-color);
+    font-weight: 500;
+}
+.drawer-icon { font-size: 1.15rem; width: 26px; text-align: center; flex-shrink: 0; }
+
+.drawer-footer {
+    padding: 16px;
+    border-top: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+.drawer-user {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.drawer-user-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: var(--primary-color);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.95rem;
+    flex-shrink: 0;
+}
+.drawer-user-email {
+    font-size: 0.8rem;
+    color: var(--text-light);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.drawer-logout-btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: none;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    font-size: 0.875rem;
+    cursor: pointer;
+    color: var(--text-dark);
+    transition: background 0.15s;
+}
+.drawer-logout-btn:hover { background: var(--light-bg); }
+
+/* ===== 모바일 하단 네비게이션 ===== */
+.mobile-bottom-nav {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: white;
+    border-top: 1px solid var(--border-color);
+    z-index: 200;
+    height: 62px;
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.08);
+}
+.bottom-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    min-width: 0;
+    text-decoration: none;
+    color: #9ca3af;
+    font-size: 0.6rem;
+    gap: 2px;
+    padding: 4px 2px;
+    transition: color 0.15s;
+}
+.bottom-nav-item.active { color: var(--primary-color); }
+.bottom-nav-icon { font-size: 1.25rem; line-height: 1; }
+.bottom-nav-label {
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    font-size: 0.6rem;
+}
+
+/* ===== 모바일 액션 아이템 (섹션별 동적 버튼) ===== */
+.mobile-action-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    min-width: 56px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-dark);
+    font-size: 0.58rem;
+    gap: 3px;
+    padding: 4px 6px;
+    transition: color 0.15s, background 0.15s;
+    border-radius: 6px;
+    white-space: nowrap;
+}
+.mobile-action-item:active { background: var(--light-bg); }
+.mobile-action-icon { font-size: 1.3rem; line-height: 1; }
+.mobile-action-label {
+    line-height: 1.2;
+    max-width: 56px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: center;
+}
+
 /* ===== 반응형 디자인 ===== */
 @media (max-width: 768px) {
+    /* Show mobile-only components */
+    .mobile-menu-btn { display: flex; align-items: center; }
+    .mobile-bottom-nav {
+        display: flex;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+    .mobile-bottom-nav::-webkit-scrollbar { display: none; }
+
+    /* Hide top button groups — actions moved to bottom action bar */
+    .content-section .button-group { display: none !important; }
+
+    /* Hide sidebar completely — replaced by drawer */
+    .sidebar { display: none !important; }
+
+    /* Navbar: hamburger | title | user-info */
+    .navbar {
+        padding: 0 var(--spacing-md);
+        gap: var(--spacing-md);
+    }
+    .navbar-brand { flex: 1; }
+    .navbar-brand h1 { font-size: 1.1rem; }
+
     .container {
         flex-direction: column;
     }
 
-    .sidebar {
-        width: 100%;
-        max-height: 200px;
-        border-right: none;
-        border-bottom: 1px solid var(--border-color);
-        overflow-x: auto;
-        display: flex;
-        padding: var(--spacing-md);
-    }
-
-    .nav-menu ul {
-        display: flex;
-        gap: var(--spacing-md);
-        flex-wrap: wrap;
-    }
-
-    .nav-menu li {
-        margin-bottom: 0;
-    }
-
-    .nav-section {
-        border-top: none;
-        padding: 0;
-        margin: 0;
-    }
-
     .main-content {
-        padding: var(--spacing-lg);
+        padding: var(--spacing-md);
+        padding-bottom: calc(62px + var(--spacing-md));
     }
 
     .login-card {

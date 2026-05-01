@@ -119,6 +119,7 @@
         <!-- 메인 대시보드 -->
         <div id="dashboardPage" class="page hidden">
             <nav class="navbar">
+                <button id="mobileMenuBtn" class="mobile-menu-btn" aria-label="메뉴">☰</button>
                 <div class="navbar-brand">
                     <h1>듀인피니스 ERP</h1>
                 </div>
@@ -129,6 +130,46 @@
                     </div>
                 </div>
             </nav>
+
+            <!-- 모바일 드로어 오버레이 -->
+            <div id="mobileDrawerOverlay" class="mobile-drawer-overlay"></div>
+
+            <!-- 모바일 슬라이드 드로어 -->
+            <div id="mobileDrawer" class="mobile-drawer">
+                <div class="mobile-drawer-header">
+                    <span class="drawer-header-icon">💰</span>
+                    <span class="drawer-header-title">듀인피니스 ERP</span>
+                </div>
+                <nav class="mobile-drawer-nav">
+                    <div class="drawer-section-label">가격관리</div>
+                    <a href="#" data-menu="dashboard" class="drawer-nav-link"><span class="drawer-icon">📊</span><span>대시보드</span></a>
+                    <a href="#" data-menu="diamond-rates" class="drawer-nav-link"><span class="drawer-icon">💎</span><span>나석단가표</span></a>
+                    <a href="#" data-menu="product-rates" class="drawer-nav-link"><span class="drawer-icon">📿</span><span>제품가격표</span></a>
+                    <a href="#" data-menu="new-product-pricing" class="drawer-nav-link"><span class="drawer-icon">✨</span><span>신제품가격산정</span></a>
+                    <a href="#" data-menu="gold-inventory" class="drawer-nav-link"><span class="drawer-icon">🥇</span><span>금재고</span></a>
+                    <a href="#" data-menu="customers" class="drawer-nav-link"><span class="drawer-icon">👥</span><span>고객목록표</span></a>
+                    <a href="#" data-menu="option-charges" class="drawer-nav-link"><span class="drawer-icon">➕</span><span>각줄추가금액</span></a>
+                    <a href="#" data-menu="price-settings" class="drawer-nav-link"><span class="drawer-icon">⚙️</span><span>가격옵션</span></a>
+                    <div class="drawer-section-label">매출관리</div>
+                    <a href="#" data-menu="orders" class="drawer-nav-link"><span class="drawer-icon">📋</span><span>매출표</span></a>
+                    <a href="#" data-menu="order-management" class="drawer-nav-link"><span class="drawer-icon">🚚</span><span>배송관리</span></a>
+                    <a href="#" data-menu="manufacturing-costs" class="drawer-nav-link"><span class="drawer-icon">🏭</span><span>제조원가표</span></a>
+                    <a href="#" data-menu="admin-expenses" class="drawer-nav-link"><span class="drawer-icon">💼</span><span>판관비</span></a>
+                    <a href="#" data-menu="profit-loss" class="drawer-nav-link"><span class="drawer-icon">📈</span><span>P&amp;L표</span></a>
+                    <div class="drawer-section-label">기타</div>
+                    <a href="#" data-menu="promotion" class="drawer-nav-link"><span class="drawer-icon">🏷️</span><span>프로모션</span></a>
+                    <a href="#" data-menu="notes" class="drawer-nav-link"><span class="drawer-icon">📝</span><span>노트</span></a>
+                    <a href="#" data-menu="images" class="drawer-nav-link"><span class="drawer-icon">🖼️</span><span>이미지 관리</span></a>
+                    <a href="#" data-menu="word-templates" class="drawer-nav-link"><span class="drawer-icon">📄</span><span>양식 관리</span></a>
+                </nav>
+                <div class="drawer-footer">
+                    <div class="drawer-user">
+                        <div class="drawer-user-avatar" id="drawerUserAvatar">U</div>
+                        <span id="drawerUserEmail" class="drawer-user-email"></span>
+                    </div>
+                    <button id="drawerLogoutBtn" class="drawer-logout-btn">로그아웃</button>
+                </div>
+            </div>
 
             <div class="container">
                 <div class="sidebar">
@@ -146,6 +187,7 @@
                             <li><a href="#" data-menu="price-settings" class="nav-link">⚙️ 가격옵션</a></li>
                             <li class="nav-section">매출관리</li>
                             <li><a href="#" data-menu="orders" class="nav-link">📋 매출표</a></li>
+                            <li><a href="#" data-menu="order-management" class="nav-link">🚚 배송관리</a></li>
                             <li><a href="#" data-menu="manufacturing-costs" class="nav-link">🏭 제조원가표</a></li>
                             <li><a href="#" data-menu="admin-expenses" class="nav-link">💼 판관비</a></li>
                             <li><a href="#" data-menu="profit-loss" class="nav-link">📈 P&L표</a></li>
@@ -443,6 +485,7 @@
                         <div class="button-group">
                             <button id="orderMgmtDisplaySettingsBtn" class="btn btn-outline">📋 표시항목 설정</button>
                         </div>
+                        <div id="orderMgmtFilterBar"></div>
                         <div style="overflow-x:auto;">
                         <table id="orderManagementTable" class="data-table">
                             <thead><tr>
@@ -593,6 +636,11 @@
                     </section>
                 </main>
             </div>
+
+            <!-- 모바일 하단 액션 바 (섹션별 동적 렌더링) -->
+            <nav class="mobile-bottom-nav" id="mobileActionBar">
+                <!-- 섹션 전환 시 app.js의 renderMobileActions()에 의해 채워짐 -->
+            </nav>
         </div>
     </div>
 
