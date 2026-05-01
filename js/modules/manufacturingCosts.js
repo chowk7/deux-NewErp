@@ -717,6 +717,7 @@ window.ManufacturingCostsModule = {
                     .collection('items').doc(costId)
                     .update({ ...calculated, updatedAt: new Date() });
                 w.remove();
+                this.allCosts = [];
                 this.load();
             }
         );
@@ -830,6 +831,7 @@ window.ManufacturingCostsModule = {
                 }
 
                 await batch.commit();
+                this.allCosts = [];
                 this.load();
                 window.Utils.showNotification('제조원가 정보가 업로드되었습니다. (자동 계산 적용됨)', 'success');
             }
