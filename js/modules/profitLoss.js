@@ -21,6 +21,17 @@ window.ProfitLossModule = {
         // CSV 다운로드 버튼
         document.getElementById('downloadPlDataBtn')
             ?.addEventListener('click', () => this.downloadData());
+
+        // 새로고침
+        document.getElementById('plRefreshBtn')
+            ?.addEventListener('click', async (e) => {
+                const btn = e.currentTarget;
+                btn.disabled = true;
+                btn.textContent = '⏳ 로딩중...';
+                await this.load();
+                btn.disabled = false;
+                btn.textContent = '🔄 새로고침';
+            });
     },
 
     async load() {

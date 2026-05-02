@@ -52,6 +52,17 @@ window.AdminExpensesModule = {
         // 표시항목 설정
         document.getElementById('adminDisplaySettingsBtn')
             ?.addEventListener('click', () => this.openDisplaySettings());
+
+        // 새로고침
+        document.getElementById('adminRefreshBtn')
+            ?.addEventListener('click', async (e) => {
+                const btn = e.currentTarget;
+                btn.disabled = true;
+                btn.textContent = '⏳ 로딩중...';
+                await this.load();
+                btn.disabled = false;
+                btn.textContent = '🔄 새로고침';
+            });
     },
 
     openDisplaySettings() {

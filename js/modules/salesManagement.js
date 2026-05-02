@@ -134,6 +134,18 @@ window.SalesManagementModule = {
         document.getElementById('ordersDisplaySettingsBtn')
             ?.addEventListener('click', () => this.openOrderDisplaySettings());
 
+        // 새로고침
+        document.getElementById('ordersRefreshBtn')
+            ?.addEventListener('click', async (e) => {
+                const btn = e.currentTarget;
+                btn.disabled = true;
+                btn.textContent = '⏳ 로딩중...';
+                this.allOrders = [];
+                await this.loadOrders(1);
+                btn.disabled = false;
+                btn.textContent = '🔄 새로고침';
+            });
+
     },
 
     openOrderDisplaySettings() {

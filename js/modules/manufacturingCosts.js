@@ -63,6 +63,18 @@ window.ManufacturingCostsModule = {
         // 필수항목 설정
         document.getElementById('mfgRequiredSettingsBtn')
             ?.addEventListener('click', () => this.openRequiredSettings());
+
+        // 새로고침
+        document.getElementById('mfgRefreshBtn')
+            ?.addEventListener('click', async (e) => {
+                const btn = e.currentTarget;
+                btn.disabled = true;
+                btn.textContent = '⏳ 로딩중...';
+                this.allCosts = [];
+                await this.load(1);
+                btn.disabled = false;
+                btn.textContent = '🔄 새로고침';
+            });
     },
 
     async loadDiamondRates() {
