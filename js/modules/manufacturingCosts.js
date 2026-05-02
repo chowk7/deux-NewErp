@@ -676,6 +676,17 @@ window.ManufacturingCostsModule = {
                 </div>`;
         };
 
+        // 나석 표시 텍스트 계산 (stoneQty_text가 없으면 stoneArray에서 파생)
+        let stoneDisplayText = (cost?.stoneQty_text && cost.stoneQty_text !== 0) ? cost.stoneQty_text : '';
+        if (!stoneDisplayText && cost?.stoneArray) {
+            try {
+                const parsedStones = JSON.parse(cost.stoneArray);
+                if (Array.isArray(parsedStones) && parsedStones.length > 0) {
+                    stoneDisplayText = parsedStones.map(s => `${s.stoneQty} × ${s.stoneType}`).join(', ');
+                }
+            } catch(e) {}
+        }
+
         // 나석 섹션을 새로운 모달형 UI로 변경
         const stoneSection = `
             <div style="grid-column:1/-1; border-top:1px solid #e5e7eb; padding-top:16px; margin-top:16px;">
@@ -687,10 +698,10 @@ window.ManufacturingCostsModule = {
                 </div>
                 <div id="stoneQtyDisplay"
                     style="padding:12px; background:#f9fafb; border-radius:6px; border:1px solid #e5e7eb; min-height:40px; color:#374151; font-size:0.95rem;">
-                    ${cost?.stoneQty_text || '나석정보가 입력되지 않았습니다'}
+                    ${stoneDisplayText || '나석정보가 입력되지 않았습니다'}
                 </div>
-                <input type="hidden" name="stoneQty_text" id="stoneQtyInput" value="${cost?.stoneQty_text || ''}">
-                <input type="hidden" name="stoneArray" id="stoneArrayInput" value='${JSON.stringify(cost?.stones || [])}'>
+                <input type="hidden" name="stoneQty_text" id="stoneQtyInput" value="${stoneDisplayText}">
+                <input type="hidden" name="stoneArray" id="stoneArrayInput" value='${cost?.stoneArray || '[]'}'>
             </div>
         `;
 
@@ -709,7 +720,7 @@ window.ManufacturingCostsModule = {
                     if (k === 'inputCompleted') {
                         // 체크박스 값 boolean으로 변환
                         data[k] = data[k] === 'on' || data[k] === true;
-                    } else if (k !== 'orderId' && k !== 'productionMonth') {
+                    } else if (k !== 'orderId' && k !== 'productionMonth' && k !== 'stoneArray' && k !== 'stoneQty_text') {
                         data[k] = parseFloat(data[k]) || 0;
                     }
                 });
@@ -727,8 +738,18 @@ window.ManufacturingCostsModule = {
         const stoneInfoBtn = wrapper.querySelector('#stoneInfoBtn');
         if (stoneInfoBtn) {
             stoneInfoBtn.addEventListener('click', () => {
-                // 1. 이미 수정된 나석 정보가 있으면 사용
-                let existingStones = cost?.stones || [];
+                // 1. 현재 폼의 stoneArray 값 우선 사용 (나석 모달에서 이미 수정했을 수 있음)
+                let existingStones = [];
+                try {
+                    const currentInput = wrapper.querySelector('#stoneArrayInput');
+                    const currentVal = currentInput?.value || cost?.stoneArray || '[]';
+                    const parsed = JSON.parse(currentVal);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        existingStones = parsed;
+                    }
+                } catch(e) {
+                    existingStones = [];
+                }
 
                 // 2. 없으면 제품단가표에서 기본 나석 정보 로드 (상품명 우선, 다음 productCode)
                 if (existingStones.length === 0) {
