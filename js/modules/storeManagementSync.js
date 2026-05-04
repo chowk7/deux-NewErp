@@ -11,24 +11,29 @@ window.StoreManagementSyncModule = {
         try {
             window.Utils.showNotification('매장 판매 데이터를 조회 중입니다...', 'info');
 
+            const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
             const snap = await window.firebaseDb
                 .collection('popup_sales').doc('items').collection('items')
-                .orderBy('saleDate', 'desc')
+                .where('saleDate', '>=', sevenDaysAgo)
                 .get();
 
-            const all = snap.docs.map(d => ({ _docId: d.id, ...d.data() }));
-
-            // inputCompleted 가 true가 아닌 항목만
-            this.items = all.filter(item => !item.inputCompleted);
+            this.items = snap.docs
+                .map(d => ({ _docId: d.id, ...d.data() }))
+                .sort((a, b) => {
+                    const ta = a.saleDate?.toDate?.() ?? new Date(a.saleDate ?? 0);
+                    const tb = b.saleDate?.toDate?.() ?? new Date(b.saleDate ?? 0);
+                    return tb - ta;
+                });
             this.selectedItems = [];
 
             if (this.items.length === 0) {
-                window.Utils.showNotification('미완료 항목이 없습니다.', 'info');
+                window.Utils.showNotification('최근 7일간 등록된 항목이 없습니다.', 'info');
                 return;
             }
 
             this.showModal();
-            window.Utils.showNotification(`${this.items.length}개의 미완료 항목을 조회했습니다.`, 'success');
+            window.Utils.showNotification(`최근 7일간 ${this.items.length}개의 항목을 조회했습니다.`, 'success');
         } catch (error) {
             console.error('[StoreSync] fetch error:', error);
             window.Utils.showNotification('매장 데이터 조회 중 오류가 발생했습니다: ' + error.message, 'error');
@@ -50,7 +55,7 @@ window.StoreManagementSyncModule = {
         modal.innerHTML = `
             <div class="modal-content" style="width:98%;max-width:1400px;height:90vh;display:flex;flex-direction:column;padding:0;overflow:hidden;">
                 <div class="modal-header">
-                    <h3>매장관리 싱크 — 미완료 항목</h3>
+                    <h3>매장관리 싱크 — 최근 7일 항목</h3>
                     <button class="close-modal" id="storeSyncCloseBtn">&times;</button>
                 </div>
                 <div class="modal-body" style="display:flex;flex-direction:column;flex:1;overflow:hidden;padding:20px;">
@@ -111,6 +116,7 @@ window.StoreManagementSyncModule = {
         tbody.innerHTML = '';
 
         this.items.forEach((item, index) => {
+            const isSynced = !!item.inputCompleted;
             const isSelected = this.selectedItems.some(s => s._docId === item._docId);
 
             // 날짜 포맷
@@ -121,24 +127,32 @@ window.StoreManagementSyncModule = {
             }
 
             const amount = item.saleAmount ?? item.amount ?? item.salesAmount ?? 0;
+            const textStyle = isSynced ? 'color:#9ca3af;' : '';
+            const syncedBadge = isSynced
+                ? '<span style="font-size:10px;background:#d1fae5;color:#065f46;padding:1px 6px;border-radius:8px;margin-left:6px;vertical-align:middle;">추가됨</span>'
+                : '';
 
             const tr = document.createElement('tr');
+            if (isSynced) tr.style.background = '#f3f4f6';
             tr.innerHTML = `
                 <td style="padding:8px;text-align:center;">
-                    <input type="checkbox" class="store-sync-checkbox" data-index="${index}" ${isSelected ? 'checked' : ''}>
+                    <input type="checkbox" class="store-sync-checkbox" data-index="${index}"
+                        ${isSelected ? 'checked' : ''} ${isSynced ? 'disabled' : ''}>
                 </td>
-                <td style="padding:8px;white-space:nowrap;">${dateStr}</td>
-                <td style="padding:8px;">${item.customerName || '-'}</td>
-                <td style="padding:8px;white-space:nowrap;">${item.phone || '-'}</td>
-                <td style="padding:8px;">${item.productName || '-'}</td>
-                <td style="padding:8px;font-size:12px;">${item.optionName || '-'}</td>
-                <td style="padding:8px;text-align:right;white-space:nowrap;">${Number(amount).toLocaleString()}</td>
-                <td style="padding:8px;">${item.salesperson || item.salesman || '-'}</td>
-                <td style="padding:8px;font-size:12px;max-width:180px;">${item.memo || item.remark || '-'}</td>`;
+                <td style="padding:8px;white-space:nowrap;${textStyle}">${dateStr}${syncedBadge}</td>
+                <td style="padding:8px;${textStyle}">${item.customerName || '-'}</td>
+                <td style="padding:8px;white-space:nowrap;${textStyle}">${item.phone || '-'}</td>
+                <td style="padding:8px;${textStyle}">${item.productName || '-'}</td>
+                <td style="padding:8px;font-size:12px;${textStyle}">${item.optionName || '-'}</td>
+                <td style="padding:8px;text-align:right;white-space:nowrap;${textStyle}">${Number(amount).toLocaleString()}</td>
+                <td style="padding:8px;${textStyle}">${item.salesperson || item.salesman || '-'}</td>
+                <td style="padding:8px;font-size:12px;max-width:180px;${textStyle}">${item.memo || item.remark || '-'}</td>`;
 
-            tr.querySelector('.store-sync-checkbox').addEventListener('change', e => {
-                this._toggleItem(index, e.target.checked);
-            });
+            if (!isSynced) {
+                tr.querySelector('.store-sync-checkbox').addEventListener('change', e => {
+                    this._toggleItem(index, e.target.checked);
+                });
+            }
             tbody.appendChild(tr);
         });
 
@@ -161,6 +175,7 @@ window.StoreManagementSyncModule = {
 
     _toggleSelectAll(checked) {
         document.querySelectorAll('#storeSyncTableBody .store-sync-checkbox').forEach((cb, index) => {
+            if (cb.disabled) return; // 이미 추가된 항목 건너뜀
             cb.checked = checked;
             this._toggleItem(index, checked);
         });
@@ -168,7 +183,9 @@ window.StoreManagementSyncModule = {
 
     _updateSelectAllState() {
         const cb = document.getElementById('storeSyncSelectAll');
-        if (cb) cb.checked = this.items.length > 0 && this.selectedItems.length === this.items.length;
+        if (!cb) return;
+        const syncable = this.items.filter(item => !item.inputCompleted);
+        cb.checked = syncable.length > 0 && this.selectedItems.length === syncable.length;
     },
 
     _updateSelectCount() {
