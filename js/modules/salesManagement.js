@@ -110,6 +110,10 @@ window.SalesManagementModule = {
         document.getElementById('importImwebBtn')
             ?.addEventListener('click', () => window.ImwebIntegrationModule?.fetchImwebOrders());
 
+        // 매장관리 싱크 버튼
+        document.getElementById('importStoreBtn')
+            ?.addEventListener('click', () => window.StoreManagementSyncModule?.fetchStoreItems());
+
         // CSV 버튼 리스너
         document.getElementById('downloadOrdersTemplateBtn')
             ?.addEventListener('click', () => this.downloadOrderCsvTemplate());
