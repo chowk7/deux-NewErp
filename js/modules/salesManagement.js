@@ -589,18 +589,27 @@ window.SalesManagementModule = {
         let customerOptions = [];
         try {
             const customerSnap = await window.firebaseDb.collection('sales').doc('customers').collection('items').orderBy('customerName').get();
-            const customers = customerSnap.docs.map(d => d.data().customerName);
+            const customers = customerSnap.docs.map(d => ({
+                name: d.data().customerName || '',
+                phone: d.data().phone || ''
+            }));
 
-            // 중복 고객명 처리: 동명이인이 있으면 (1), (2) 등으로 표시
-            const customerMap = {};
-            customers.forEach(name => {
-                customerMap[name] = (customerMap[name] || 0) + 1;
+            // 동명이인 감지
+            const nameCount = {};
+            customers.forEach(c => {
+                nameCount[c.name] = (nameCount[c.name] || 0) + 1;
             });
-            customerOptions = customers.map(name =>
-                customerMap[name] > 1
-                    ? `${name}(${customers.filter(c => c === name).indexOf(name) + 1})`
-                    : name
-            );
+
+            // 동명이인이 있으면 전화번호 표시, 없어도 전화번호가 있으면 표시
+            customerOptions = customers.map(c => {
+                const hasDuplicate = nameCount[c.name] > 1;
+                const label = c.phone
+                    ? `${c.name} (${c.phone})`
+                    : c.name;
+                return hasDuplicate || c.phone
+                    ? { label, value: c.name }
+                    : c.name;
+            });
         } catch (e) {
             // 고객목록 없음 무시
         }

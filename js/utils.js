@@ -559,11 +559,15 @@ window.Utils = {
 
         const updateDropdown = (filterText) => {
             dropdown.innerHTML = '';
-            const filtered = filterText.trim() === ''
+            const q = filterText.trim().toLowerCase();
+            const filtered = q === ''
                 ? options
-                : options.filter(opt =>
-                    opt.toLowerCase().includes(filterText.toLowerCase())
-                );
+                : options.filter(opt => {
+                    const text = typeof opt === 'object'
+                        ? (opt.label || '').toLowerCase()
+                        : opt.toLowerCase();
+                    return text.includes(q);
+                });
 
             if (filtered.length === 0) {
                 const noOption = document.createElement('div');
@@ -577,8 +581,12 @@ window.Utils = {
                 dropdown.appendChild(noOption);
             } else {
                 filtered.forEach(opt => {
+                    const isObj = typeof opt === 'object';
+                    const displayLabel = isObj ? opt.label : opt;
+                    const selectValue = isObj ? opt.value : opt;
+
                     const optionEl = document.createElement('div');
-                    optionEl.textContent = opt;
+                    optionEl.textContent = displayLabel;
                     optionEl.className = 'searchable-select-option';
                     optionEl.style.cssText = `
                         padding: 10px 12px;
@@ -593,9 +601,9 @@ window.Utils = {
                         optionEl.style.backgroundColor = 'white';
                     });
                     optionEl.addEventListener('click', () => {
-                        input.value = opt;
+                        input.value = selectValue;
                         dropdown.style.display = 'none';
-                        if (onSelect) onSelect(opt);
+                        if (onSelect) onSelect(selectValue);
                     });
                     dropdown.appendChild(optionEl);
                 });
