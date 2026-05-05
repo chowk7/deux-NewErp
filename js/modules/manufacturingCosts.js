@@ -784,6 +784,8 @@ window.ManufacturingCostsModule = {
                             .collection('prices').doc('diamondRates').collection('items').get();
                         this.diamondRates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                     }
+                    console.log('[나석정보] diamondRates diamondTypes:', this.diamondRates.map(d => d.diamondType));
+                    console.log('[나석정보] product stones:', product?.stones);
                     
                     // 제품의 warranty 정보 가져오기
                     let productWarranty = '없음';

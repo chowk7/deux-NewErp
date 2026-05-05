@@ -129,7 +129,10 @@ window.StoneInputModalModule = {
         // 나석 종류 검색 드롭다운 생성 (이름순 정렬) - onSelect 콜백으로 단가 자동 표시
         const stoneTypeContainer = wrapper.querySelector('#stoneTypeSelectContainer');
         if (stoneTypeContainer) {
-            const stoneTypeOptions = this.diamondRates.map(d => d.diamondType);
+            // 나석 종류 드롭다운: diamondRates의 diamondType + 기존 입력된 종류(diamondRates에 없어도 표시)
+            const existingTypes = (this.stoneInputArray || []).map(s => s.stoneType).filter(t => t);
+            const allTypes = [...new Set([...this.diamondRates.map(d => d.diamondType), ...existingTypes])];
+            const stoneTypeOptions = allTypes.sort((a, b) => a.localeCompare(b, 'ko-KR'));
             const searchableSelect = window.Utils.createSearchableSelect(
                 stoneTypeOptions,
                 '',
