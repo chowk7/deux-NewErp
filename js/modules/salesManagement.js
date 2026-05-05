@@ -881,18 +881,34 @@ window.SalesManagementModule = {
                         <label>영수증 이미지 (여러 개 가능)</label>
                         <input type="file" name="img_salesReceipt" accept="image/*" multiple
                             style="font-size:0.875rem;">
-                        ${order?.salesReceiptImages ? `<div style="margin-top:8px;">
-                            <p style="font-size:0.8rem;color:#6b7280;margin:4px 0;">저장된 이미지:</p>
-                            <div id="receipt-images-display" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+                        ${order?.images?.salesReceipt?.length ? `<div style="margin-top:8px;">
+                            <p style="font-size:0.8rem;color:#6b7280;margin:4px 0;">저장된 이미지 (${order.images.salesReceipt.length}개):</p>
+                            <div id="receipt-images-display" style="display:flex;flex-wrap:wrap;gap:6px;">
+                                ${order.images.salesReceipt.map((img, idx) => `
+                                    <div style="position:relative;width:60px;height:60px;border:1px solid #ddd;border-radius:4px;overflow:hidden;">
+                                        <img src="${img.url || ''}" style="width:100%;height:100%;object-fit:cover;" 
+                                            onerror="this.style.display='none'"
+                                            data-path="${img.path}">
+                                    </div>
+                                `).join('')}
+                            </div>
                         </div>` : ''}
                     </div>
                     <div class="form-group">
                         <label>주문서 이미지 (여러 개 가능)</label>
                         <input type="file" name="img_orderSheet" accept="image/*" multiple
                             style="font-size:0.875rem;">
-                        ${order?.orderSheetImages ? `<div style="margin-top:8px;">
-                            <p style="font-size:0.8rem;color:#6b7280;margin:4px 0;">저장된 이미지:</p>
-                            <div id="order-images-display" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+                        ${order?.images?.orderSheet?.length ? `<div style="margin-top:8px;">
+                            <p style="font-size:0.8rem;color:#6b7280;margin:4px 0;">저장된 이미지 (${order.images.orderSheet.length}개):</p>
+                            <div id="order-images-display" style="display:flex;flex-wrap:wrap;gap:6px;">
+                                ${order.images.orderSheet.map((img, idx) => `
+                                    <div style="position:relative;width:60px;height:60px;border:1px solid #ddd;border-radius:4px;overflow:hidden;">
+                                        <img src="${img.url || ''}" style="width:100%;height:100%;object-fit:cover;"
+                                            onerror="this.style.display='none'"
+                                            data-path="${img.path}">
+                                    </div>
+                                `).join('')}
+                            </div>
                         </div>` : ''}
                     </div>
                 </div>
