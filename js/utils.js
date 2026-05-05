@@ -55,7 +55,13 @@ window.Utils = {
                 if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = '저장 중...'; }
                 try {
                     const formData = new FormData(e.target);
+                    // 파일 필드는 getAll로 직접 추출 (Object.fromEntries는 다중 파일 미처리)
                     const data = Object.fromEntries(formData);
+                    ['img_salesReceipt', 'img_orderSheet'].forEach(key => {
+                        if (formData.has(key)) {
+                            data[key] = formData.getAll(key);
+                        }
+                    });
                     await onSubmit(data, wrapper);
                     // 저장 성공 후 모달이 아직 열려 있으면 닫기
                     if (wrapper.isConnected) wrapper.remove();
