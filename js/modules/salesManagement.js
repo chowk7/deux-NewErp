@@ -137,6 +137,18 @@ window.SalesManagementModule = {
         // 매장관리 싱크 버튼
         document.getElementById('syncPopupOrdersBtn')
             ?.addEventListener('click', () => this.openPopupOrdersSync());
+
+        // 새로고침 버튼
+        document.getElementById('salesRefreshBtn')
+            ?.addEventListener('click', async (e) => {
+                const btn = e.currentTarget;
+                btn.disabled = true;
+                btn.textContent = '⏳ 로딩중...';
+                this.allOrders = [];
+                await this.load(1);
+                btn.disabled = false;
+                btn.textContent = '🔄 새로고침';
+            });
     },
 
     // ─── 매장관리 싱크 ───
