@@ -145,7 +145,7 @@ window.SalesManagementModule = {
                 btn.disabled = true;
                 btn.textContent = '⏳ 로딩중...';
                 this.allOrders = [];
-                await this.load(1);
+                await this.loadOrders(1);
                 btn.disabled = false;
                 btn.textContent = '🔄 새로고침';
             });
@@ -343,7 +343,7 @@ window.SalesManagementModule = {
 
             window.Utils.showNotification(`${updatedOrders.length}건 저장 완료`, 'success');
             self.allOrders = [];  // 캐시 비우기
-            await self.load(1);  // Firestore에서 다시 로드
+            await self.loadOrders(1);  // Firestore에서 다시 로드
         } catch (err) {
             console.error('[SalesManagement] 저장 실패:', err);
             window.Utils.showNotification('저장 실패: ' + err.message, 'error');
