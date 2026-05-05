@@ -192,16 +192,20 @@ window.SalesManagementModule = {
 
         const html = `
             <div style="padding: 16px; max-height: 70vh; overflow-y: auto;">
-                <p style="margin-bottom: 12px; color: #666;">가져온 주문 ${orders.length}건 - 필요시 수정 후 가져오기를 클릭하세요.</p>
+                <p style="margin-bottom: 12px; color: #666;">가져온 주문 ${orders.length}건 - 가져올 주문을 선택하세요.</p>
                 <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
                     <thead>
                         <tr style="background: #f5f5f5;">
+                            <th style="padding: 8px; border: 1px solid #ddd;"><input type="checkbox" id="selectAllOrders" checked onchange="window.SalesManagementModule.toggleAllOrders(this)"></th>
                             ${fields.map(f => `<th style="padding: 8px; border: 1px solid #ddd;">${f.label}</th>`).join('')}
                         </tr>
                     </thead>
                     <tbody id="popupSyncTableBody">
                         ${orders.map((o, i) => `
                             <tr>
+                                <td style="padding: 6px; border: 1px solid #ddd; text-align: center;">
+                                    <input type="checkbox" class="order-checkbox" data-idx="${i}" checked>
+                                </td>
                                 ${fields.map(f => `
                                     <td style="padding: 6px; border: 1px solid #ddd;">
                                         ${self._makeSyncEditField(o, f, i)}
@@ -214,9 +218,27 @@ window.SalesManagementModule = {
             </div>
         `;
 
+        // Modal callback will filter selected orders
         window.Utils.openModal('🏪 매장관리 싱크', html, async () => {
-            self.openDetailedSyncModal(orders);
+            // Get selected orders only
+            const selectedOrders = orders.filter((_, i) => {
+                const checkbox = document.querySelector(`.order-checkbox[data-idx="${i}"]`);
+                return checkbox?.checked;
+            });
+            if (selectedOrders.length === 0) {
+                window.Utils.showNotification('선택된 주문이 없습니다.', 'warning');
+                return;
+            }
+            self.openDetailedSyncModal(selectedOrders);
         }, '상세수정하기');
+    },
+
+    // Toggle all order checkboxes
+    toggleAllOrders(selectAllCheckbox) {
+        const checkboxes = document.querySelectorAll('.order-checkbox');
+        checkboxes.forEach(cb => {
+            cb.checked = selectAllCheckbox.checked;
+        });
     },
 
     async openDetailedSyncModal(orders) {
