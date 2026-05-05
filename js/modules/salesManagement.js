@@ -134,6 +134,124 @@ window.SalesManagementModule = {
         document.getElementById('ordersDisplaySettingsBtn')
             ?.addEventListener('click', () => this.openOrderDisplaySettings());
 
+        // 매장관리 싱크 버튼
+        document.getElementById('syncPopupOrdersBtn')
+            ?.addEventListener('click', () => this.openPopupOrdersSync());
+    },
+
+    // ─── 매장관리 싱크 ───
+    async openPopupOrdersSync() {
+        // DI_store_mangement의 Firestore에서 주문 가져오기
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const sevenDaysStr = sevenDaysAgo.toISOString().split('T')[0];
+
+        try {
+            const snap = await window.firebaseDb
+                .collection('popup_sales').doc('items').collection('items')
+                .where('orderDate', '>=', sevenDaysStr)
+                .orderBy('orderDate', 'desc')
+                .get();
+
+            const orders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+            if (orders.length === 0) {
+                window.Utils.showNotification(`최근 7일(${sevenDaysStr}~) 데이터 없음`, 'info');
+                return;
+            }
+
+            this.showPopupSyncModal(orders);
+        } catch (err) {
+            console.error('[SalesManagement] 매장관리 싱크 실패:', err);
+            window.Utils.showNotification('매장관리 데이터 가져오기 실패', 'error');
+        }
+    },
+
+    showPopupSyncModal(orders) {
+        const fields = [
+            { key: 'orderDate', label: '주문일' },
+            { key: 'orderNumber', label: '주문번호' },
+            { key: 'customerName', label: '고객명' },
+            { key: 'productName', label: '상품명' },
+            { key: 'orderAmount', label: '최종주문금액' },
+            { key: 'salesAmount', label: '매출금액' },
+        ];
+
+        const html = `
+            <div style="padding: 16px; max-height: 70vh; overflow-y: auto;">
+                <p style="margin-bottom: 12px; color: #666;">가져온 주문 ${orders.length}건 - 필요시 수정 후 가져오기를 클릭하세요.</p>
+                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                    <thead>
+                        <tr style="background: #f5f5f5;">
+                            ${fields.map(f => `<th style="padding: 8px; border: 1px solid #ddd;">${f.label}</th>`).join('')}
+                        </tr>
+                    </thead>
+                    <tbody id="popupSyncTableBody">
+                        ${orders.map((o, i) => `
+                            <tr>
+                                ${fields.map(f => `
+                                    <td style="padding: 6px; border: 1px solid #ddd;">
+                                        ${this._makeSyncEditField(o, f, i)}
+                                    </td>
+                                `).join('')}
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        const modal = window.Utils.createModal('🏪 매장관리 싱크', html, [
+            { text: '가져오기', class: 'btn-primary', onClick: () => this.importPopupOrders(orders) },
+            { text: '취소', class: 'btn-outline', onClick: () => modal.close() },
+        ], '900px');
+    },
+
+    _makeSyncEditField(order, field, rowIdx) {
+        const val = order[field.key] || '';
+        if (field.key === 'orderDate') {
+            return `<input type="date" id="sync_${rowIdx}_${field.key}" value="${val}" style="width:130px;padding:4px;border:1px solid #ccc;border-radius:4px;">`;
+        }
+        if (field.key === 'orderAmount' || field.key === 'salesAmount') {
+            return `<input type="number" id="sync_${rowIdx}_${field.key}" value="${val}" style="width:100px;padding:4px;border:1px solid #ccc;border-radius:4px;">`;
+        }
+        return `<input type="text" id="sync_${rowIdx}_${field.key}" value="${val}" style="width:120px;padding:4px;border:1px solid #ccc;border-radius:4px;">`;
+    },
+
+    async importPopupOrders(originalOrders) {
+        try {
+            // 수정된 값 수집
+            const updatedOrders = originalOrders.map((o, i) => {
+                const updated = { ...o };
+                ['orderDate', 'orderNumber', 'customerName', 'productName', 'orderAmount', 'salesAmount'].forEach(key => {
+                    const input = document.getElementById(`sync_${i}_${key}`);
+                    if (input) updated[key] = input.type === 'number' ? parseFloat(input.value) || 0 : input.value;
+                });
+                // sales/orders 포맷으로 변환
+                return {
+                    ...updated,
+                    createdAt: new Date(),
+                    importedFrom: 'popup_sales',
+                    originalId: updated.id,
+                };
+            });
+
+            // Firestore에 저장 (sales/orders/items)
+            const batch = window.firebaseDb.batch();
+            updatedOrders.forEach(order => {
+                const docRef = window.firebaseDb.collection('sales').doc('orders').collection('items').doc();
+                // 불필요한 필드 제거
+                const { id, ...data } = order;
+                batch.set(docRef, data);
+            });
+            await batch.commit();
+
+            window.Utils.showNotification(`${updatedOrders.length}건 가져오기 완료`, 'success');
+            this.loadOrders(); // 매출표 새로고침
+        } catch (err) {
+            console.error('[SalesManagement] 가져오기 실패:', err);
+            window.Utils.showNotification('가져오기 실패: ' + err.message, 'error');
+        }
     },
 
     openOrderDisplaySettings() {
