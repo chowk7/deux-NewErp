@@ -70,8 +70,12 @@ window.OrderManagementModule = {
     _imagePaths(item, typeKey) {
         const val = item?.images?.[typeKey];
         if (!val) return [];
-        if (Array.isArray(val)) return val;
-        return [val]; // 기존 단일 문자열 데이터 호환
+        if (Array.isArray(val)) {
+            // 객체 배열인 경우 path만 추출
+            return val.map(v => typeof v === 'string' ? v : (v?.path || v?.url || ''));
+        }
+        // 단일 문자열 또는 객체
+        return [typeof val === 'string' ? val : (val?.path || val?.url || '')];
     },
 
     _statusBadge(checked) {
