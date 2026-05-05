@@ -740,6 +740,7 @@ window.ManufacturingCostsModule = {
                     .collection('items').doc(costId)
                     .update({ ...calculated, updatedAt: new Date() });
                 w.remove();
+                this.allCosts = [];  // 캐시 비우기
                 this.load();
             }
         );
