@@ -726,17 +726,45 @@ window.ManufacturingCostsModule = {
         // 나석정보 입력 버튼 클릭 이벤트
         const stoneInfoBtn = wrapper.querySelector('#stoneInfoBtn');
         if (stoneInfoBtn) {
-            stoneInfoBtn.addEventListener('click', () => {
-                // 1. 이미 수정된 나석 정보가 있으면 사용
-                let existingStones = cost?.stones || [];
+            stoneInfoBtn.addEventListener('click', async () => {
+                // 1. 이미 수정된 나석 정보가 있으면 사용 (stones 또는 stoneArray)
+                let existingStones = [];
+                
+                // stoneArray가 있으면 그것 사용 (새 형식)
+                if (cost?.stoneArray) {
+                    try {
+                        existingStones = JSON.parse(cost.stoneArray);
+                    } catch (e) { existingStones = []; }
+                }
+                
+                // 없으면 stones 배열에서 로드 (legacy 형식: {type, qty} 또는 {stoneType, stoneQty})
+                if (existingStones.length === 0 && cost?.stones && cost.stones.length > 0) {
+                    existingStones = cost.stones.map(s => ({
+                        stoneType: s.stoneType || s.type || '',
+                        stoneQty: s.stoneQty || s.qty || 0,
+                        stoneCert: s.stoneCert || '',
+                        stonePrice: s.stonePrice || 0,
+                        warrantyFee: s.warrantyFee || 0
+                    }));
+                }
 
                 // 2. 없으면 제품단가표에서 기본 나석 정보 로드 (상품명 우선, 다음 productCode)
                 if (existingStones.length === 0) {
+                    // productRates가 없으면 먼저 로드
+                    if (!this.productRates || this.productRates.length === 0) {
+                        const snap = await window.firebaseDb
+                            .collection('prices').doc('productRates').collection('items').get();
+                        this.productRates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                    }
+                    
                     // 상품명으로 먼저 검색
                     if (cost?.productName) {
                         const product = this.productRates.find(p => p.productName === cost.productName);
                         if (product && product.stones && product.stones.length > 0) {
-                            existingStones = JSON.parse(JSON.stringify(product.stones));
+                            existingStones = product.stones.map(s => ({
+                                stoneType: s.stoneType || s.type || '',
+                                stoneQty: s.stoneQty || s.qty || 0
+                            }));
                         }
                     }
 
@@ -744,7 +772,10 @@ window.ManufacturingCostsModule = {
                     if (existingStones.length === 0 && cost?.productCode) {
                         const product = this.productRates.find(p => p.productCode === cost.productCode);
                         if (product && product.stones && product.stones.length > 0) {
-                            existingStones = JSON.parse(JSON.stringify(product.stones));
+                            existingStones = product.stones.map(s => ({
+                                stoneType: s.stoneType || s.type || '',
+                                stoneQty: s.stoneQty || s.qty || 0
+                            }));
                         }
                     }
                 }
