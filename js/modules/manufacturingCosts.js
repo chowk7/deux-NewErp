@@ -534,6 +534,11 @@ window.ManufacturingCostsModule = {
         if (stoneArrayInput) {
             stoneArrayInput.value = JSON.stringify(stoneArray);
         }
+        // cost.stoneArray도 업데이트 (모달 재오픈 시 참조하기 위함)
+        // cost는 wrapper._costRef로 전달받음
+        if (wrapper._costRef) {
+            wrapper._costRef.stoneArray = JSON.stringify(stoneArray);
+        }
 
         // 실시간 계산 업데이트
         const fd = new FormData(wrapper.querySelector('#modalForm'));
@@ -744,6 +749,9 @@ window.ManufacturingCostsModule = {
                 this.load();
             }
         );
+
+        // cost 참조 저장 (populateFormFromStones에서 업데이트하기 위함)
+        wrapper._costRef = cost;
 
         // 나석정보 입력 버튼 클릭 이벤트
         const stoneInfoBtn = wrapper.querySelector('#stoneInfoBtn');
