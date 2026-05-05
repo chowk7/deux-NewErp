@@ -325,6 +325,16 @@ window.SalesManagementModule = {
                         updated[f.key] = f.type === 'number' ? (parseFloat(input.value) || 0) : input.value;
                     }
                 });
+                
+                // popup_sales의 photos를 deux-NewErp 이미지 형식으로 변환
+                if (updated.photos && updated.photos.length > 0) {
+                    updated.images = {
+                        salesReceipt: updated.photos.map(url => ({ path: '', url })),
+                        orderSheet: []
+                    };
+                    delete updated.photos;
+                }
+                
                 return {
                     ...updated,
                     createdAt: new Date(),
