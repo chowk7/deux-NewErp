@@ -735,7 +735,7 @@ window.ManufacturingCostsModule = {
                     if (k === 'inputCompleted') {
                         // 체크박스 값 boolean으로 변환
                         data[k] = data[k] === 'on' || data[k] === true;
-                    } else if (k !== 'orderId' && k !== 'productionMonth') {
+                    } else if (k !== 'orderId' && k !== 'productionMonth' && k !== 'stoneArray' && k !== 'stoneQty_text') {
                         data[k] = parseFloat(data[k]) || 0;
                     }
                 });
