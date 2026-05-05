@@ -219,8 +219,18 @@ window.SalesManagementModule = {
         }, '상세수정하기');
     },
 
-    openDetailedSyncModal(orders) {
+    async openDetailedSyncModal(orders) {
         const self = this;
+        
+        // 제품단가표 로드 (상품명 드롭다운용)
+        let productOptions = [];
+        try {
+            const productSnap = await window.firebaseDb.collection('prices').doc('productRates').collection('items').get();
+            productOptions = productSnap.docs.map(d => d.data().productName).filter(n => n).sort();
+        } catch (e) {
+            console.error('[SalesManagement] 제품단가표 로드 실패:', e);
+        }
+        
         const html = `
             <div style="padding: 16px; max-height: 75vh; overflow-y: auto;">
                 <p style="margin-bottom: 16px; color: #666;">${orders.length}건 - 모든 항목을 수정 후 저장을 클릭하세요.</p>
@@ -232,7 +242,20 @@ window.SalesManagementModule = {
                                 ${self.ORDER_FIELDS.filter(f => f.type !== 'status').map(f => {
                                     const val = order[f.key] || '';
                                     const isRequired = f.defaultRequired;
-                                    if (f.type === 'select') {
+                                    if (f.key === 'productName') {
+                                        return `
+                                            <div style="display: flex; flex-direction: column; gap: 2px;">
+                                                <label style="font-size: 12px; color: #666;">${f.label}${isRequired ? ' *' : ''}</label>
+                                                <input type="text" name="order_${idx}_${f.key}" value="${val}" 
+                                                    list="productNameList_${idx}" 
+                                                    placeholder="상품명 검색..."
+                                                    style="padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
+                                                <datalist id="productNameList_${idx}">
+                                                    ${productOptions.map(p => `<option value="${p}">`).join('')}
+                                                </datalist>
+                                            </div>
+                                        `;
+                                    } else if (f.type === 'select') {
                                         return `
                                             <div style="display: flex; flex-direction: column; gap: 2px;">
                                                 <label style="font-size: 12px; color: #666;">${f.label}${isRequired ? ' *' : ''}</label>
@@ -273,13 +296,27 @@ window.SalesManagementModule = {
         `;
 
         window.Utils.openModal('📝 상세 수정 - 모든 필드', html, async () => {
-            await self.saveDetailedSyncOrders(orders);
+            await self.saveDetailedSyncOrders(orders, productOptions);
         }, '저장');
     },
 
-    async saveDetailedSyncOrders(originalOrders) {
+    async saveDetailedSyncOrders(originalOrders, productOptions = []) {
         const self = this;
         try {
+            // 상품명 검증
+            for (let idx = 0; idx < originalOrders.length; idx++) {
+                const productInput = document.querySelector(`[name="order_${idx}_productName"]`);
+                if (productInput && productInput.value) {
+                    const enteredName = productInput.value.trim();
+                    // productOptions에 정확히 일치하는 상품명이 있는지 확인
+                    const isValid = productOptions.some(p => p === enteredName);
+                    if (!isValid) {
+                        window.Utils.showNotification(`주문 ${idx + 1}: 상품명 "${enteredName}"이(가) 제품단가표에 없습니다. 올바른 상품명을 입력해주세요.`, 'error');
+                        return;
+                    }
+                }
+            }
+            
             const updatedOrders = originalOrders.map((order, idx) => {
                 const updated = { ...order };
                 self.ORDER_FIELDS.filter(f => f.type !== 'status').forEach(f => {
@@ -305,7 +342,8 @@ window.SalesManagementModule = {
             await batch.commit();
 
             window.Utils.showNotification(`${updatedOrders.length}건 저장 완료`, 'success');
-            self.loadOrders();
+            self.allOrders = [];  // 캐시 비우기
+            await self.load(1);  // Firestore에서 다시 로드
         } catch (err) {
             console.error('[SalesManagement] 저장 실패:', err);
             window.Utils.showNotification('저장 실패: ' + err.message, 'error');
