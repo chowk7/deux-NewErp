@@ -975,8 +975,11 @@ window.SalesManagementModule = {
                                 const ext = file.name.split('.').pop() || 'png';
                                 const safeName = `img_${Date.now()}_${fIdx}.${ext}`;
                                 const path = `orders/${orderId || 'new'}/${key}/${safeName}`;
+                                console.log(`[ImageUpload] Starting upload to ${path}`);
                                 const snapshot = await window.firebaseStorage.ref(path).put(file);
+                                console.log(`[ImageUpload] Upload complete, getting URL`);
                                 const downloadURL = await snapshot.ref.getDownloadURL();
+                                console.log(`[ImageUpload] Got URL: ${downloadURL}`);
                                 images[key].push({ path, url: downloadURL });
                             } catch (err) {
                                 console.error(`${field} 업로드 실패:`, err);
