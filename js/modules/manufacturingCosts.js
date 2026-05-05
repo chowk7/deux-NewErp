@@ -687,10 +687,31 @@ window.ManufacturingCostsModule = {
                 </div>
                 <div id="stoneQtyDisplay"
                     style="padding:12px; background:#f9fafb; border-radius:6px; border:1px solid #e5e7eb; min-height:40px; color:#374151; font-size:0.95rem;">
-                    ${cost?.stoneQty_text || '나석정보가 입력되지 않았습니다'}
+                    ${(() => {
+                        // stoneQty_text가 있으면 사용
+                        if (cost?.stoneQty_text) return cost.stoneQty_text;
+                        // stoneArray(JSON)가 있으면 파싱해서 사용
+                        if (cost?.stoneArray) {
+                            try {
+                                const arr = JSON.parse(cost.stoneArray);
+                                if (arr.length > 0) {
+                                    return arr.map(s => `${s.stoneQty || s.qty || 0} × ${s.stoneType || s.type || ''}`).join(', ');
+                                }
+                            } catch(e) {}
+                        }
+                        // stones 배열이 있으면 사용 (legacy 형식)
+                        if (cost?.stones && cost.stones.length > 0) {
+                            return cost.stones.map(s => `${s.stoneQty || s.qty || 0} × ${s.stoneType || s.type || ''}`).join(', ');
+                        }
+                        return '나석정보가 입력되지 않았습니다';
+                    })()}
                 </div>
                 <input type="hidden" name="stoneQty_text" id="stoneQtyInput" value="${cost?.stoneQty_text || ''}">
-                <input type="hidden" name="stoneArray" id="stoneArrayInput" value='${JSON.stringify(cost?.stones || [])}'>
+                <input type="hidden" name="stoneArray" id="stoneArrayInput" value='${(() => {
+                    if (cost?.stoneArray) return cost.stoneArray;
+                    if (cost?.stones) return JSON.stringify(cost.stones);
+                    return '[]';
+                })()}'>
             </div>
         `;
 
@@ -757,14 +778,35 @@ window.ManufacturingCostsModule = {
                         this.productRates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                     }
                     
+                    // diamondRates가 없으면 먼저 로드
+                    if (!this.diamondRates || this.diamondRates.length === 0) {
+                        const snap = await window.firebaseDb
+                            .collection('prices').doc('diamondRates').collection('items').get();
+                        this.diamondRates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                    }
+                    
+                    // 제품의 warranty 정보 가져오기
+                    let productWarranty = '없음';
+                    
                     // 상품명으로 먼저 검색
                     if (cost?.productName) {
                         const product = this.productRates.find(p => p.productName === cost.productName);
                         if (product && product.stones && product.stones.length > 0) {
-                            existingStones = product.stones.map(s => ({
-                                stoneType: s.stoneType || s.type || '',
-                                stoneQty: s.stoneQty || s.qty || 0
-                            }));
+                            productWarranty = product.stoneWarranty || '없음';
+                            existingStones = product.stones.map(s => {
+                                const diamond = this.diamondRates.find(d => d.diamondType === s.type);
+                                const stonePrice = diamond?.costWithVat || 0;
+                                const qty = s.stoneQty || s.qty || 0;
+                                const warrantyFee = productWarranty === 'VS' ? (diamond?.vsWarrantyFee || 0)
+                                                 : productWarranty === 'VVS' ? (diamond?.vvsWarrantyFee || 0) : 0;
+                                return {
+                                    stoneType: s.stoneType || s.type || '',
+                                    stoneQty: qty,
+                                    stonePrice: stonePrice,
+                                    totalPrice: stonePrice * qty,
+                                    warrantyFee: warrantyFee
+                                };
+                            });
                         }
                     }
 
@@ -772,10 +814,21 @@ window.ManufacturingCostsModule = {
                     if (existingStones.length === 0 && cost?.productCode) {
                         const product = this.productRates.find(p => p.productCode === cost.productCode);
                         if (product && product.stones && product.stones.length > 0) {
-                            existingStones = product.stones.map(s => ({
-                                stoneType: s.stoneType || s.type || '',
-                                stoneQty: s.stoneQty || s.qty || 0
-                            }));
+                            productWarranty = product.stoneWarranty || '없음';
+                            existingStones = product.stones.map(s => {
+                                const diamond = this.diamondRates.find(d => d.diamondType === s.type);
+                                const stonePrice = diamond?.costWithVat || 0;
+                                const qty = s.stoneQty || s.qty || 0;
+                                const warrantyFee = productWarranty === 'VS' ? (diamond?.vsWarrantyFee || 0)
+                                                 : productWarranty === 'VVS' ? (diamond?.vvsWarrantyFee || 0) : 0;
+                                return {
+                                    stoneType: s.stoneType || s.type || '',
+                                    stoneQty: qty,
+                                    stonePrice: stonePrice,
+                                    totalPrice: stonePrice * qty,
+                                    warrantyFee: warrantyFee
+                                };
+                            });
                         }
                     }
                 }
