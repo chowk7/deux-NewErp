@@ -202,31 +202,78 @@ window.SalesManagementModule = {
         `;
 
         window.Utils.openModal('🏪 매장관리 싱크', html, async () => {
-            await this.importPopupOrders(orders);
-        }, '가져오기');
+            // 2차 상세 수정 모달 열기
+            this.openDetailedSyncModal(orders);
+        }, '상세수정하기');
     },
 
-    _makeSyncEditField(order, field, rowIdx) {
-        const val = order[field.key] || '';
-        if (field.key === 'orderDate') {
-            return `<input type="date" id="sync_${rowIdx}_${field.key}" value="${val}" style="width:130px;padding:4px;border:1px solid #ccc;border-radius:4px;">`;
-        }
-        if (field.key === 'orderAmount' || field.key === 'salesAmount') {
-            return `<input type="number" id="sync_${rowIdx}_${field.key}" value="${val}" style="width:100px;padding:4px;border:1px solid #ccc;border-radius:4px;">`;
-        }
-        return `<input type="text" id="sync_${rowIdx}_${field.key}" value="${val}" style="width:120px;padding:4px;border:1px solid #ccc;border-radius:4px;">`;
+    openDetailedSyncModal(orders) {
+        const html = `
+            <div style="padding: 16px; max-height: 75vh; overflow-y: auto;">
+                <p style="margin-bottom: 16px; color: #666;">${orders.length}건 - 모든 항목을 수정 후 저장을 클릭하세요.</p>
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    ${orders.map((order, idx) => `
+                        <div style="border: 1px solid #ddd; border-radius: 8px; padding: 16px; background: #fafafa;">
+                            <div style="font-weight: bold; margin-bottom: 12px; color: #333;">주문 ${idx + 1}</div>
+                            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
+                                ${this.ORDER_FIELDS.filter(f => f.type !== 'status').map(f => {
+                                    const val = order[f.key] || '';
+                                    const isRequired = f.defaultRequired;
+                                    if (f.type === 'select') {
+                                        return `
+                                            <div style="display: flex; flex-direction: column; gap: 2px;">
+                                                <label style="font-size: 12px; color: #666;">${f.label}${isRequired ? ' *' : ''}</label>
+                                                <select name="order_${idx}_${f.key}" style="padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
+                                                    <option value="">선택</option>
+                                                    ${(f.options || []).map(opt => `<option value="${opt}" ${val === opt ? 'selected' : ''}>${opt}</option>`).join('')}
+                                                </select>
+                                            </div>
+                                        `;
+                                    } else if (f.type === 'date') {
+                                        return `
+                                            <div style="display: flex; flex-direction: column; gap: 2px;">
+                                                <label style="font-size: 12px; color: #666;">${f.label}${isRequired ? ' *' : ''}</label>
+                                                <input type="date" name="order_${idx}_${f.key}" value="${val}" style="padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
+                                            </div>
+                                        `;
+                                    } else if (f.type === 'number') {
+                                        return `
+                                            <div style="display: flex; flex-direction: column; gap: 2px;">
+                                                <label style="font-size: 12px; color: #666;">${f.label}${isRequired ? ' *' : ''}</label>
+                                                <input type="number" name="order_${idx}_${f.key}" value="${val}" style="padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
+                                            </div>
+                                        `;
+                                    } else {
+                                        return `
+                                            <div style="display: flex; flex-direction: column; gap: 2px;">
+                                                <label style="font-size: 12px; color: #666;">${f.label}${isRequired ? ' *' : ''}</label>
+                                                <input type="text" name="order_${idx}_${f.key}" value="${val}" style="padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
+                                            </div>
+                                        `;
+                                    }
+                                }).join('')}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+
+        window.Utils.openModal('📝 상세 수정 - 모든 필드', html, async () => {
+            await this.saveDetailedSyncOrders(orders);
+        }, '저장');
     },
 
-    async importPopupOrders(originalOrders) {
+    async saveDetailedSyncOrders(originalOrders) {
         try {
-            // 수정된 값 수집
-            const updatedOrders = originalOrders.map((o, i) => {
-                const updated = { ...o };
-                ['orderDate', 'orderNumber', 'customerName', 'productName', 'orderAmount', 'salesAmount'].forEach(key => {
-                    const input = document.getElementById(`sync_${i}_${key}`);
-                    if (input) updated[key] = input.type === 'number' ? parseFloat(input.value) || 0 : input.value;
+            const updatedOrders = originalOrders.map((order, idx) => {
+                const updated = { ...order };
+                this.ORDER_FIELDS.filter(f => f.type !== 'status').forEach(f => {
+                    const input = document.querySelector(`[name="order_${idx}_${f.key}"]`);
+                    if (input) {
+                        updated[f.key] = f.type === 'number' ? (parseFloat(input.value) || 0) : input.value;
+                    }
                 });
-                // sales/orders 포맷으로 변환
                 return {
                     ...updated,
                     createdAt: new Date(),
@@ -235,21 +282,19 @@ window.SalesManagementModule = {
                 };
             });
 
-            // Firestore에 저장 (sales/orders/items)
             const batch = window.firebaseDb.batch();
             updatedOrders.forEach(order => {
                 const docRef = window.firebaseDb.collection('sales').doc('orders').collection('items').doc();
-                // 불필요한 필드 제거
                 const { id, ...data } = order;
                 batch.set(docRef, data);
             });
             await batch.commit();
 
-            window.Utils.showNotification(`${updatedOrders.length}건 가져오기 완료`, 'success');
-            this.loadOrders(); // 매출표 새로고침
+            window.Utils.showNotification(`${updatedOrders.length}건 저장 완료`, 'success');
+            this.loadOrders();
         } catch (err) {
-            console.error('[SalesManagement] 가져오기 실패:', err);
-            window.Utils.showNotification('가져오기 실패: ' + err.message, 'error');
+            console.error('[SalesManagement] 저장 실패:', err);
+            window.Utils.showNotification('저장 실패: ' + err.message, 'error');
         }
     },
 
