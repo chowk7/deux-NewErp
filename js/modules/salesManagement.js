@@ -326,6 +326,21 @@ window.SalesManagementModule = {
                     }
                 });
                 
+                // 옵션명 자동생성 (새 주문 입력과 동일 방식)
+                if (!updated.optionName || updated.optionName === '') {
+                    const parts = [
+                        updated.length ? `${updated.length}cm` : '',
+                        updated.color || '',
+                        updated.size || '',
+                        updated.lockType || '',
+                        updated.chainThickness || '',
+                        updated.backSupport || ''
+                    ].filter(p => p);
+                    if (parts.length > 0) {
+                        updated.optionName = parts.join('/');
+                    }
+                }
+                
                 // popup_sales의 photos를 deux-NewErp 이미지 형식으로 변환
                 if (updated.photos && updated.photos.length > 0) {
                     updated.images = {
@@ -343,13 +358,23 @@ window.SalesManagementModule = {
                 };
             });
 
+            // 배치 저장 후 각 문서 ID를 저장
+            const docRefs = [];
             const batch = window.firebaseDb.batch();
             updatedOrders.forEach(order => {
                 const docRef = window.firebaseDb.collection('sales').doc('orders').collection('items').doc();
+                docRefs.push(docRef.id);
                 const { id, ...data } = order;
                 batch.set(docRef, data);
             });
             await batch.commit();
+            
+            // 나석정보 자동 입력 (제조원가표)
+            for (const docId of docRefs) {
+                if (window.ManufacturingCostsModule) {
+                    await window.ManufacturingCostsModule.autoFillFromProductRates(docId);
+                }
+            }
 
             window.Utils.showNotification(`${updatedOrders.length}건 저장 완료`, 'success');
             self.allOrders = [];  // 캐시 비우기
