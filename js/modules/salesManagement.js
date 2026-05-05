@@ -544,12 +544,14 @@ window.SalesManagementModule = {
             // 이미지 링크 (주문관리 IMAGE_TYPES 참조)
             const imageTypes = window.OrderManagementModule?.IMAGE_TYPES || [];
             const imageCell = imageTypes.length > 0
-                ? imageTypes.map(t =>
-                    o.images?.[t.key]
+                ? imageTypes.map(t => {
+                    const imgArr = o.images?.[t.key];
+                    const hasImages = Array.isArray(imgArr) ? imgArr.length > 0 : !!imgArr;
+                    return hasImages
                         ? `<a href="#" style="font-size:0.75rem;margin-right:4px;"
-                            data-action="viewOrderImage" data-id="${o.id}" data-type="${t.key}">📎${t.label}</a>`
-                        : `<span style="color:#d1d5db;font-size:0.75rem;margin-right:4px;">${t.label}</span>`
-                  ).join('')
+                            data-action="viewOrderImage" data-id="${o.id}" data-type="${t.key}">📎${t.label}${Array.isArray(imgArr) ? `(${imgArr.length})` : ''}</a>`
+                        : `<span style="color:#d1d5db;font-size:0.75rem;margin-right:4px;">${t.label}</span>`;
+                  }).join('')
                 : '';
 
             return `
@@ -931,6 +933,35 @@ window.SalesManagementModule = {
                 ['orderAmount','salesAmount','commissionRate','length'].forEach(k => {
                     if (data[k] !== undefined) data[k] = parseFloat(data[k]) || 0;
                 });
+
+                // 이미지 Firebase Storage 업로드 및 경로 저장
+                const images = {};
+                const fileFields = ['img_salesReceipt', 'img_orderSheet'];
+                for (const field of fileFields) {
+                    const files = data[field];
+                    if (files && files.length > 0) {
+                        const key = field === 'img_salesReceipt' ? 'salesReceipt' : 'orderSheet';
+                        images[key] = [];
+                        for (const file of files) {
+                            try {
+                                const path = `orders/${orderId || 'new'}/${key}/${Date.now()}_${file.name}`;
+                                const snapshot = await window.firebaseStorage.ref(path).put(file);
+                                const downloadURL = await snapshot.ref.getDownloadURL();
+                                images[key].push({ path, url: downloadURL });
+                            } catch (err) {
+                                console.error(`${field} 업로드 실패:`, err);
+                            }
+                        }
+                        // 기존 이미지 병합 (수정 시)
+                        if (order?.images?.[key]) {
+                            images[key] = [...(order.images[key] || []), ...images[key]];
+                        }
+                    } else if (order?.images?.[field.replace('img_', '')]) {
+                        // 파일이 없으면 기존 이미지 유지
+                        images[key] = order.images[key.replace('img_', '')];
+                    }
+                }
+                data.images = images;
 
                 // 이미지 파일 필드 제거 (Firestore에 저장할 수 없음)
                 delete data.img_salesReceipt;
@@ -1830,11 +1861,20 @@ window.SalesManagementModule = {
 
     async viewOrderImage(orderId, imageType) {
         const order = this.orders.find(o => o.id === orderId);
-        const path = order?.images?.[imageType];
-        if (!path) return;
+        const imageData = order?.images?.[imageType];
+        if (!imageData || imageData.length === 0) return;
+        // 새 구조: 배열 [{path, url}] 또는舊 구조: path 문자열
+        const imageInfo = Array.isArray(imageData) ? imageData[0] : { path: imageData };
         try {
-            const url = await window.firebaseStorage.ref(path).getDownloadURL();
-            window.open(url, '_blank');
+            let url = imageInfo.url;
+            if (!url && imageInfo.path) {
+                url = await window.firebaseStorage.ref(imageInfo.path).getDownloadURL();
+            }
+            if (url) {
+                window.open(url, '_blank');
+            } else {
+                window.Utils.showNotification('이미지 URL을 찾을 수 없습니다.', 'error');
+            }
         } catch (e) {
             window.Utils.showNotification('이미지를 불러올 수 없습니다.', 'error');
         }
