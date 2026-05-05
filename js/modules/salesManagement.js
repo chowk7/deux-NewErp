@@ -311,6 +311,18 @@ window.SalesManagementModule = {
                                     }
                                 }).join('')}
                             </div>
+                            ${order.photos && order.photos.length > 0 ? `
+                                <div style="margin-top: 12px; padding-top: 12px; border-top: 1px dashed #ccc;">
+                                    <p style="font-size: 12px; color: #666; margin-bottom: 8px;">📷 첨부된 이미지 (${order.photos.length}장)</p>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                                        ${order.photos.map((url, imgIdx) => `
+                                            <div style="position: relative; width: 70px; height: 70px; border-radius: 4px; overflow: hidden; border: 1px solid #ddd;">
+                                                <img src="${url}" style="width: 100%; height: 100%; object-fit: cover; cursor: pointer;" onclick="window.open('${url}', '_blank')">
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            ` : ''}
                         </div>
                     `).join('')}
                 </div>
@@ -339,7 +351,51 @@ window.SalesManagementModule = {
                 }
             }
             
+            // Firestore 문서 먼저 생성 (ID 필요)
+            const docRefs = [];
+            const batch = window.firebaseDb.batch();
+            originalOrders.forEach((order, idx) => {
+                const docRef = window.firebaseDb.collection('sales').doc('orders').collection('items').doc();
+                docRefs.push({ id: docRef.id, orderIdx: idx });
+            });
+            await batch.commit();
+            
+            // 각 주문의 이미지를 GCP Storage로 복사
+            const storage = window.firebaseStorage;
+            for (const refInfo of docRefs) {
+                const docId = refInfo.id;
+                const orderIdx = refInfo.orderIdx;
+                const order = originalOrders[orderIdx];
+                if (order.photos && order.photos.length > 0 && storage) {
+                    const salesReceiptImages = [];
+                    for (let imgIdx = 0; imgIdx < order.photos.length; imgIdx++) {
+                        const srcUrl = order.photos[imgIdx];
+                        try {
+                            // Firebase Storage URL에서 파일 다운로드
+                            const response = await fetch(srcUrl);
+                            const blob = await response.blob();
+                            const ext = srcUrl.split('.').pop() || 'jpg';
+                            const path = `sales/${docId}/receipt/${Date.now()}_${imgIdx}.${ext}`;
+                            const ref = storage.ref(path);
+                            await ref.put(blob);
+                            const url = await ref.getDownloadURL();
+                            salesReceiptImages.push({ path, url });
+                        } catch (imgErr) {
+                            console.error('[SalesManagement] 이미지 복사 실패:', imgErr);
+                            // 복사 실패 시 원본 URL 사용
+                            salesReceiptImages.push({ path: '', url: srcUrl });
+                        }
+                    }
+                    // Firestore 문서 업데이트
+                    await window.firebaseDb.collection('sales').doc('orders').collection('items').doc(docId).update({
+                        images: { salesReceipt: salesReceiptImages, orderSheet: [] }
+                    });
+                }
+            }
+            
+            // 기본 필드 업데이트
             const updatedOrders = originalOrders.map((order, idx) => {
+                const docId = docRefs.find(d => d.orderIdx === idx)?.id;
                 const updated = { ...order };
                 self.ORDER_FIELDS.filter(f => f.type !== 'status').forEach(f => {
                     const input = document.querySelector(`[name="order_${idx}_${f.key}"]`);
@@ -348,7 +404,7 @@ window.SalesManagementModule = {
                     }
                 });
                 
-                // 옵션명 자동생성 (새 주문 입력과 동일 방식)
+                // 옵션명 자동생성
                 if (!updated.optionName || updated.optionName === '') {
                     const parts = [
                         updated.length ? `${updated.length}cm` : '',
@@ -363,44 +419,34 @@ window.SalesManagementModule = {
                     }
                 }
                 
-                // popup_sales의 photos를 deux-NewErp 이미지 형식으로 변환
-                if (updated.photos && updated.photos.length > 0) {
-                    updated.images = {
-                        salesReceipt: updated.photos.map(url => ({ path: '', url })),
-                        orderSheet: []
-                    };
-                    delete updated.photos;
-                }
+                // 이미지 필드 제거 (별도 업데이트 했으므로)
+                delete updated.photos;
                 
                 return {
                     ...updated,
                     createdAt: new Date(),
                     importedFrom: 'popup_sales',
                     originalId: updated.id,
+                    id: docId,
                 };
             });
 
-            // 배치 저장 후 각 문서 ID를 저장
-            const docRefs = [];
-            const batch = window.firebaseDb.batch();
-            updatedOrders.forEach(order => {
-                const docRef = window.firebaseDb.collection('sales').doc('orders').collection('items').doc();
-                docRefs.push(docRef.id);
-                const { id, ...data } = order;
-                batch.set(docRef, data);
-            });
-            await batch.commit();
+            // 나머지 필드 일괄 업데이트
+            for (const order of updatedOrders) {
+                const { id, images, ...rest } = order;
+                await window.firebaseDb.collection('sales').doc('orders').collection('items').doc(id).set(order, { merge: true });
+            }
             
-            // 나석정보 자동 입력 (제조원가표)
-            for (const docId of docRefs) {
+            // 나석정보 자동 입력
+            for (const { id: docId } of docRefs) {
                 if (window.ManufacturingCostsModule) {
                     await window.ManufacturingCostsModule.autoFillFromProductRates(docId);
                 }
             }
 
             window.Utils.showNotification(`${updatedOrders.length}건 저장 완료`, 'success');
-            self.allOrders = [];  // 캐시 비우기
-            await self.loadOrders(1);  // Firestore에서 다시 로드
+            self.allOrders = [];
+            await self.loadOrders(1);
         } catch (err) {
             console.error('[SalesManagement] 저장 실패:', err);
             window.Utils.showNotification('저장 실패: ' + err.message, 'error');
