@@ -229,7 +229,7 @@ window.StoneInputModalModule = {
         const priceDisplay = wrapper.querySelector('#stonePriceDisplay');
         const stonePrice = parseFloat(priceDisplay?.value) || diamond.costWithVat || 0;
         const totalPrice = stonePrice * qty;
-        const warrantyFee = this.getWarrantyFee(diamond, cert);
+        const warrantyFee = this.getWarrantyFee(diamond, cert) * qty;
 
         const stoneData = {
             id: this.currentEditId || `stone_${Date.now()}_${Math.random()}`,

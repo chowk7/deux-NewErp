@@ -809,8 +809,8 @@ window.ManufacturingCostsModule = {
                                 const diamond = this.diamondRates.find(d => d.diamondType === stoneTypeKey);
                                 const stonePrice = diamond?.costWithVat || 0;
                                 const qty = s.stoneQty || s.qty || 0;
-                                const warrantyFee = productWarranty === 'VS' ? (diamond?.vsWarrantyFee || 0)
-                                                 : productWarranty === 'VVS' ? (diamond?.vvsWarrantyFee || 0) : 0;
+                                const warrantyFee = (productWarranty === 'VS' ? (diamond?.vsWarrantyFee || 0)
+                                                 : productWarranty === 'VVS' ? (diamond?.vvsWarrantyFee || 0) : 0) * qty;
                                 return {
                                     stoneType: stoneTypeKey,
                                     stoneQty: qty,
@@ -832,8 +832,8 @@ window.ManufacturingCostsModule = {
                                 const diamond = this.diamondRates.find(d => d.diamondType === stoneTypeKey);
                                 const stonePrice = diamond?.costWithVat || 0;
                                 const qty = s.stoneQty || s.qty || 0;
-                                const warrantyFee = productWarranty === 'VS' ? (diamond?.vsWarrantyFee || 0)
-                                                 : productWarranty === 'VVS' ? (diamond?.vvsWarrantyFee || 0) : 0;
+                                const warrantyFee = (productWarranty === 'VS' ? (diamond?.vsWarrantyFee || 0)
+                                                 : productWarranty === 'VVS' ? (diamond?.vvsWarrantyFee || 0) : 0) * qty;
                                 return {
                                     stoneType: stoneTypeKey,
                                     stoneQty: qty,
