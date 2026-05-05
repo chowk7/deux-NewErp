@@ -168,6 +168,7 @@ window.SalesManagementModule = {
     },
 
     showPopupSyncModal(orders) {
+        const self = this;
         const fields = [
             { key: 'orderDate', label: '주문일' },
             { key: 'orderNumber', label: '주문번호' },
@@ -191,7 +192,7 @@ window.SalesManagementModule = {
                             <tr>
                                 ${fields.map(f => `
                                     <td style="padding: 6px; border: 1px solid #ddd;">
-                                        ${this._makeSyncEditField(o, f, i)}
+                                        ${self._makeSyncEditField(o, f, i)}
                                     </td>
                                 `).join('')}
                             </tr>
@@ -202,12 +203,12 @@ window.SalesManagementModule = {
         `;
 
         window.Utils.openModal('🏪 매장관리 싱크', html, async () => {
-            // 2차 상세 수정 모달 열기
-            this.openDetailedSyncModal(orders);
+            self.openDetailedSyncModal(orders);
         }, '상세수정하기');
     },
 
     openDetailedSyncModal(orders) {
+        const self = this;
         const html = `
             <div style="padding: 16px; max-height: 75vh; overflow-y: auto;">
                 <p style="margin-bottom: 16px; color: #666;">${orders.length}건 - 모든 항목을 수정 후 저장을 클릭하세요.</p>
@@ -216,7 +217,7 @@ window.SalesManagementModule = {
                         <div style="border: 1px solid #ddd; border-radius: 8px; padding: 16px; background: #fafafa;">
                             <div style="font-weight: bold; margin-bottom: 12px; color: #333;">주문 ${idx + 1}</div>
                             <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
-                                ${this.ORDER_FIELDS.filter(f => f.type !== 'status').map(f => {
+                                ${self.ORDER_FIELDS.filter(f => f.type !== 'status').map(f => {
                                     const val = order[f.key] || '';
                                     const isRequired = f.defaultRequired;
                                     if (f.type === 'select') {
@@ -260,15 +261,16 @@ window.SalesManagementModule = {
         `;
 
         window.Utils.openModal('📝 상세 수정 - 모든 필드', html, async () => {
-            await this.saveDetailedSyncOrders(orders);
+            await self.saveDetailedSyncOrders(orders);
         }, '저장');
     },
 
     async saveDetailedSyncOrders(originalOrders) {
+        const self = this;
         try {
             const updatedOrders = originalOrders.map((order, idx) => {
                 const updated = { ...order };
-                this.ORDER_FIELDS.filter(f => f.type !== 'status').forEach(f => {
+                self.ORDER_FIELDS.filter(f => f.type !== 'status').forEach(f => {
                     const input = document.querySelector(`[name="order_${idx}_${f.key}"]`);
                     if (input) {
                         updated[f.key] = f.type === 'number' ? (parseFloat(input.value) || 0) : input.value;
@@ -291,7 +293,7 @@ window.SalesManagementModule = {
             await batch.commit();
 
             window.Utils.showNotification(`${updatedOrders.length}건 저장 완료`, 'success');
-            this.loadOrders();
+            self.loadOrders();
         } catch (err) {
             console.error('[SalesManagement] 저장 실패:', err);
             window.Utils.showNotification('저장 실패: ' + err.message, 'error');
