@@ -300,6 +300,17 @@ window.SalesManagementModule = {
         }
     },
 
+    _makeSyncEditField(order, field, rowIdx) {
+        const val = order[field.key] || '';
+        if (field.key === 'orderDate') {
+            return `<input type="date" id="sync_${rowIdx}_${field.key}" value="${val}" style="width:130px;padding:4px;border:1px solid #ccc;border-radius:4px;">`;
+        }
+        if (field.key === 'orderAmount' || field.key === 'salesAmount') {
+            return `<input type="number" id="sync_${rowIdx}_${field.key}" value="${val}" style="width:100px;padding:4px;border:1px solid #ccc;border-radius:4px;">`;
+        }
+        return `<input type="text" id="sync_${rowIdx}_${field.key}" value="${val}" style="width:120px;padding:4px;border:1px solid #ccc;border-radius:4px;">`;
+    }
+
     openOrderDisplaySettings() {
         const defaultKeys = ['orderDate', 'orderNumber', 'customerName', 'productName', 'orderAmount', 'salesAmount'];
         window.Utils.openDisplayFieldsModal('orders', this.ORDER_FIELDS,
