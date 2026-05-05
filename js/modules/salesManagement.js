@@ -950,27 +950,27 @@ window.SalesManagementModule = {
                 const fileFields = ['img_salesReceipt', 'img_orderSheet'];
                 for (const field of fileFields) {
                     const files = data[field];
-                    if (files && files.length > 0) {
-                        const key = field === 'img_salesReceipt' ? 'salesReceipt' : 'orderSheet';
-                        images[key] = [];
-                        for (const file of files) {
-                            try {
-                                const path = `orders/${orderId || 'new'}/${key}/${Date.now()}_${file.name}`;
-                                const snapshot = await window.firebaseStorage.ref(path).put(file);
-                                const downloadURL = await snapshot.ref.getDownloadURL();
-                                images[key].push({ path, url: downloadURL });
-                            } catch (err) {
-                                console.error(`${field} 업로드 실패:`, err);
-                            }
+                    const key = field === 'img_salesReceipt' ? 'salesReceipt' : 'orderSheet';
+                if (files && files.length > 0) {
+                    images[key] = [];
+                    for (const file of files) {
+                        try {
+                            const path = `orders/${orderId || 'new'}/${key}/${Date.now()}_${file.name}`;
+                            const snapshot = await window.firebaseStorage.ref(path).put(file);
+                            const downloadURL = await snapshot.ref.getDownloadURL();
+                            images[key].push({ path, url: downloadURL });
+                        } catch (err) {
+                            console.error(`${field} 업로드 실패:`, err);
                         }
-                        // 기존 이미지 병합 (수정 시)
-                        if (order?.images?.[key]) {
-                            images[key] = [...(order.images[key] || []), ...images[key]];
-                        }
-                    } else if (order?.images?.[field.replace('img_', '')]) {
-                        // 파일이 없으면 기존 이미지 유지
-                        images[key] = order.images[key.replace('img_', '')];
                     }
+                    // 기존 이미지 병합 (수정 시)
+                    if (order?.images?.[key]) {
+                        images[key] = [...(order.images[key] || []), ...images[key]];
+                    }
+                } else if (order?.images?.[key]) {
+                    // 파일이 없으면 기존 이미지 유지
+                    images[key] = order.images[key];
+                }
                 }
                 data.images = images;
 
