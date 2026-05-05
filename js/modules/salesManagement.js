@@ -201,10 +201,9 @@ window.SalesManagementModule = {
             </div>
         `;
 
-        const modal = window.Utils.createModal('🏪 매장관리 싱크', html, [
-            { text: '가져오기', class: 'btn-primary', onClick: () => this.importPopupOrders(orders) },
-            { text: '취소', class: 'btn-outline', onClick: () => modal.close() },
-        ], '900px');
+        window.Utils.openModal('🏪 매장관리 싱크', html, async () => {
+            await this.importPopupOrders(orders);
+        }, '가져오기');
     },
 
     _makeSyncEditField(order, field, rowIdx) {
