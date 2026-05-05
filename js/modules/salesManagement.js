@@ -309,7 +309,7 @@ window.SalesManagementModule = {
             return `<input type="number" id="sync_${rowIdx}_${field.key}" value="${val}" style="width:100px;padding:4px;border:1px solid #ccc;border-radius:4px;">`;
         }
         return `<input type="text" id="sync_${rowIdx}_${field.key}" value="${val}" style="width:120px;padding:4px;border:1px solid #ccc;border-radius:4px;">`;
-    }
+    },
 
     openOrderDisplaySettings() {
         const defaultKeys = ['orderDate', 'orderNumber', 'customerName', 'productName', 'orderAmount', 'salesAmount'];
