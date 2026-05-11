@@ -674,13 +674,18 @@ app.post('/api/copy-image', verifyToken, async (req, res) => {
             return res.status(400).json({ error: 'gcsPath와 destPath가 필요합니다.' });
         }
 
+        console.log('[CopyImage] gcsPath:', gcsPath, 'destPath:', destPath);
+
         // GCS에서 파일 읽기
         const gcsFile = bucket.file(gcsPath);
         const [exists] = await gcsFile.exists();
-        if (!exists) return res.status(404).json({ error: 'GCS에 파일이 없습니다.' });
+        console.log('[CopyImage] GCS exists:', exists);
+        if (!exists) return res.status(404).json({ error: 'GCS에 파일이 없습니다.', path: gcsPath });
 
         const [metadata] = await gcsFile.getMetadata();
+        console.log('[CopyImage] metadata:', metadata);
         const buffer = await gcsFile.download();
+        console.log('[CopyImage] downloaded, size:', buffer[0]?.length);
 
         // Firebase Storage에 업로드
         const destRef = storage.ref(destPath);
@@ -690,7 +695,7 @@ app.post('/api/copy-image', verifyToken, async (req, res) => {
         res.json({ path: destPath, url });
     } catch (error) {
         console.error('[CopyImage] Error:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: error.message, details: error.stack });
     }
 });
 

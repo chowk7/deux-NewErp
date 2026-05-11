@@ -385,6 +385,12 @@ window.SalesManagementModule = {
                                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await window.firebaseAuth.currentUser.getIdToken()}` },
                                 body: JSON.stringify({ gcsPath, destPath })
                             });
+                            if (!resp.ok) {
+                                const errData = await resp.json().catch(() => ({}));
+                                console.error('[SalesManagement] 이미지 복사 API 오류:', resp.status, errData);
+                                salesReceiptImages.push({ path: '', url: srcUrl });
+                                continue;
+                            }
                             const data = await resp.json();
                             if (data.url) {
                                 salesReceiptImages.push({ path: destPath, url: data.url });
