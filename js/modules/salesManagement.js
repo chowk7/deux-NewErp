@@ -364,44 +364,16 @@ window.SalesManagementModule = {
             });
             await batch.commit();
             
-            // 각 주문의 이미지를 GCP Storage로 복사
-            const storage = window.firebaseStorage;
+            // 각 주문의 이미지를 GCS 경로 그대로 저장 (Firebase Storage 복사 불필요)
             for (const refInfo of docRefs) {
                 const docId = refInfo.id;
                 const orderIdx = refInfo.orderIdx;
                 const order = originalOrders[orderIdx];
                 if (order.photos && order.photos.length > 0) {
-                    const salesReceiptImages = [];
-                    for (let imgIdx = 0; imgIdx < order.photos.length; imgIdx++) {
-                        const srcUrl = order.photos[imgIdx];
-                        try {
-                            // GCS URL에서 경로 추출 (서버 API로 이미지 복사)
-                            const gcsPath = srcUrl.replace('https://storage.googleapis.com/new_erp/', '');
-                            const ext = gcsPath.split('.').pop() || 'jpg';
-                            const destPath = `sales/${docId}/receipt/${Date.now()}_${imgIdx}.${ext}`;
-                            
-                            const resp = await fetch('/api/copy-image', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await window.firebaseAuth.currentUser.getIdToken()}` },
-                                body: JSON.stringify({ gcsPath, destPath })
-                            });
-                            if (!resp.ok) {
-                                const errData = await resp.json().catch(() => ({}));
-                                console.error('[SalesManagement] 이미지 복사 API 오류:', resp.status, errData);
-                                salesReceiptImages.push({ path: '', url: srcUrl });
-                                continue;
-                            }
-                            const data = await resp.json();
-                            if (data.url) {
-                                salesReceiptImages.push({ path: destPath, url: data.url });
-                            }
-                        } catch (imgErr) {
-                            console.error('[SalesManagement] 이미지 복사 실패:', imgErr);
-                            // 복사 실패 시 원본 URL 사용
-                            salesReceiptImages.push({ path: '', url: srcUrl });
-                        }
-                    }
-                    // Firestore 문서 업데이트
+                    const salesReceiptImages = order.photos.map(url => ({
+                        path: url.replace('https://storage.googleapis.com/new_erp/', ''),
+                        url: url
+                    }));
                     await window.firebaseDb.collection('sales').doc('orders').collection('items').doc(docId).update({
                         images: { salesReceipt: salesReceiptImages, orderSheet: [] }
                     });
