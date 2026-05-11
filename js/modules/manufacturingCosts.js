@@ -660,16 +660,18 @@ window.ManufacturingCostsModule = {
         const salesField = { key: 'salesAmount', label: '매출금액(이익계산용)', type: 'number', calc: false };
         // 주문번호 필드 추가
         const orderField = { key: 'orderId', label: '주문번호(연결)', type: 'text', calc: false };
+        
+        // 금시세 기본값: 금재고에서 미리 조회
+        const defaultGoldPrice = (() => {
+            if (cost && cost.goldMarketPrice && cost.goldMarketPrice !== 0) return cost.goldMarketPrice;
+            return window.GoldInventoryModule?.getLatestAvgPrice?.() || null;
+        })();
 
         const makeInput = (f) => {
-            // 금시세: 신규 입력 또는 수정 시 기본값 = 금재고의 최신 평단가
+            // 금시세: 기존값이 있으면 사용, 없으면 defaultGoldPrice(금재고 최신 평단가) 사용
             let val = cost?.[f.key] ?? '';
-            if (f.key === 'goldMarketPrice') {
-                // 신규 또는 수정 시 (기존값이 0이나 빈값이면) 최신 평단가로 기본값 설정
-                if (!cost || !val || val === 0) {
-                    const latestAvg = window.GoldInventoryModule?.getLatestAvgPrice?.();
-                    if (latestAvg) val = Math.round(latestAvg);
-                }
+            if (f.key === 'goldMarketPrice' && (!val || val === 0)) {
+                if (defaultGoldPrice) val = Math.round(defaultGoldPrice);
             }
             // 주문번호(orderId)와 매출금액(salesAmount)은 수정 불가
             const isReadOnly = f.key === 'orderId' || f.key === 'salesAmount' || f.calc;

@@ -71,7 +71,11 @@ window.GoldInventoryModule = {
     },
 
     // ── 최신 평단가 반환 (제조원가 폼에서 사용) ───────────────────
-    getLatestAvgPrice() {
+    async getLatestAvgPrice() {
+        // items가 없으면 Firestore에서 직접 조회
+        if (this.items.length === 0) {
+            await this.load();
+        }
         if (this.items.length === 0) return null;
         return this.items[this.items.length - 1].avgPriceG;
     },
