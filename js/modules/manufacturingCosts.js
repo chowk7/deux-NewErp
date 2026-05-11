@@ -1029,16 +1029,16 @@ window.ManufacturingCostsModule = {
             };
             const calculated = this.calculate(dataForCalc);
 
-            // Firestore 업데이트
+            // Firestore 업데이트 (set with merge: 문서가 없어도 오류 없음)
             await window.firebaseDb
                 .collection('sales').doc('orders').collection('items').doc(orderId)
-                .update({
+                .set({
                     ...calculated,
                     stoneArray:    JSON.stringify(stoneArray),
                     stoneQty_text: stoneQtyText,
                     stones:        targetProduct.stones, // 원본 보관
                     updatedAt:     new Date()
-                });
+                }, { merge: true });
 
             window.Utils.showNotification(
                 `"${productName}"의 나석정보가 자동으로 입력되었습니다.`, 'success'
