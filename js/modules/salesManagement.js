@@ -374,9 +374,9 @@ window.SalesManagementModule = {
                         path: url.replace('https://storage.googleapis.com/new_erp/', ''),
                         url: url
                     }));
-                    await window.firebaseDb.collection('sales').doc('orders').collection('items').doc(docId).update({
+                    await window.firebaseDb.collection('sales').doc('orders').collection('items').doc(docId).set({
                         images: { salesReceipt: salesReceiptImages, orderSheet: [] }
-                    });
+                    }, { merge: true });
                 }
             }
             
