@@ -665,8 +665,8 @@ window.ManufacturingCostsModule = {
             // 금시세: 신규 입력 또는 수정 시 기본값 = 금재고의 최신 평단가
             let val = cost?.[f.key] ?? '';
             if (f.key === 'goldMarketPrice') {
-                // 수정 시 기존값이 0이나 빈값이면 최신 평단가로 기본값 설정
-                if ((!val || val === 0) || !cost) {
+                // 신규 또는 수정 시 (기존값이 0이나 빈값이면) 최신 평단가로 기본값 설정
+                if (!cost || !val || val === 0) {
                     const latestAvg = window.GoldInventoryModule?.getLatestAvgPrice?.();
                     if (latestAvg) val = Math.round(latestAvg);
                 }
