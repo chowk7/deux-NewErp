@@ -315,11 +315,15 @@ window.SalesManagementModule = {
                                 <div style="margin-top: 12px; padding-top: 12px; border-top: 1px dashed #ccc;">
                                     <p style="font-size: 12px; color: #666; margin-bottom: 8px;">📷 첨부된 이미지 (${order.photos.length}장)</p>
                                     <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-                                        ${order.photos.map((url, imgIdx) => `
+                                        ${order.photos.map((url, imgIdx) => {
+                                            const proxyUrl = url.includes('storage.googleapis.com') 
+                                                ? `/api/image?path=${encodeURIComponent(url.replace('https://storage.googleapis.com/new_erp/', ''))}` 
+                                                : url;
+                                            return `
                                             <div style="position: relative; width: 70px; height: 70px; border-radius: 4px; overflow: hidden; border: 1px solid #ddd;">
-                                                <img src="${url}" style="width: 100%; height: 100%; object-fit: cover; cursor: pointer;" onclick="window.open('${url}', '_blank')">
-                                            </div>
-                                        `).join('')}
+                                                <img src="${proxyUrl}" style="width: 100%; height: 100%; object-fit: cover; cursor: pointer;" onclick="window.open('${url}', '_blank')">
+                                            </div>`;
+                                        }).join('')}
                                     </div>
                                 </div>
                             ` : ''}
@@ -366,20 +370,25 @@ window.SalesManagementModule = {
                 const docId = refInfo.id;
                 const orderIdx = refInfo.orderIdx;
                 const order = originalOrders[orderIdx];
-                if (order.photos && order.photos.length > 0 && storage) {
+                if (order.photos && order.photos.length > 0) {
                     const salesReceiptImages = [];
                     for (let imgIdx = 0; imgIdx < order.photos.length; imgIdx++) {
                         const srcUrl = order.photos[imgIdx];
                         try {
-                            // Firebase Storage URL에서 파일 다운로드
-                            const response = await fetch(srcUrl);
-                            const blob = await response.blob();
-                            const ext = srcUrl.split('.').pop() || 'jpg';
-                            const path = `sales/${docId}/receipt/${Date.now()}_${imgIdx}.${ext}`;
-                            const ref = storage.ref(path);
-                            await ref.put(blob);
-                            const url = await ref.getDownloadURL();
-                            salesReceiptImages.push({ path, url });
+                            // GCS URL에서 경로 추출 (서버 API로 이미지 복사)
+                            const gcsPath = srcUrl.replace('https://storage.googleapis.com/new_erp/', '');
+                            const ext = gcsPath.split('.').pop() || 'jpg';
+                            const destPath = `sales/${docId}/receipt/${Date.now()}_${imgIdx}.${ext}`;
+                            
+                            const resp = await fetch('/api/copy-image', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await window.firebaseAuth.currentUser.getIdToken()}` },
+                                body: JSON.stringify({ gcsPath, destPath })
+                            });
+                            const data = await resp.json();
+                            if (data.url) {
+                                salesReceiptImages.push({ path: destPath, url: data.url });
+                            }
                         } catch (imgErr) {
                             console.error('[SalesManagement] 이미지 복사 실패:', imgErr);
                             // 복사 실패 시 원본 URL 사용

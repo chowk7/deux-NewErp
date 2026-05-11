@@ -640,6 +640,60 @@ app.get('/api/file-content', verifyToken, async (req, res) => {
     }
 });
 
+// ===== 이미지 프록시 API (GCS -> 브라우저 CORS 우회) =====
+app.get('/api/image', async (req, res) => {
+    try {
+        const filePath = req.query.path;
+        if (!filePath) return res.status(400).json({ error: 'path 파라미터가 필요합니다.' });
+
+        const file = bucket.file(filePath);
+        const [exists] = await file.exists();
+        if (!exists) return res.status(404).json({ error: '파일이 없습니다.' });
+
+        const [metadata] = await file.getMetadata();
+        res.setHeader('Content-Type', metadata.contentType || 'image/jpeg');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        file.createReadStream().pipe(res);
+    } catch (error) {
+        console.error('[ImageProxy] Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * POST /api/copy-image
+ * GCS(new_erp) -> Firebase Storage로 이미지 복사 (CORS 우회)
+ * Body: { gcsPath: "orders/xxx/photos/xxx.jpg", destPath: "sales/xxx/receipt/xxx.jpg" }
+ * Response: { url: Firebase Storage URL }
+ */
+app.post('/api/copy-image', verifyToken, async (req, res) => {
+    try {
+        const { gcsPath, destPath } = req.body;
+        if (!gcsPath || !destPath) {
+            return res.status(400).json({ error: 'gcsPath와 destPath가 필요합니다.' });
+        }
+
+        // GCS에서 파일 읽기
+        const gcsFile = bucket.file(gcsPath);
+        const [exists] = await gcsFile.exists();
+        if (!exists) return res.status(404).json({ error: 'GCS에 파일이 없습니다.' });
+
+        const [metadata] = await gcsFile.getMetadata();
+        const buffer = await gcsFile.download();
+
+        // Firebase Storage에 업로드
+        const destRef = storage.ref(destPath);
+        await destRef.put(buffer[0], { contentType: metadata.contentType || 'image/jpeg' });
+        const url = await destRef.getDownloadURL();
+
+        res.json({ path: destPath, url });
+    } catch (error) {
+        console.error('[CopyImage] Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // ===== 에러 핸들링 =====
 
 app.use((error, req, res, next) => {
