@@ -662,11 +662,14 @@ window.ManufacturingCostsModule = {
         const orderField = { key: 'orderId', label: '주문번호(연결)', type: 'text', calc: false };
 
         const makeInput = (f) => {
-            // 신규 입력 시 금시세는 금재고의 최신 평단가로 자동 반영
+            // 금시세: 신규 입력 또는 수정 시 기본값 = 금재고의 최신 평단가
             let val = cost?.[f.key] ?? '';
-            if (!cost && f.key === 'goldMarketPrice') {
-                const latestAvg = window.GoldInventoryModule?.getLatestAvgPrice?.();
-                if (latestAvg) val = Math.round(latestAvg);
+            if (f.key === 'goldMarketPrice') {
+                // 수정 시 기존값이 0이나 빈값이면 최신 평단가로 기본값 설정
+                if ((!val || val === 0) || !cost) {
+                    const latestAvg = window.GoldInventoryModule?.getLatestAvgPrice?.();
+                    if (latestAvg) val = Math.round(latestAvg);
+                }
             }
             // 주문번호(orderId)와 매출금액(salesAmount)은 수정 불가
             const isReadOnly = f.key === 'orderId' || f.key === 'salesAmount' || f.calc;
