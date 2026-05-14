@@ -38,9 +38,10 @@ window.ProfitLossModule = {
             .get();
         const orders = ordersSnap.docs.map(d => d.data());
 
-        // 2. 월별 제조원가 집계
+        // 2. 월별 제조원가 집계 (제조원가표와 동일하게 sales/orders/items에서 로드)
         const mfgSnap = await window.firebaseDb
-            .collection('sales').doc('manufacturingCosts').collection('items')
+            .collection('sales').doc('orders').collection('items')
+            .where('manufacturingCost', '>', 0)
             .get();
         const mfgCosts = mfgSnap.docs.map(d => d.data());
 
