@@ -38,10 +38,10 @@ window.ProfitLossModule = {
             .get();
         const orders = ordersSnap.docs.map(d => d.data());
 
-        // 2. 월별 제조원가 집계 (제조원가표와 동일하게 sales/orders/items에서 로드)
+        // 2. 월별 매출원가 집계 (sales/orders/items에서 salesCost 필드로 로드)
         const mfgSnap = await window.firebaseDb
             .collection('sales').doc('orders').collection('items')
-            .where('manufacturingCost', '>', 0)
+            .where('salesCost', '>', 0)
             .get();
         const mfgCosts = mfgSnap.docs.map(d => d.data());
 
@@ -65,13 +65,13 @@ window.ProfitLossModule = {
             });
             const revenue = monthOrders.reduce((s, o) => s + (o.salesAmount || 0), 0);
 
-            // 해당 월 제조원가 (productionMonth: "YYYY-MM")
+            // 해당 월 매출원가 (orderDate 기준 - 매출과 같은 월)
             const monthMfg = mfgCosts.filter(m => {
-                if (!m.productionMonth) return false;
-                const [y, mo] = m.productionMonth.split('-');
-                return parseInt(y) === year && parseInt(mo) === month;
+                if (!m.orderDate?.toDate) return false;
+                const d = m.orderDate.toDate();
+                return d.getFullYear() === year && (d.getMonth() + 1) === month;
             });
-            const cogs = monthMfg.reduce((s, m) => s + (m.manufacturingCost || 0), 0);
+            const cogs = monthMfg.reduce((s, m) => s + (m.salesCost || 0), 0);
 
             // 월별 매출이익합계
             const grossProfit  = revenue - cogs;
