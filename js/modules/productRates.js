@@ -89,10 +89,25 @@ window.ProductRatesModule = {
             });
     },
 
+    getDefaultDisplayFieldKeys() {
+        return ['ownCode', 'productCode', 'productName', 'category', 'productCost', 'finalPrice', 'ownMallProfitRate'];
+    },
+
+    getDisplayFields() {
+        const fieldMap = {};
+        this.FIELDS.forEach(field => {
+            fieldMap[field.key] = field;
+        });
+
+        return window.Utils
+            .getDisplayFields('productRates', this.getDefaultDisplayFieldKeys())
+            .map(key => fieldMap[key])
+            .filter(field => field && field.type !== 'custom');
+    },
+
     openDisplaySettings() {
-        const defaultKeys = ['ownCode', 'productCode', 'productName', 'category', 'productCost', 'finalPrice', 'ownMallProfitRate'];
         window.Utils.openDisplayFieldsModal('productRates', this.FIELDS,
-            () => this.load(), defaultKeys);
+            () => this.load(), this.getDefaultDisplayFieldKeys());
     },
 
     async loadDiamondRates() {
@@ -246,11 +261,7 @@ window.ProductRatesModule = {
         const tbody = table?.querySelector('tbody');
         if (!tbody) return;
 
-        const defaultDisplayFields = ['ownCode', 'productCode', 'productName', 'category', 'productCost', 'finalPrice', 'ownMallProfitRate'];
-        const displayKeys = window.Utils.getDisplayFields('productRates', defaultDisplayFields);
-        const fieldMap = {};
-        this.FIELDS.forEach(f => fieldMap[f.key] = f);
-        const displayFields = displayKeys.map(k => fieldMap[k]).filter(f => f && f.type !== 'custom');
+        const displayFields = this.getDisplayFields();
 
         // thead 동적 재구성
         const thead = table.querySelector('thead');
@@ -936,9 +947,11 @@ window.ProductRatesModule = {
     },
 
     downloadData() {
+        const displayFields = this.getDisplayFields();
+
         // 나석 10개 필드로 변환
         const fieldsWithStones = [
-            ...this.FIELDS.filter(f => !f.calc && f.key !== 'stones'),
+            ...displayFields,
             { key: 'stoneType1', label: '나석종류1' },
             { key: 'stoneQty1', label: '나석갯수1' },
             { key: 'stoneType2', label: '나석종류2' },
@@ -970,6 +983,12 @@ window.ProductRatesModule = {
                 expanded[`stoneType${i+1}`] = stone?.type || '';
                 expanded[`stoneQty${i+1}`] = stone?.qty || '';
             }
+
+            displayFields.forEach(field => {
+                const formatted = this._formatCell(field, p[field.key]);
+                expanded[field.key] = formatted === '-' ? '' : formatted;
+            });
+
             return expanded;
         });
 

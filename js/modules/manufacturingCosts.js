@@ -99,12 +99,31 @@ window.ManufacturingCostsModule = {
         }
     },
 
+    getDefaultDisplayFieldKeys() {
+        return ['orderDate', 'customerName', 'productName', 'optionName', 'goldValue', 'stoneCostManual', 'manufacturingCost', 'inputCompleted', 'salesProfit', 'salesProfitRate'];
+    },
+
+    getAllFields() {
+        return [...this.HEADER_FIELDS, ...this.BASE_FIELDS, ...this.STONE_FIELDS];
+    },
+
+    getDisplayFieldDefs() {
+        const fieldMap = {};
+        this.getAllFields().forEach(field => {
+            fieldMap[field.key] = field;
+        });
+
+        return window.Utils
+            .getDisplayFields('manufacturingCosts', this.getDefaultDisplayFieldKeys())
+            .map(key => fieldMap[key])
+            .filter(Boolean);
+    },
+
     openDisplaySettings() {
-        const defaultKeys = ['orderDate', 'customerName', 'productName', 'optionName', 'goldValue', 'stoneCostManual', 'manufacturingCost', 'inputCompleted', 'salesProfit', 'salesProfitRate'];
         window.Utils.openDisplayFieldsModal('manufacturingCosts',
-            [...this.HEADER_FIELDS, ...this.BASE_FIELDS, ...this.STONE_FIELDS],
+            this.getAllFields(),
             () => this.load(),
-            defaultKeys);
+            this.getDefaultDisplayFieldKeys());
     },
 
     openRequiredSettings() {
@@ -283,11 +302,10 @@ window.ManufacturingCostsModule = {
         }
 
         try {
-            const defaultDisplayFields = ['orderDate', 'customerName', 'productName', 'optionName', 'goldValue', 'stoneCostManual', 'manufacturingCost', 'inputCompleted', 'salesProfit', 'salesProfitRate'];
-            const allFields = [...this.HEADER_FIELDS, ...this.BASE_FIELDS, ...this.STONE_FIELDS];
-            const displayFieldKeys = window.Utils.getDisplayFields('manufacturingCosts', defaultDisplayFields);
+            const displayFieldDefs = this.getDisplayFieldDefs();
+            const displayFieldKeys = displayFieldDefs.map(field => field.key);
             const fieldMap = {};
-            allFields.forEach(f => fieldMap[f.key] = f);
+            displayFieldDefs.forEach(field => fieldMap[field.key] = field);
 
             if (this.costs.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="${displayFieldKeys.length + 2}" style="text-align:center">데이터가 없습니다.</td></tr>`;
@@ -918,9 +936,37 @@ window.ManufacturingCostsModule = {
             '제조원가표_양식.csv');
     },
     downloadData() {
-        // 제작월(productionMonth) 필드 제외
-        window.Utils.downloadCsvData(
-            [...this.BASE_FIELDS.filter(f => f.key !== 'productionMonth'), ...this.STONE_FIELDS], this.costs, '제조원가표.csv');
+        const displayFields = this.getDisplayFieldDefs();
+        const rows = this.costs.map(cost => {
+            const row = {};
+
+            displayFields.forEach(field => {
+                let value = cost[field.key];
+
+                if (field.key === 'inputCompleted') {
+                    value = cost.inputCompleted ? '완료' : '미완료';
+                } else if (!cost.inputCompleted && (field.key === 'salesProfit' || field.key === 'salesProfitRate')) {
+                    value = '미입력';
+                } else if (field.key === 'stoneCostManual' && (!value || value === 0)) {
+                    value = cost.stoneCostRef || 0;
+                } else if (field.key === 'orderDate' && value) {
+                    const date = value.toDate ? value.toDate() : new Date(value);
+                    value = isNaN(date.getTime()) ? '' : date.toLocaleDateString('ko-KR');
+                } else if (field.key === 'salesProfitRate' && value !== undefined && value !== null && value !== '') {
+                    value = Math.round(value) + '%';
+                } else if (field.type === 'number' && value !== undefined && value !== null && value !== '') {
+                    value = field.calc ? Math.round(value) : value;
+                } else if (value === undefined || value === null) {
+                    value = '';
+                }
+
+                row[field.key] = value;
+            });
+
+            return row;
+        });
+
+        window.Utils.downloadCsvData(displayFields, rows, '제조원가표.csv');
     },
 
     openCsvUpload() {
