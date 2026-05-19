@@ -680,16 +680,21 @@ window.NewProductPricingModule = {
             stoneCost += (found ? parseFloat(found.costWithoutVat) || 0 : 0) * (stone.qty || 0);
         });
 
-        // 보증서 추가금
+        // 보증서 추가금 - 5부 이상 나석(보증서 추가금 > 0)은 수량만큼 합산
         const stoneWarranty = data['stoneWarranty'] || '없음';
         let stoneWarrantyFee = 0;
         if (stones.length > 0 && stoneWarranty && stoneWarranty !== '없음') {
-            const firstStone = this.diamondRates?.find(d => d.diamondType === stones[0].type);
-            if (firstStone) {
-                stoneWarrantyFee = stoneWarranty === 'VS'
-                    ? parseFloat(firstStone.vsWarrantyFee) || 0
-                    : parseFloat(firstStone.vvsWarrantyFee) || 0;
-            }
+            stones.forEach(stone => {
+                const found = this.diamondRates?.find(d => d.diamondType === stone.type);
+                if (found) {
+                    const feePerStone = stoneWarranty === 'VS'
+                        ? parseFloat(found.vsWarrantyFee) || 0
+                        : parseFloat(found.vvsWarrantyFee) || 0;
+                    if (feePerStone > 0) {
+                        stoneWarrantyFee += feePerStone * (stone.qty || 0);
+                    }
+                }
+            });
         }
         const stoneWarrantyCostComponent = stoneWarrantyFee * 0.8;
 
