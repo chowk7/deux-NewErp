@@ -458,19 +458,26 @@ window.ProductRatesModule = {
 
         // 보증서 추가금 계산 - 5부 이상 나석(보증서 추가금 > 0)은 수량만큼 합산
         let stoneWarrantyFee = 0;
-        if (stones.length > 0 && stoneWarranty && stoneWarranty !== '없음') {
-            stones.forEach(stone => {
-                const found = this.diamondRates?.find(d => d.diamondType === stone.type);
-                if (found) {
-                    const feePerStone = stoneWarranty === 'VS'
-                        ? parseFloat(found.vsWarrantyFee) || 0
-                        : parseFloat(found.vvsWarrantyFee) || 0;
-                    if (feePerStone > 0) {
-                        stoneWarrantyFee += feePerStone * (stone.qty || 0);
-                    }
+        let stoneW = 0;
+        stones.forEach(stone => {
+            const found = this.diamondRates?.find(d => d.diamondType === stone.type);
+            if (!found) return;
+
+            const qty = stone.qty || 0;
+            const vsFeePerStone = parseFloat(found.vsWarrantyFee) || 0;
+            if (vsFeePerStone > 0) {
+                stoneW += vsFeePerStone * qty;
+            }
+
+            if (stoneWarranty && stoneWarranty !== '없음') {
+                const feePerStone = stoneWarranty === 'VS'
+                    ? vsFeePerStone
+                    : parseFloat(found.vvsWarrantyFee) || 0;
+                if (feePerStone > 0) {
+                    stoneWarrantyFee += feePerStone * qty;
                 }
-            });
-        }
+            }
+        });
 
         // 원가에 포함될 보증서 추가금 (80% 적용)
         const stoneWarrantyCostComponent = stoneWarrantyFee * 0.8;
@@ -486,7 +493,7 @@ window.ProductRatesModule = {
         const discountPrice = finalPrice * (1 - n('discountRate') / 100);
         const ownMallProfit = discountPrice * (1 - ownMallFee / 100) - salesCost;
         const ownMallProfitRate = discountPrice > 0 ? (ownMallProfit / discountPrice) * 100 : 0;
-        const deptPrice   = finalPrice + stoneWarrantyFee;
+        const deptPrice   = finalPrice + stoneW;
         const deptRevenue = deptPrice * (1 - deptFee / 100);
         const deptProfitRate = deptRevenue > 0 ? ((deptRevenue - salesCost) / deptRevenue) * 100 : 0;
 
@@ -502,7 +509,7 @@ window.ProductRatesModule = {
         const discountPrice18k = finalPrice18k * (1 - n('discountRate') / 100);
         const ownMallProfit18k = discountPrice18k * (1 - ownMallFee / 100) - salesCost18k;
         const ownMallProfitRate18k = discountPrice18k > 0 ? (ownMallProfit18k / discountPrice18k) * 100 : 0;
-        const deptPrice18k  = finalPrice18k + stoneWarrantyFee;
+        const deptPrice18k  = finalPrice18k + stoneW;
         const deptRevenue18k = deptPrice18k * (1 - deptFee / 100);
         const deptProfitRate18k = deptRevenue18k > 0 ? ((deptRevenue18k - salesCost18k) / deptRevenue18k) * 100 : 0;
 
