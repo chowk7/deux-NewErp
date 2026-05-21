@@ -705,12 +705,13 @@ window.NewProductPricingModule = {
         const salesCost    = vatCost + n('shipping');
         const marginPrice  = ownMargin > 0 ? salesCost / (1 - ownMargin / 100) : salesCost;
         const expectedPrice = Math.round((marginPrice + n('priceAdj')) / 1000) * 1000;
-        const finalPrice   = (n('finalPrice') || expectedPrice) + n('sizeAddFee') + stoneWarrantyFee;
+        const finalPrice   = (n('finalPrice') || expectedPrice) + n('sizeAddFee');
         const discountPrice = finalPrice * (1 - n('discountRate') / 100);
         const ownMallProfit = discountPrice * (1 - ownMallFee / 100) - salesCost;
         const ownMallProfitRate = discountPrice > 0 ? (ownMallProfit / discountPrice) * 100 : 0;
-        const deptPrice    = finalPrice * (1 - deptFee / 100);
-        const deptProfitRate = deptPrice > 0 ? ((deptPrice - salesCost) / deptPrice) * 100 : 0;
+        const deptPrice    = finalPrice + stoneWarrantyFee;
+        const deptRevenue  = deptPrice * (1 - deptFee / 100);
+        const deptProfitRate = deptRevenue > 0 ? ((deptRevenue - salesCost) / deptRevenue) * 100 : 0;
 
         // 18K
         const goldWeight18k = n('goldWeight14k') * weight18kRate;
@@ -720,12 +721,13 @@ window.NewProductPricingModule = {
         const salesCost18k  = vatCost18k + n('shipping');
         const marginPrice18k = ownMargin > 0 ? salesCost18k / (1 - ownMargin / 100) : salesCost18k;
         const expectedPrice18k = Math.round(marginPrice18k / 1000) * 1000;
-        const finalPrice18k = (n('finalPrice18k') || expectedPrice18k) + n('sizeAddFee') + stoneWarrantyFee;
+        const finalPrice18k = (n('finalPrice18k') || expectedPrice18k) + n('sizeAddFee');
         const discountPrice18k = finalPrice18k * (1 - n('discountRate') / 100);
         const ownMallProfit18k = discountPrice18k * (1 - ownMallFee / 100) - salesCost18k;
         const ownMallProfitRate18k = discountPrice18k > 0 ? (ownMallProfit18k / discountPrice18k) * 100 : 0;
-        const deptPrice18k  = finalPrice18k * (1 - deptFee / 100);
-        const deptProfitRate18k = deptPrice18k > 0 ? ((deptPrice18k - salesCost18k) / deptPrice18k) * 100 : 0;
+        const deptPrice18k  = finalPrice18k + stoneWarrantyFee;
+        const deptRevenue18k = deptPrice18k * (1 - deptFee / 100);
+        const deptProfitRate18k = deptRevenue18k > 0 ? ((deptRevenue18k - salesCost18k) / deptRevenue18k) * 100 : 0;
 
         return {
             ...data,
