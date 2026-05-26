@@ -493,9 +493,12 @@ window.ProductRatesModule = {
         const discountPrice = finalPrice * (1 - n('discountRate') / 100);
         const ownMallProfit = discountPrice * (1 - ownMallFee / 100) - salesCost;
         const ownMallProfitRate = discountPrice > 0 ? (ownMallProfit / discountPrice) * 100 : 0;
-        const deptPrice   = finalPrice + stoneW;
+        const deptPrice = finalPrice + stoneW;
         const deptRevenue = deptPrice * (1 - deptFee / 100);
-        const deptProfitRate = deptRevenue > 0 ? ((deptRevenue - salesCost) / deptRevenue) * 100 : 0;
+        const deptProfit = deptRevenue - salesCost - (stoneWarrantyFee * 0.8);
+        const deptProfitRate = deptPrice > 0
+            ? (deptProfit / deptPrice) * 100
+            : 0;
 
         // 18K 계산
         const goldWeight18k = n('goldWeight14k') * weight18kRate;
@@ -509,9 +512,12 @@ window.ProductRatesModule = {
         const discountPrice18k = finalPrice18k * (1 - n('discountRate') / 100);
         const ownMallProfit18k = discountPrice18k * (1 - ownMallFee / 100) - salesCost18k;
         const ownMallProfitRate18k = discountPrice18k > 0 ? (ownMallProfit18k / discountPrice18k) * 100 : 0;
-        const deptPrice18k  = finalPrice18k + stoneW;
+        const deptPrice18k = finalPrice18k + stoneW;
         const deptRevenue18k = deptPrice18k * (1 - deptFee / 100);
-        const deptProfitRate18k = deptRevenue18k > 0 ? ((deptRevenue18k - salesCost18k) / deptRevenue18k) * 100 : 0;
+        const deptProfit18k = deptRevenue18k - salesCost18k - (stoneWarrantyFee * 0.8);
+        const deptProfitRate18k = deptPrice18k > 0
+            ? (deptProfit18k / deptPrice18k) * 100
+            : 0;
 
         return { ...data, goldValue, productCost, vatCost, salesCost, marginPrice, expectedPrice,
             stoneCost, stoneWarrantyFee,
