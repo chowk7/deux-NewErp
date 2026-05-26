@@ -174,12 +174,12 @@ window.NewProductPricingModule = {
         const filtered = this._filteredProducts();
 
         if (this.products.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="9" style="text-align:center">항목이 없습니다.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="12" style="text-align:center">항목이 없습니다.</td></tr>`;
             if (emptyEl) emptyEl.style.display = 'none';
             return;
         }
         if (filtered.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#9ca3af;">검색 결과가 없습니다.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:#9ca3af;">검색 결과가 없습니다.</td></tr>`;
             if (emptyEl) emptyEl.style.display = 'none';
             return;
         }
@@ -194,6 +194,9 @@ window.NewProductPricingModule = {
                 <td>${p.category || '-'}</td>
                 <td>${window.Utils.formatNumber(Math.round(p.productCost || 0))}</td>
                 <td>${window.Utils.formatNumber(Math.round(p.finalPrice || 0))}</td>
+                <td>${window.Utils.formatNumber(Math.round(p.deptPrice || 0))}</td>
+                <td>${window.Utils.formatNumber(Math.round(p.deptProfit || 0))}</td>
+                <td>${p.deptProfitRate != null ? Math.round(p.deptProfitRate) + '%' : '-'}</td>
                 <td>${p.ownMallProfitRate != null ? Math.round(p.ownMallProfitRate) + '%' : '-'}</td>
                 <td>
                     <button class="btn btn-sm btn-primary" data-action="editItem" data-id="${p.id}">수정</button>
