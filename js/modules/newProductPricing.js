@@ -5,6 +5,7 @@
  * - "제품가격표에 추가" 버튼으로 prices/productRates/items에 복사
  */
 window.NewProductPricingModule = {
+    DEPARTMENT_STONE_SIZES: ['1ct', '1.5ct', '2ct', '3ct', '4ct', '5ct'],
 
     FIELDS: [
         { key: 'ownCode',         label: '자체상품코드',    type: 'text',   calc: false },
@@ -94,9 +95,97 @@ window.NewProductPricingModule = {
         }
     },
 
+    _normalizeStoneSize(value) {
+        const size = String(value || '').trim();
+        return this.DEPARTMENT_STONE_SIZES.includes(size) ? size : '';
+    },
+
+    _getDepartmentStonePrices() {
+        return window.Utils.normalizeDeptStonePrices(this.settings?.stonePrices || {});
+    },
+
+    _getStoneBasePrice(stone) {
+        const selectedStone = this.diamondRates?.find(d => d.diamondType === stone.type);
+        return parseFloat(selectedStone?.costWithoutVat || selectedStone?.costWithVat) || 0;
+    },
+
+    _findDepartmentStonePrice(stone, category) {
+        const stoneInfo = window.Utils.extractDeptStoneCarat(stone?.type);
+        const stonePrices = this._getDepartmentStonePrices();
+
+        if (stoneInfo) {
+            const groupKey = window.Utils.getDeptStoneGroupKey(category, stoneInfo.isFancy);
+            return window.Utils.getDeptStoneTierPrice(stonePrices[groupKey], stoneInfo.carat);
+        }
+
+        const legacyRows = window.Utils.normalizeDeptStoneRowsFromPrices(this.settings?.stonePrices || {});
+        const row = legacyRows.find(r => r.label === (stone?.type || ''));
+        const sizeKey = this._normalizeStoneSize(stone?.stoneSize || stone?.size || stone?.sizeCt || stone?.ct);
+        if (!row || !sizeKey) return 0;
+        return parseFloat(row.prices?.[sizeKey]) || 0;
+    },
+
+    _calculateDepartmentPricing({ stones, category, finalPrice, salesCost, deptFee, stoneWarrantyFee }) {
+        const stoneDeptMargin = parseFloat(this.settings?.departmentStoneMargin) || 15;
+        const normalizedStones = Array.isArray(stones) ? stones : [];
+
+        let stoneCostTotal = 0;
+        let stoneRetailTotal = 0;
+        let stoneRevenue = 0;
+
+        normalizedStones.forEach(stone => {
+            const qty = parseFloat(stone.qty) || 0;
+            if (qty <= 0) return;
+
+            const basePrice = this._getStoneBasePrice(stone);
+            const baseTotal = basePrice * qty;
+            stoneCostTotal += baseTotal;
+
+            const stoneInfo = window.Utils.extractDeptStoneCarat(stone?.type);
+            const deptStonePrice = this._findDepartmentStonePrice(stone, category);
+            const retailTotal = deptStonePrice > 0 ? deptStonePrice * qty : 0;
+            const sizeNum = stoneInfo?.carat || parseFloat(this._normalizeStoneSize(stone.stoneSize || stone.size || stone.sizeCt || stone.ct)) || 0;
+
+            if (retailTotal > 0) {
+                stoneRetailTotal += retailTotal;
+                if (sizeNum >= 1) {
+                    stoneRevenue += baseTotal * (1 - stoneDeptMargin / 100)
+                        + Math.max(retailTotal - baseTotal, 0) * (1 - deptFee / 100);
+                } else {
+                    stoneRevenue += retailTotal * (1 - deptFee / 100);
+                }
+            } else {
+                stoneRevenue += baseTotal * (1 - deptFee / 100);
+            }
+        });
+
+        const baseRevenue = Math.max((parseFloat(finalPrice) || 0) - stoneCostTotal, 0)
+            * (1 - deptFee / 100);
+        const deptRevenue = baseRevenue + stoneRevenue;
+        const deptPrice = Math.max((parseFloat(finalPrice) || 0) - stoneCostTotal, 0)
+            + stoneRetailTotal;
+        const deptProfit = deptRevenue - (parseFloat(salesCost) || 0) - ((parseFloat(stoneWarrantyFee) || 0) * 0.8);
+        const deptProfitRate = deptPrice > 0 ? (deptProfit / deptPrice) * 100 : 0;
+
+        return { deptPrice, deptProfit, deptProfitRate, stoneCostTotal, stoneRetailTotal };
+    },
+
     async load() {
-        const settingsDoc = await window.firebaseDb.collection('prices').doc('settings').get();
-        this.settings = settingsDoc.exists ? settingsDoc.data() : {};
+        const [settingsDoc, deptSettingsDoc] = await Promise.all([
+            window.firebaseDb.collection('prices').doc('settings').get(),
+            window.firebaseDb.collection('adminSettings').doc('discount').get()
+        ]);
+        const settings = settingsDoc.exists ? settingsDoc.data() : {};
+        const deptSettings = deptSettingsDoc.exists ? deptSettingsDoc.data() : {};
+        const stonePrices = deptSettings.stonePrices
+            || settings.stonePrices
+            || window.Utils.legacyDeptStonePricesFromMatrix(deptSettings.departmentStonePriceMatrix || settings.departmentStonePriceMatrix || []);
+        this.settings = {
+            ...settings,
+            ...deptSettings,
+            stonePrices: window.Utils.normalizeDeptStonePrices(stonePrices),
+            departmentStonePriceMatrix: window.Utils.normalizeDeptStoneRowsFromPrices(stonePrices)
+        };
 
         const snap = await window.firebaseDb
             .collection('prices').doc('newProductPricing').collection('items')
@@ -404,6 +493,9 @@ window.NewProductPricingModule = {
     _openEditForm(product, existingId) {
         const stones = product?.stones || [];
         const stoneOptions = (this.diamondRates || []).map(d => d.diamondType);
+        const stoneSizeOptions = this.DEPARTMENT_STONE_SIZES
+            .map(size => `<option value="${size}">${size}</option>`)
+            .join('');
 
         const body = `
             <div class="form-grid">
@@ -417,6 +509,13 @@ window.NewProductPricingModule = {
                                     ${stoneRows.map((stone, idx) => `
                                         <div class="stone-row" data-index="${idx}" style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
                                             <div class="stone-type-container" data-index="${idx}" data-value="${stone.type}" style="flex:1;"></div>
+                                            <select class="stone-size-select" data-index="${idx}"
+                                                style="width:110px;padding:6px;border:1px solid #d1d5db;border-radius:4px;">
+                                                <option value="">사이즈</option>
+                                                ${this.DEPARTMENT_STONE_SIZES.map(size => `
+                                                    <option value="${size}" ${(stone.stoneSize || stone.size || stone.sizeCt || '') === size ? 'selected' : ''}>${size}</option>
+                                                `).join('')}
+                                            </select>
                                             <input type="number" name="stoneQty_${idx}" value="${stone.qty || 0}" min="0" step="0.01"
                                                 placeholder="수량" class="stone-qty-input"
                                                 style="width:80px;padding:6px;border:1px solid #d1d5db;border-radius:4px;">
@@ -465,6 +564,7 @@ window.NewProductPricingModule = {
                 const newStones = Array.from(stoneRows)
                     .map(row => ({
                         type: row.querySelector('.searchable-select-input[name="stoneType"]')?.value || '',
+                        stoneSize: row.querySelector('.stone-size-select')?.value || '',
                         qty: parseFloat(row.querySelector('.stone-qty-input').value) || 0
                     }))
                     .filter(s => s.type && s.qty > 0);
@@ -563,7 +663,14 @@ window.NewProductPricingModule = {
                 updateCalc();
             });
 
+            const sizeSelect = document.createElement('select');
+            sizeSelect.className = 'stone-size-select';
+            sizeSelect.setAttribute('data-index', rowCount);
+            sizeSelect.style.cssText = 'width:110px;padding:6px;border:1px solid #d1d5db;border-radius:4px;';
+            sizeSelect.innerHTML = `<option value="">사이즈</option>${stoneSizeOptions}`;
+
             newRow.appendChild(stoneTypeContainer);
+            newRow.appendChild(sizeSelect);
             newRow.appendChild(qtyInput);
             newRow.appendChild(removeBtn);
 
@@ -601,6 +708,7 @@ window.NewProductPricingModule = {
             data.stones = Array.from(stoneRows)
                 .map(row => ({
                     type: row.querySelector('.searchable-select-input[name="stoneType"]')?.value || '',
+                    stoneSize: row.querySelector('.stone-size-select')?.value || '',
                     qty: parseFloat(row.querySelector('.stone-qty-input').value) || 0
                 }))
                 .filter(s => s.type && s.qty > 0);
@@ -673,7 +781,7 @@ window.NewProductPricingModule = {
         const goldPrice     = parseFloat(s.goldPrice) || 0;
         const ownMargin     = parseFloat(s.ownMargin) || 0;
         const ownMallFee    = parseFloat(s.ownMallCommission) || 0;
-        const deptFee       = parseFloat(s.departmentCommission) || 0;
+        const deptFee       = parseFloat(s.departmentCommission) || 25;
         const weight18kRate = parseFloat(s.weightAdjustment18K) || 1;
         const n = k => parseFloat(data[k]) || 0;
 
@@ -721,12 +829,6 @@ window.NewProductPricingModule = {
         const discountPrice = finalPrice * (1 - n('discountRate') / 100);
         const ownMallProfit = discountPrice * (1 - ownMallFee / 100) - salesCost;
         const ownMallProfitRate = discountPrice > 0 ? (ownMallProfit / discountPrice) * 100 : 0;
-        const deptPrice = finalPrice + stoneW;
-        const deptRevenue = deptPrice * (1 - deptFee / 100);
-        const deptProfit = deptRevenue - salesCost - (stoneWarrantyFee * 0.8);
-        const deptProfitRate = deptPrice > 0
-            ? (deptProfit / deptPrice) * 100
-            : 0;
 
         // 18K
         const goldWeight18k = n('goldWeight14k') * weight18kRate;
@@ -740,12 +842,28 @@ window.NewProductPricingModule = {
         const discountPrice18k = finalPrice18k * (1 - n('discountRate') / 100);
         const ownMallProfit18k = discountPrice18k * (1 - ownMallFee / 100) - salesCost18k;
         const ownMallProfitRate18k = discountPrice18k > 0 ? (ownMallProfit18k / discountPrice18k) * 100 : 0;
-        const deptPrice18k = finalPrice18k + stoneW;
-        const deptRevenue18k = deptPrice18k * (1 - deptFee / 100);
-        const deptProfit18k = deptRevenue18k - salesCost18k - (stoneWarrantyFee * 0.8);
-        const deptProfitRate18k = deptPrice18k > 0
-            ? (deptProfit18k / deptPrice18k) * 100
-            : 0;
+        const deptCalc14k = this._calculateDepartmentPricing({
+            stones,
+            category: data.category,
+            finalPrice,
+            salesCost,
+            deptFee,
+            stoneWarrantyFee
+        });
+        const deptCalc18k = this._calculateDepartmentPricing({
+            stones,
+            category: data.category,
+            finalPrice: finalPrice18k,
+            salesCost: salesCost18k,
+            deptFee,
+            stoneWarrantyFee
+        });
+        const deptPrice = deptCalc14k.deptPrice + stoneW;
+        const deptProfit = deptCalc14k.deptProfit;
+        const deptProfitRate = deptPrice > 0 ? (deptProfit / deptPrice) * 100 : 0;
+        const deptPrice18k = deptCalc18k.deptPrice + stoneW;
+        const deptProfit18k = deptCalc18k.deptProfit;
+        const deptProfitRate18k = deptPrice18k > 0 ? (deptProfit18k / deptPrice18k) * 100 : 0;
 
         return {
             ...data,

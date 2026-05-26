@@ -3,6 +3,13 @@
  */
 
 window.PriceManagementModule = {
+    DEPARTMENT_STONE_SIZES: ['1ct', '1.5ct', '2ct', '3ct', '4ct', '5ct'],
+    DEPARTMENT_STONE_ROWS: [
+        { key: 'generalRound', label: '일반 라운드컷' },
+        { key: 'generalFancy', label: '일반 팬시컷' },
+        { key: 'earringRound', label: '귀걸이 라운드컷' },
+        { key: 'earringFancy', label: '귀걸이 팬시컷' },
+    ],
 
     // ===== 필드 스키마 =====
 
@@ -470,20 +477,118 @@ window.PriceManagementModule = {
     // ===== 가격 설정 =====
 
     async loadPriceSettings() {
-        const doc = await window.firebaseDb.collection('prices').doc('settings').get();
+        if (!this.diamondRates || this.diamondRates.length === 0) {
+            await this.loadDiamondRates();
+        }
+
+        const [doc, deptDoc] = await Promise.all([
+            window.firebaseDb.collection('prices').doc('settings').get(),
+            window.firebaseDb.collection('adminSettings').doc('discount').get()
+        ]);
         const s = doc.exists ? doc.data() : {};
-        ['goldPrice','ownMallCommission','departmentCommission','weightAdjustment18K','ownMargin']
+        const dept = deptDoc.exists ? deptDoc.data() : {};
+        ['goldPrice','ownMallCommission','weightAdjustment18K','ownMargin']
             .forEach(id => { const el = document.getElementById(id); if (el) el.value = s[id] || ''; });
+        const deptCommissionEl = document.getElementById('departmentCommission');
+        if (deptCommissionEl) deptCommissionEl.value = s.departmentCommission ?? 25;
+        const deptStoneMarginEl = document.getElementById('departmentStoneMargin');
+        if (deptStoneMarginEl) deptStoneMarginEl.value = dept.departmentStoneMargin ?? s.departmentStoneMargin ?? 15;
+
+        const stonePrices = dept.stonePrices || s.stonePrices || this._legacyStonePricesFromMatrix(s.departmentStonePriceMatrix);
+        this.renderDepartmentStonePriceTable(window.Utils.normalizeDeptStonePrices(stonePrices));
     },
 
     async savePriceSettings(e) {
         e.preventDefault();
         const fd = new FormData(e.target);
         const data = Object.fromEntries(fd);
-        Object.keys(data).forEach(k => { data[k] = parseFloat(data[k]) || 0; });
-        await window.firebaseDb.collection('prices').doc('settings')
-            .set({ ...data, updatedAt: new Date() }, { merge: true });
+        ['goldPrice','ownMallCommission','weightAdjustment18K','ownMargin']
+            .forEach(k => { data[k] = parseFloat(data[k]) || 0; });
+        data.departmentCommission = parseFloat(data.departmentCommission) || 25;
+        data.departmentStoneMargin = parseFloat(data.departmentStoneMargin) || 15;
+        const stonePrices = this.collectDepartmentStonePrices();
+
+        await Promise.all([
+            window.firebaseDb.collection('prices').doc('settings')
+                .set({ ...data, updatedAt: new Date() }, { merge: true }),
+            window.firebaseDb.collection('adminSettings').doc('discount')
+                .set({
+                    stonePrices,
+                    departmentStoneMargin: data.departmentStoneMargin,
+                    updatedAt: new Date()
+                }, { merge: true })
+        ]);
         alert('가격 설정이 저장되었습니다.');
+    },
+
+    _legacyStonePricesFromMatrix(rows) {
+        const defaults = window.Utils.getDefaultDeptStonePrices();
+        const output = window.Utils.normalizeDeptStonePrices({});
+        const labelToGroup = {
+            'generalRound': 'generalRound',
+            '일반 라운드컷': 'generalRound',
+            'generalFancy': 'generalFancy',
+            '일반 팬시컷': 'generalFancy',
+            'earringRound': 'earringRound',
+            '귀걸이 라운드컷': 'earringRound',
+            'earringFancy': 'earringFancy',
+            '귀걸이 팬시컷': 'earringFancy',
+        };
+
+        (Array.isArray(rows) ? rows : []).forEach(row => {
+            const groupKey = labelToGroup[String(row?.label || row?.name || row?.stoneType || '').trim()];
+            if (!groupKey) return;
+            this.DEPARTMENT_STONE_SIZES.forEach(size => {
+                const raw = row?.prices?.[size] ?? row?.[size] ?? '';
+                if (raw !== '' && raw != null) {
+                    output[groupKey][size] = parseInt(raw, 10) || defaults[groupKey][size];
+                }
+            });
+        });
+
+        return output;
+    },
+
+    renderDepartmentStonePriceTable(stonePrices) {
+        const tbody = document.getElementById('departmentStonePriceTbody');
+        if (!tbody) return;
+
+        const normalized = window.Utils.normalizeDeptStonePrices(stonePrices || {});
+        const renderRow = (row = {}) => `
+            <tr class="department-stone-row">
+                <td style="font-weight:600;color:#374151;white-space:nowrap;">${row.label}</td>
+                ${this.DEPARTMENT_STONE_SIZES.map(size => `
+                    <td>
+                        <input type="number" class="department-stone-price" data-group="${row.key}" data-size="${size}" value="${row.prices?.[size] ?? ''}"
+                            step="1" min="0"
+                            style="width:100%;min-width:110px;padding:7px 10px;border:1px solid #d1d5db;border-radius:4px;">
+                    </td>`).join('')}
+            </tr>`;
+
+        tbody.innerHTML = this.DEPARTMENT_STONE_ROWS
+            .map(row => renderRow({
+                ...row,
+                prices: normalized[row.key] || {}
+            }))
+            .join('');
+    },
+
+    collectDepartmentStonePrices() {
+        const rows = {};
+        const defaults = window.Utils.getDefaultDeptStonePrices();
+        this.DEPARTMENT_STONE_ROWS.forEach(row => {
+            rows[row.key] = {};
+            this.DEPARTMENT_STONE_SIZES.forEach(size => {
+                const input = document.querySelector(`.department-stone-price[data-group="${row.key}"][data-size="${size}"]`);
+                const fallback = defaults[row.key]?.[size] ?? 0;
+                rows[row.key][size] = input && input.value !== '' ? parseInt(input.value, 10) || fallback : fallback;
+            });
+        });
+        return rows;
+    },
+
+    collectDepartmentStonePriceMatrix() {
+        return this.collectDepartmentStonePrices();
     },
 
     // ===== 내부 유틸 =====

@@ -68,8 +68,21 @@ app.use(express.json());
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // 정적 파일 서빙 (프론트엔드)
-app.use('/css', express.static(path.join(__dirname, 'css')));
-app.use('/js', express.static(path.join(__dirname, 'js')));
+const frontendRootCandidates = [
+    path.join(__dirname, 'public'),
+    path.join(__dirname, '..', 'public'),
+].filter(dir => fs.existsSync(dir));
+const frontendCssCandidates = [
+    path.join(__dirname, 'css'),
+    path.join(__dirname, '..', 'css'),
+].filter(dir => fs.existsSync(dir));
+const frontendJsCandidates = [
+    path.join(__dirname, 'js'),
+    path.join(__dirname, '..', 'js'),
+].filter(dir => fs.existsSync(dir));
+
+frontendCssCandidates.forEach(dir => app.use('/css', express.static(dir)));
+frontendJsCandidates.forEach(dir => app.use('/js', express.static(dir)));
 
 // Firestore 인스턴스
 const db = admin.firestore();
@@ -102,7 +115,15 @@ app.get('/api/firebase-config', (req, res) => {
 
 // SPA 루트 - index.html 서빙
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    const indexPath = frontendRootCandidates
+        .map(dir => path.join(dir, 'index.html'))
+        .find(file => fs.existsSync(file));
+
+    if (!indexPath) {
+        return res.status(500).json({ error: 'Frontend index.html not found' });
+    }
+
+    res.sendFile(indexPath);
 });
 
 // ===== API 라우트 =====

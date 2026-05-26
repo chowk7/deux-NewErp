@@ -314,8 +314,8 @@
                                 <input type="number" id="ownMallCommission" name="ownMallCommission" step="0.1" placeholder="0">
                             </div>
                             <div class="form-group">
-                                <label for="departmentCommission">백화점 수수료율 (%)</label>
-                                <input type="number" id="departmentCommission" name="departmentCommission" step="0.1" placeholder="0">
+                                <label for="departmentCommission">백화점 일반 수수료율 (%)</label>
+                                <input type="number" id="departmentCommission" name="departmentCommission" step="0.1" placeholder="25">
                             </div>
                             <div class="form-group">
                                 <label for="weightAdjustment18K">18K 중량변화율 (%)</label>
@@ -324,6 +324,37 @@
                             <div class="form-group">
                                 <label for="ownMargin">자체마진율 (%)</label>
                                 <input type="number" id="ownMargin" name="ownMargin" step="0.1" placeholder="0">
+                            </div>
+                            <div style="grid-column:1/-1; margin-top:8px; padding:16px; border:1px solid #e5e7eb; border-radius:8px; background:#fafafa;">
+                                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+                                    <div>
+                                        <h3 style="margin:0 0 4px; font-size:1rem; color:#1f2937;">나석 백화점 가격표</h3>
+                                        <p style="margin:0; color:#6b7280; font-size:0.85rem;">
+                                            DI store management의 백화점가격 메뉴와 같은 Firestore `adminSettings/discount.stonePrices`를 사용합니다.
+                                            1ct 이상은 백화점 마진 15%, 그 외 구간은 일반 수수료 25%를 적용합니다.
+                                        </p>
+                                    </div>
+                                </div>
+                                <div style="margin-top:12px;overflow-x:auto;">
+                                    <table id="departmentStonePriceTable" class="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th>구분</th>
+                                                <th>1ct</th>
+                                                <th>1.5ct</th>
+                                                <th>2ct</th>
+                                                <th>3ct</th>
+                                                <th>4ct</th>
+                                                <th>5ct</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="departmentStonePriceTbody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="departmentStoneMargin">나석 백화점 마진 (%)</label>
+                                <input type="number" id="departmentStoneMargin" name="departmentStoneMargin" step="0.1" placeholder="15">
                             </div>
                             <button type="submit" class="btn btn-primary">저장</button>
                         </form>

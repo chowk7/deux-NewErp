@@ -5,6 +5,13 @@
  */
 
 window.Utils = {
+    DEPT_STONE_CARAT_TIERS: ['1', '1.5', '2', '3', '4'],
+    DEPT_STONE_GROUPS: {
+        generalRound: '일반 라운드컷',
+        generalFancy: '일반 팬시컷',
+        earringRound: '귀걸이 라운드컷',
+        earringFancy: '귀걸이 팬시컷',
+    },
 
     // ===== 모달 =====
 
@@ -76,6 +83,105 @@ window.Utils = {
 
         document.body.appendChild(wrapper);
         return wrapper;
+    },
+
+    getDefaultDeptStonePrices() {
+        return {
+            generalRound: { '1': 700000, '1.5': 1050000, '2': 1400000, '3': 2100000, '4': 2800000 },
+            generalFancy: { '1': 800000, '1.5': 1200000, '2': 1600000, '3': 2400000, '4': 3200000 },
+            earringRound: { '1': 550000, '1.5': 825000, '2': 1100000, '3': 1650000, '4': 2200000 },
+            earringFancy: { '1': 600000, '1.5': 900000, '2': 1200000, '3': 1800000, '4': 2400000 }
+        };
+    },
+
+    normalizeDeptStonePrices(stonePrices = {}) {
+        const defaults = this.getDefaultDeptStonePrices();
+        const normalized = {};
+
+        Object.keys(defaults).forEach(groupKey => {
+            normalized[groupKey] = {};
+            const source = stonePrices[groupKey] || {};
+
+            this.DEPT_STONE_CARAT_TIERS.forEach(tier => {
+                const fallbackValue = defaults[groupKey][tier];
+                const rawValue = typeof source === 'object' && source !== null ? source[tier] : undefined;
+                normalized[groupKey][tier] = parseInt(rawValue, 10) || fallbackValue;
+            });
+        });
+
+        return normalized;
+    },
+
+    getDeptStoneTierPrice(priceMap = {}, totalCarat = 0) {
+        if (totalCarat < 1) return 0;
+
+        for (let i = this.DEPT_STONE_CARAT_TIERS.length - 1; i >= 0; i--) {
+            const tier = this.DEPT_STONE_CARAT_TIERS[i];
+            if (totalCarat >= parseFloat(tier)) {
+                return parseInt(priceMap[tier], 10) || 0;
+            }
+        }
+
+        return 0;
+    },
+
+    getDeptStoneGroupKey(category, hasFancyCut = false) {
+        const cat = String(category || '').trim();
+        const isEarring = cat === 'E(귀걸이)' || cat === '귀걸이' || cat === 'E';
+        if (isEarring) {
+            return hasFancyCut ? 'earringFancy' : 'earringRound';
+        }
+        return hasFancyCut ? 'generalFancy' : 'generalRound';
+    },
+
+    extractDeptStoneCarat(typeText) {
+        const typeStr = String(typeText || '').trim();
+        const isCarat = /캐럿|ct$/i.test(typeStr);
+        if (!isCarat) return null;
+
+        const numPart = typeStr.replace(/캐럿|ct$/i, '').trim();
+        const isFancy = /^[^0-9\s]/.test(numPart);
+        const carat = parseFloat(numPart.replace(/[^0-9.]/g, '')) || 0;
+        if (!carat) return null;
+
+        return { carat, isFancy };
+    },
+
+    normalizeDeptStoneRowsFromPrices(stonePrices = {}) {
+        const normalized = this.normalizeDeptStonePrices(stonePrices);
+        return Object.entries(this.DEPT_STONE_GROUPS).map(([key, label]) => ({
+            key,
+            label,
+            prices: { ...(normalized[key] || {}) }
+        }));
+    },
+
+    legacyDeptStonePricesFromMatrix(rows = []) {
+        const defaults = this.normalizeDeptStonePrices({});
+        const output = this.normalizeDeptStonePrices({});
+        const labelToGroup = {
+            'generalRound': 'generalRound',
+            '일반 라운드컷': 'generalRound',
+            'generalFancy': 'generalFancy',
+            '일반 팬시컷': 'generalFancy',
+            'earringRound': 'earringRound',
+            '귀걸이 라운드컷': 'earringRound',
+            'earringFancy': 'earringFancy',
+            '귀걸이 팬시컷': 'earringFancy',
+        };
+
+        (Array.isArray(rows) ? rows : []).forEach(row => {
+            const groupKey = labelToGroup[String(row?.label || row?.name || row?.stoneType || '').trim()];
+            if (!groupKey) return;
+            this.DEPT_STONE_CARAT_TIERS.forEach(size => {
+                const raw = row?.prices?.[size] ?? row?.[size] ?? '';
+                if (raw !== '' && raw != null) {
+                    output[groupKey][size] = parseInt(raw, 10) || defaults[groupKey][size];
+                }
+            });
+        });
+
+        return output;
     },
 
     /**
