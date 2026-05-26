@@ -92,7 +92,17 @@ window.ProductRatesModule = {
     },
 
     getDefaultDisplayFieldKeys() {
-        return ['ownCode', 'productCode', 'productName', 'category', 'productCost', 'finalPrice', 'ownMallProfitRate'];
+        return [
+            'ownCode',
+            'productCode',
+            'productName',
+            'category',
+            'productCost',
+            'finalPrice',
+            'deptProfit',
+            'deptProfit18k',
+            'ownMallProfitRate'
+        ];
     },
 
     getDisplayFields() {
@@ -101,8 +111,11 @@ window.ProductRatesModule = {
             fieldMap[field.key] = field;
         });
 
-        return window.Utils
-            .getDisplayFields('productRates', this.getDefaultDisplayFieldKeys())
+        const defaultKeys = this.getDefaultDisplayFieldKeys();
+        const savedKeys = window.Utils.getDisplayFields('productRates', defaultKeys);
+        const mergedKeys = [...savedKeys, ...defaultKeys.filter(key => !savedKeys.includes(key))];
+
+        return mergedKeys
             .map(key => fieldMap[key])
             .filter(field => field && field.type !== 'custom');
     },
