@@ -36,6 +36,7 @@ window.NewProductPricingModule = {
         { key: 'ownMallProfit',   label: '자사몰이익',      type: 'number', calc: true },
         { key: 'ownMallProfitRate',label: '자사몰이익률(%)', type: 'number', calc: true },
         { key: 'deptPrice',       label: '백화점가',        type: 'number', calc: true },
+        { key: 'deptProfit',      label: '백화점이익',      type: 'number', calc: true },
         { key: 'deptProfitRate',  label: '백화점이익률(%)', type: 'number', calc: true },
         { key: 'goldValue18k',    label: '18K금값',         type: 'number', calc: true },
         { key: 'marginPrice18k',  label: '18K마진포함가',   type: 'number', calc: true },
@@ -44,6 +45,7 @@ window.NewProductPricingModule = {
         { key: 'ownMallProfit18k',label: '18K자사몰이익',   type: 'number', calc: true },
         { key: 'ownMallProfitRate18k', label: '18K자사몰이익률(%)', type: 'number', calc: true },
         { key: 'deptPrice18k',    label: '18K백화점가',     type: 'number', calc: true },
+        { key: 'deptProfit18k',   label: '18K백화점이익',   type: 'number', calc: true },
         { key: 'deptProfitRate18k',label: '18K백화점이익률(%)', type: 'number', calc: true },
     ],
 
@@ -746,9 +748,9 @@ window.NewProductPricingModule = {
             ...data,
             stoneCost, stoneWarrantyFee,
             goldValue, productCost, vatCost, salesCost, marginPrice, expectedPrice,
-            finalPrice, discountPrice, ownMallProfit, ownMallProfitRate, deptPrice, deptProfitRate,
+            finalPrice, discountPrice, ownMallProfit, ownMallProfitRate, deptPrice, deptProfit, deptProfitRate,
             goldValue18k, marginPrice18k, finalPrice18k, discountPrice18k,
-            ownMallProfit18k, ownMallProfitRate18k, deptPrice18k, deptProfitRate18k
+            ownMallProfit18k, ownMallProfitRate18k, deptPrice18k, deptProfit18k, deptProfitRate18k
         };
     },
 
