@@ -125,49 +125,31 @@ window.NewProductPricingModule = {
         return parseFloat(row.prices?.[sizeKey]) || 0;
     },
 
-    _calculateDepartmentPricing({ stones, category, finalPrice, salesCost, deptFee, stoneWarrantyFee }) {
+    _calculateDepartmentPricing({ stones, category, finalPrice, salesCost, deptFee, stoneWarrantyFee, stoneW }) {
         const stoneDeptMargin = parseFloat(this.settings?.departmentStoneMargin) || 15;
         const normalizedStones = Array.isArray(stones) ? stones : [];
 
-        let stoneCostTotal = 0;
         let stoneRetailTotal = 0;
-        let stoneRevenue = 0;
 
         normalizedStones.forEach(stone => {
             const qty = parseFloat(stone.qty) || 0;
             if (qty <= 0) return;
 
             const basePrice = this._getStoneBasePrice(stone);
-            const baseTotal = basePrice * qty;
-            stoneCostTotal += baseTotal;
-
-            const stoneInfo = window.Utils.extractDeptStoneCarat(stone?.type);
             const deptStonePrice = this._findDepartmentStonePrice(stone, category);
-            const retailTotal = deptStonePrice > 0 ? deptStonePrice * qty : 0;
-            const sizeNum = stoneInfo?.carat || parseFloat(this._normalizeStoneSize(stone.stoneSize || stone.size || stone.sizeCt || stone.ct)) || 0;
-
-            if (retailTotal > 0) {
-                stoneRetailTotal += retailTotal;
-                if (sizeNum >= 1) {
-                    stoneRevenue += baseTotal * (1 - stoneDeptMargin / 100)
-                        + Math.max(retailTotal - baseTotal, 0) * (1 - deptFee / 100);
-                } else {
-                    stoneRevenue += retailTotal * (1 - deptFee / 100);
-                }
-            } else {
-                stoneRevenue += baseTotal * (1 - deptFee / 100);
-            }
+            const retailTotal = (deptStonePrice > 0 ? deptStonePrice : basePrice) * qty;
+            stoneRetailTotal += retailTotal;
         });
 
-        const baseRevenue = Math.max((parseFloat(finalPrice) || 0) - stoneCostTotal, 0)
-            * (1 - deptFee / 100);
+        const deptPrice = (parseFloat(finalPrice) || 0) + (parseFloat(stoneW) || 0);
+        const nonStoneDeptPrice = Math.max(deptPrice - stoneRetailTotal, 0);
+        const stoneRevenue = stoneRetailTotal * (1 - stoneDeptMargin / 100);
+        const baseRevenue = nonStoneDeptPrice * (1 - deptFee / 100);
         const deptRevenue = baseRevenue + stoneRevenue;
-        const deptPrice = Math.max((parseFloat(finalPrice) || 0) - stoneCostTotal, 0)
-            + stoneRetailTotal;
         const deptProfit = deptRevenue - (parseFloat(salesCost) || 0) - ((parseFloat(stoneWarrantyFee) || 0) * 0.8);
         const deptProfitRate = deptPrice > 0 ? (deptProfit / deptPrice) * 100 : 0;
 
-        return { deptPrice, deptProfit, deptProfitRate, stoneCostTotal, stoneRetailTotal };
+        return { deptPrice, deptProfit, deptProfitRate, stoneRetailTotal };
     },
 
     async load() {
@@ -848,7 +830,8 @@ window.NewProductPricingModule = {
             finalPrice,
             salesCost,
             deptFee,
-            stoneWarrantyFee
+            stoneWarrantyFee,
+            stoneW
         });
         const deptCalc18k = this._calculateDepartmentPricing({
             stones,
@@ -856,12 +839,13 @@ window.NewProductPricingModule = {
             finalPrice: finalPrice18k,
             salesCost: salesCost18k,
             deptFee,
-            stoneWarrantyFee
+            stoneWarrantyFee,
+            stoneW
         });
-        const deptPrice = deptCalc14k.deptPrice + stoneW;
+        const deptPrice = deptCalc14k.deptPrice;
         const deptProfit = deptCalc14k.deptProfit;
         const deptProfitRate = deptPrice > 0 ? (deptProfit / deptPrice) * 100 : 0;
-        const deptPrice18k = deptCalc18k.deptPrice + stoneW;
+        const deptPrice18k = deptCalc18k.deptPrice;
         const deptProfit18k = deptCalc18k.deptProfit;
         const deptProfitRate18k = deptPrice18k > 0 ? (deptProfit18k / deptPrice18k) * 100 : 0;
 
