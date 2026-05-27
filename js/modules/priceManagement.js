@@ -3,7 +3,7 @@
  */
 
 window.PriceManagementModule = {
-    DEPARTMENT_STONE_SIZES: ['1ct', '1.5ct', '2ct', '3ct', '4ct', '5ct'],
+    DEPARTMENT_STONE_TIERS: ['1', '1.5', '2', '3', '4'],
     DEPARTMENT_STONE_ROWS: [
         { key: 'generalRound', label: '일반 라운드컷' },
         { key: 'generalFancy', label: '일반 팬시컷' },
@@ -538,10 +538,10 @@ window.PriceManagementModule = {
         (Array.isArray(rows) ? rows : []).forEach(row => {
             const groupKey = labelToGroup[String(row?.label || row?.name || row?.stoneType || '').trim()];
             if (!groupKey) return;
-            this.DEPARTMENT_STONE_SIZES.forEach(size => {
-                const raw = row?.prices?.[size] ?? row?.[size] ?? '';
+            this.DEPARTMENT_STONE_TIERS.forEach(tier => {
+                const raw = row?.prices?.[tier] ?? row?.[tier] ?? '';
                 if (raw !== '' && raw != null) {
-                    output[groupKey][size] = parseInt(raw, 10) || defaults[groupKey][size];
+                    output[groupKey][tier] = parseInt(raw, 10) || defaults[groupKey][tier];
                 }
             });
         });
@@ -557,9 +557,9 @@ window.PriceManagementModule = {
         const renderRow = (row = {}) => `
             <tr class="department-stone-row">
                 <td style="font-weight:600;color:#374151;white-space:nowrap;">${row.label}</td>
-                ${this.DEPARTMENT_STONE_SIZES.map(size => `
+                ${this.DEPARTMENT_STONE_TIERS.map(tier => `
                     <td>
-                        <input type="number" class="department-stone-price" data-group="${row.key}" data-size="${size}" value="${row.prices?.[size] ?? ''}"
+                        <input type="number" class="department-stone-price" data-group="${row.key}" data-tier="${tier}" value="${row.prices?.[tier] ?? ''}"
                             step="1" min="0"
                             style="width:100%;min-width:110px;padding:7px 10px;border:1px solid #d1d5db;border-radius:4px;">
                     </td>`).join('')}
@@ -578,10 +578,10 @@ window.PriceManagementModule = {
         const defaults = window.Utils.getDefaultDeptStonePrices();
         this.DEPARTMENT_STONE_ROWS.forEach(row => {
             rows[row.key] = {};
-            this.DEPARTMENT_STONE_SIZES.forEach(size => {
-                const input = document.querySelector(`.department-stone-price[data-group="${row.key}"][data-size="${size}"]`);
-                const fallback = defaults[row.key]?.[size] ?? 0;
-                rows[row.key][size] = input && input.value !== '' ? parseInt(input.value, 10) || fallback : fallback;
+            this.DEPARTMENT_STONE_TIERS.forEach(tier => {
+                const input = document.querySelector(`.department-stone-price[data-group="${row.key}"][data-tier="${tier}"]`);
+                const fallback = defaults[row.key]?.[tier] ?? 0;
+                rows[row.key][tier] = input && input.value !== '' ? parseInt(input.value, 10) || fallback : fallback;
             });
         });
         return rows;
