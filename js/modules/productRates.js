@@ -188,7 +188,7 @@ window.ProductRatesModule = {
         const stoneRevenue = stoneRetailTotal * (1 - stoneDeptMargin / 100);
         const baseRevenue = nonStoneDeptPrice * (1 - deptFee / 100);
         const deptRevenue = baseRevenue + stoneRevenue;
-        const deptProfit = deptRevenue - (parseFloat(salesCost) || 0) - ((parseFloat(stoneWarrantyFee) || 0) * 0.8);
+        const deptProfit = deptRevenue - (parseFloat(salesCost) || 0) - ((parseFloat(stoneW) || 0) * 0.8);
         const deptProfitRate = deptPrice > 0 ? (deptProfit / deptPrice) * 100 : 0;
 
         return { deptPrice, deptProfit, deptProfitRate, stoneRetailTotal };
@@ -564,12 +564,9 @@ window.ProductRatesModule = {
             }
         });
 
-        // 원가에 포함될 보증서 추가금 (80% 적용)
-        const stoneWarrantyCostComponent = stoneWarrantyFee * 0.8;
-
         // 14K 계산
         const goldValue   = n('goldWeight14k') * goldPrice * (14/24);
-        const productCost = stoneCost + n('laborCost') + goldValue + n('otherMaterial') + stoneWarrantyCostComponent;
+        const productCost = stoneCost + n('laborCost') + goldValue + n('otherMaterial');
         const vatCost     = productCost * 1.1;
         const salesCost   = vatCost + n('shipping');
         const marginPrice = ownMargin > 0 ? salesCost / (1 - ownMargin / 100) : salesCost;
@@ -582,7 +579,7 @@ window.ProductRatesModule = {
         // 18K 계산
         const goldWeight18k = n('goldWeight14k') * weight18kRate;
         const goldValue18k  = goldWeight18k * goldPrice * (18/24);
-        const productCost18k= stoneCost + n('laborCost') + goldValue18k + n('otherMaterial') + stoneWarrantyCostComponent;
+        const productCost18k= stoneCost + n('laborCost') + goldValue18k + n('otherMaterial');
         const vatCost18k    = productCost18k * 1.1;
         const salesCost18k  = vatCost18k + n('shipping');
         const marginPrice18k= ownMargin > 0 ? salesCost18k / (1 - ownMargin / 100) : salesCost18k;
