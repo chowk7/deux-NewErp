@@ -81,8 +81,18 @@ const frontendJsCandidates = [
     path.join(__dirname, '..', 'js'),
 ].filter(dir => fs.existsSync(dir));
 
-frontendCssCandidates.forEach(dir => app.use('/css', express.static(dir)));
-frontendJsCandidates.forEach(dir => app.use('/js', express.static(dir)));
+const noCacheStaticOptions = {
+    etag: false,
+    lastModified: false,
+    setHeaders(res) {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+    }
+};
+
+frontendCssCandidates.forEach(dir => app.use('/css', express.static(dir, noCacheStaticOptions)));
+frontendJsCandidates.forEach(dir => app.use('/js', express.static(dir, noCacheStaticOptions)));
 
 // Firestore 인스턴스
 const db = admin.firestore();
@@ -123,6 +133,9 @@ app.get('/', (req, res) => {
         return res.status(500).json({ error: 'Frontend index.html not found' });
     }
 
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.sendFile(indexPath);
 });
 
