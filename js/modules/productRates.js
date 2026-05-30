@@ -523,7 +523,7 @@ window.ProductRatesModule = {
         const s = this.settings;
         const goldPrice = parseFloat(s.goldPrice) || 0;
         const ownMargin = parseFloat(s.ownMargin) || 0;
-        const ownMallFee = parseFloat(s.ownMallCommission) || 0;
+        const ownMallFee = parseFloat(s.ownMallCommission || s.ownMallFee) || 13;
         const deptFee = parseFloat(s.departmentCommission) || 25;
         const weight18kRate = parseFloat(s.weightAdjustment18K) || 1;
 
