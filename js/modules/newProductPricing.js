@@ -82,6 +82,51 @@ window.NewProductPricingModule = {
         if (bulkDeleteBtn) {
             bulkDeleteBtn.addEventListener('click', () => this.bulkDelete());
         }
+
+        document.getElementById('newProductPricingDisplaySettingsBtn')
+            ?.addEventListener('click', () => this.openDisplaySettings());
+    },
+
+    getDefaultDisplayFieldKeys() {
+        return [
+            'ownCode',
+            'productCode',
+            'productName',
+            'category',
+            'productCost',
+            'finalPrice',
+            'deptPrice',
+            'deptProfit',
+            'deptProfitRate',
+            'ownMallProfitRate',
+        ];
+    },
+
+    getDisplayFields() {
+        const fieldMap = {};
+        this.FIELDS.forEach(field => { fieldMap[field.key] = field; });
+        const defaultKeys = this.getDefaultDisplayFieldKeys();
+        const savedKeys = window.Utils.getDisplayFields('newProductPricing', defaultKeys);
+        const mergedKeys = [...savedKeys, ...defaultKeys.filter(k => !savedKeys.includes(k))];
+        return mergedKeys.map(k => fieldMap[k]).filter(f => f && f.type !== 'custom');
+    },
+
+    openDisplaySettings() {
+        window.Utils.openDisplayFieldsModal('newProductPricing', this.FIELDS.filter(f => f.type !== 'custom'),
+            () => this.renderTable(), this.getDefaultDisplayFieldKeys());
+    },
+
+    _formatCell(field, value) {
+        if (value == null || value === '') return '-';
+        if (field.type === 'number') {
+            const num = parseFloat(value);
+            if (isNaN(num)) return '-';
+            if (field.label.includes('%') || field.key.toLowerCase().includes('rate')) {
+                return Math.round(num) + '%';
+            }
+            return window.Utils.formatNumber(Math.round(num));
+        }
+        return value || '-';
     },
 
     async loadDiamondRates() {
@@ -238,19 +283,38 @@ window.NewProductPricingModule = {
     },
 
     renderTable() {
+        const table = document.getElementById('newProductPricingTable');
         const tbody = document.getElementById('newProductPricingTbody');
         const emptyEl = document.getElementById('newProductPricingEmpty');
         if (!tbody) return;
 
+        const displayFields = this.getDisplayFields();
+        const colSpan = displayFields.length + 2;
+
+        // thead 동적 재구성
+        const thead = table?.querySelector('thead');
+        if (thead) {
+            thead.innerHTML = `<tr>
+                <th style="text-align:center;width:40px;"><input type="checkbox" id="newProductPricingSelectAll"></th>
+                ${displayFields.map(f => `<th>${f.label}</th>`).join('')}
+                <th>관리</th>
+            </tr>`;
+            thead.querySelector('#newProductPricingSelectAll')?.addEventListener('change', (e) => {
+                document.querySelectorAll('#newProductPricingTbody .row-checkbox')
+                    .forEach(cb => cb.checked = e.target.checked);
+                this._updateBulkDeleteBtn();
+            });
+        }
+
         const filtered = this._filteredProducts();
 
         if (this.products.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="12" style="text-align:center">항목이 없습니다.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="${colSpan}" style="text-align:center">항목이 없습니다.</td></tr>`;
             if (emptyEl) emptyEl.style.display = 'none';
             return;
         }
         if (filtered.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:#9ca3af;">검색 결과가 없습니다.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="${colSpan}" style="text-align:center;color:#9ca3af;">검색 결과가 없습니다.</td></tr>`;
             if (emptyEl) emptyEl.style.display = 'none';
             return;
         }
@@ -259,16 +323,7 @@ window.NewProductPricingModule = {
         tbody.innerHTML = filtered.map(p => `
             <tr data-id="${p.id}">
                 <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${p.id}"></td>
-                <td>${p.ownCode || '-'}</td>
-                <td>${p.productCode || '-'}</td>
-                <td>${p.productName || '-'}</td>
-                <td>${p.category || '-'}</td>
-                <td>${window.Utils.formatNumber(Math.round(p.productCost || 0))}</td>
-                <td>${window.Utils.formatNumber(Math.round(p.finalPrice || 0))}</td>
-                <td>${window.Utils.formatNumber(Math.round(p.deptPrice || 0))}</td>
-                <td>${window.Utils.formatNumber(Math.round(p.deptProfit || 0))}</td>
-                <td>${p.deptProfitRate != null ? Math.round(p.deptProfitRate) + '%' : '-'}</td>
-                <td>${p.ownMallProfitRate != null ? Math.round(p.ownMallProfitRate) + '%' : '-'}</td>
+                ${displayFields.map(f => `<td>${this._formatCell(f, p[f.key])}</td>`).join('')}
                 <td>
                     <button class="btn btn-sm btn-primary" data-action="editItem" data-id="${p.id}">수정</button>
                 </td>
@@ -292,7 +347,6 @@ window.NewProductPricingModule = {
         });
 
         this._updateBulkDeleteBtn();
-        const table = document.getElementById('newProductPricingTable');
         if (table) window.Utils.initResizableColumns(table);
     },
 
