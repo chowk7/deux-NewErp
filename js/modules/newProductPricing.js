@@ -371,10 +371,10 @@ window.NewProductPricingModule = {
         window.Utils.showNotification('항목이 삭제되었습니다.', 'success');
     },
 
-    editItem(id) {
+    async editItem(id) {
         const product = this.products.find(p => p.id === id);
         if (!product) return;
-        this._openEditForm(product, id);
+        await this._openEditForm(product, id);
     },
 
     // ── 새 항목 추가: 제품가격표 참조 선택 모달 ──────────────────────────────
@@ -472,7 +472,8 @@ window.NewProductPricingModule = {
     },
 
     // ── 편집 폼 열기 ──────────────────────────────────────────────────────────
-    _openEditForm(product, existingId) {
+    async _openEditForm(product, existingId) {
+        await this.loadDiamondRates();
         const stones = product?.stones || [];
         const stoneOptions = (this.diamondRates || []).map(d => d.diamondType);
         const stoneSizeOptions = this.DEPARTMENT_STONE_SIZES
