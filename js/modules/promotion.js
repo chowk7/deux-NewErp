@@ -16,6 +16,7 @@ window.PromotionModule = {
     currentMode: 'fixed',   // 'fixed' | 'additional'
     promoInputs: {},
     searchQuery: '',
+    editingPromotionId: '',
 
     // 테이블에서 선택 가능한 기본 정보 컬럼
     DISPLAY_FIELDS: [
@@ -222,6 +223,63 @@ window.PromotionModule = {
         });
     },
 
+    _getEditingPromotion() {
+        return this.savedPromotions.find(p => p.id === this.editingPromotionId) || null;
+    },
+
+    _clearEditingPromotion() {
+        this.editingPromotionId = '';
+    },
+
+    _buildPromotionPayload(name, mode, rate) {
+        if (!name) {
+            window.Utils.showNotification('프로모션명을 입력해주세요.', 'error');
+            return null;
+        }
+        if (rate < 0 || rate > 100) {
+            window.Utils.showNotification('0~100 사이의 유효한 할인율을 입력하세요.', 'error');
+            return null;
+        }
+
+        const filtered = this._filteredProducts();
+        const hasIndividualRates = filtered.some(p => {
+            const inputState = this._getProductInput(p.id, this._fixedRate(), this._addRate());
+            const targetRate = mode === 'fixed' ? inputState.fixedRate : inputState.additionalRate;
+            return targetRate !== rate;
+        });
+
+        const items = filtered.map(p => {
+            const inputState = this._getProductInput(p.id, this._fixedRate(), this._addRate());
+            const targetRate = mode === 'fixed' ? inputState.fixedRate : inputState.additionalRate;
+            const { promoRate, promoPrice, promoProfit, promoProfitRate } = this._calcPromoItem(p, mode, targetRate);
+            return {
+                productId: p.id,
+                productCode: p.productCode || '',
+                productName: p.productName || '',
+                category: p.category || '',
+                finalPrice: parseFloat(p.finalPrice) || 0,
+                originalDiscountRate: parseFloat(p.discountRate) || 0,
+                originalDiscountPrice: parseFloat(p.discountPrice) || 0,
+                fixedRateInput: parseFloat(inputState.fixedRate) || 0,
+                additionalRateInput: parseFloat(inputState.additionalRate) || 0,
+                promoRate,
+                promoPrice,
+                promoProfit,
+                promoProfitRate,
+            };
+        });
+
+        return {
+            name,
+            mode,
+            ...(mode === 'fixed' ? { discountRate: rate } : { additionalRate: rate }),
+            categoryFilter: this.activeCategory,
+            itemCount: items.length,
+            hasIndividualRates,
+            items,
+        };
+    },
+
     // ───── 렌더링 ─────
 
     renderPage() {
@@ -245,6 +303,18 @@ window.PromotionModule = {
 
     _buildControlsHTML() {
         const fixedActive = this.currentMode === 'fixed';
+        const editingPromo = this._getEditingPromotion();
+        const editingBanner = editingPromo ? `
+            <div style="margin-top:12px;padding:12px 14px;border:1px solid #fde68a;border-radius:8px;background:#fffbeb;color:#92400e;font-size:0.82rem;line-height:1.6;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;">
+                <div>
+                    <div style="font-weight:600;margin-bottom:2px;">현재 "${editingPromo.name || '(이름 없음)'}" 수정 중</div>
+                    <div>불러오기 후 상단 할인율이나 제품별 입력값을 바꾸고 <b>수정 저장</b>을 누르면 기존 프로모션이 덮어써집니다.</div>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <button id="promoUpdateBtn" class="btn btn-warning" style="height:34px;">✏️ 수정 저장</button>
+                    <button id="promoEditCancelBtn" class="btn btn-outline" style="height:34px;">수정 취소</button>
+                </div>
+            </div>` : '';
         return `
         <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:16px;">
             <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
@@ -314,6 +384,7 @@ window.PromotionModule = {
                 <div>표시항목의 백화점이익율 = 백화점이익 / 백화점가 × 100</div>
                 <div style="margin-top:4px;color:#6b7280;">참고: 시뮬레이션의 변경이익, 프로모션이익도 같은 백화점 공식을 기준으로 재계산합니다.</div>
             </div>
+            ${editingBanner}
         </div>
         <div id="promoCategoryTabs" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;"></div>
         <div id="promoTableWrap" style="overflow-x:auto;"></div>`;
@@ -323,6 +394,9 @@ window.PromotionModule = {
         const header = `<h3 style="font-size:1rem;font-weight:600;color:#374151;margin-bottom:8px;">저장된 프로모션</h3>`;
         if (this.savedPromotions.length === 0) {
             return `<div id="promoSavedSection" style="margin-top:24px;">${header}
+                <div style="margin-bottom:10px;padding:10px 12px;border-radius:8px;background:#f8fafc;color:#64748b;font-size:0.82rem;line-height:1.6;">
+                    저장 후 목록에서 <b>불러오기</b>로 시뮬레이터를 복원하고, 수정이 필요하면 값을 바꾼 뒤 상단의 <b>수정 저장</b>으로 덮어쓸 수 있습니다.
+                </div>
                 <p style="color:#9ca3af;font-size:0.85rem;">저장된 프로모션이 없습니다.</p>
             </div>`;
         }
@@ -342,12 +416,18 @@ window.PromotionModule = {
                 <td style="padding:8px 10px;text-align:center;white-space:nowrap;">
                     <button class="btn btn-sm btn-outline" data-promo-view="${p.id}" style="margin-right:4px;">보기</button>
                     <button class="btn btn-sm btn-primary" data-promo-load="${p.id}" style="margin-right:4px;">불러오기</button>
+                    <button class="btn btn-sm btn-success" data-promo-edit="${p.id}" style="margin-right:4px;">수정</button>
                     <button class="btn btn-sm btn-danger" data-promo-del="${p.id}">삭제</button>
                 </td>
             </tr>`;
         }).join('');
 
         return `<div id="promoSavedSection" style="margin-top:24px;">${header}
+            <div style="margin-bottom:10px;padding:10px 12px;border-radius:8px;background:#f8fafc;color:#64748b;font-size:0.82rem;line-height:1.6;">
+                <b>불러오기</b>: 저장 당시 할인 조건을 위 시뮬레이터에 복원합니다.
+                <b>수정</b>: 먼저 불러온 뒤 할인율을 조정하고 상단의 <b>수정 저장</b>으로 기존 내용을 덮어씁니다.
+                <b>삭제</b>: 저장된 프로모션 문서를 제거합니다.
+            </div>
             <div style="overflow-x:auto;">
                 <table class="data-table" style="min-width:700px;">
                     <thead><tr>
@@ -406,6 +486,28 @@ window.PromotionModule = {
             );
         });
 
+        const updateBtn = body.querySelector('#promoUpdateBtn');
+        if (updateBtn) {
+            updateBtn.addEventListener('click', () => {
+                const rate = this.currentMode === 'fixed' ? this._fixedRate() : this._addRate();
+                this._updatePromotion(
+                    this.editingPromotionId,
+                    body.querySelector('#promoNameInput').value.trim(),
+                    this.currentMode,
+                    rate
+                );
+            });
+        }
+
+        const editCancelBtn = body.querySelector('#promoEditCancelBtn');
+        if (editCancelBtn) {
+            editCancelBtn.addEventListener('click', () => {
+                this._clearEditingPromotion();
+                this.renderPage();
+                window.Utils.showNotification('프로모션 수정 모드를 종료했습니다.', 'info');
+            });
+        }
+
         body.querySelector('#promoExcelDownloadBtn').addEventListener('click', () => {
             this.downloadExcel();
         });
@@ -418,9 +520,11 @@ window.PromotionModule = {
         body.addEventListener('click', (e) => {
             const viewBtn = e.target.closest('[data-promo-view]');
             const loadBtn = e.target.closest('[data-promo-load]');
+            const editBtn = e.target.closest('[data-promo-edit]');
             const delBtn  = e.target.closest('[data-promo-del]');
             if (viewBtn) this._viewSavedPromotion(viewBtn.dataset.promoView);
             if (loadBtn) this._loadSavedPromotion(loadBtn.dataset.promoLoad);
+            if (editBtn) this._startEditingPromotion(editBtn.dataset.promoEdit);
             if (delBtn)  this._deleteSavedPromotion(delBtn.dataset.promoDel);
         });
 
@@ -583,50 +687,25 @@ window.PromotionModule = {
     // ───── 저장 / 보기 / 불러오기 / 삭제 ─────
 
     async _savePromotion(name, mode, rate) {
-        if (!name) { window.Utils.showNotification('프로모션명을 입력해주세요.', 'error'); return; }
-        if (rate < 0 || rate > 100) { window.Utils.showNotification('0~100 사이의 유효한 할인율을 입력하세요.', 'error'); return; }
-
-        const filtered = this._filteredProducts();
-        const hasIndividualRates = filtered.some(p => {
-            const inputState = this._getProductInput(p.id, this._fixedRate(), this._addRate());
-            const targetRate = mode === 'fixed' ? inputState.fixedRate : inputState.additionalRate;
-            return targetRate !== rate;
-        });
-        const items = filtered.map(p => {
-            const inputState = this._getProductInput(p.id, this._fixedRate(), this._addRate());
-            const targetRate = mode === 'fixed' ? inputState.fixedRate : inputState.additionalRate;
-            const { promoRate, promoPrice, promoProfit, promoProfitRate } = this._calcPromoItem(p, mode, targetRate);
-            return {
-                productId:            p.id,
-                productCode:          p.productCode || '',
-                productName:          p.productName || '',
-                category:             p.category || '',
-                finalPrice:           parseFloat(p.finalPrice) || 0,
-                originalDiscountRate: parseFloat(p.discountRate) || 0,
-                originalDiscountPrice:parseFloat(p.discountPrice) || 0,
-                fixedRateInput:       parseFloat(inputState.fixedRate) || 0,
-                additionalRateInput:  parseFloat(inputState.additionalRate) || 0,
-                promoRate,
-                promoPrice,
-                promoProfit,
-                promoProfitRate,
-            };
-        });
+        const payload = this._buildPromotionPayload(name, mode, rate);
+        if (!payload) return;
 
         await window.firebaseDb.collection('promotions').add({
-            name,
-            mode,
-            ...(mode === 'fixed' ? { discountRate: rate } : { additionalRate: rate }),
-            categoryFilter: this.activeCategory,
-            itemCount: items.length,
-            hasIndividualRates,
-            items,
+            ...payload,
             savedAt: new Date(),
         });
 
         window.Utils.showNotification(`"${name}" 프로모션이 저장되었습니다.`, 'success');
         await this.loadSavedPromotions();
         this._refreshSavedSection();
+    },
+
+    _startEditingPromotion(promoId) {
+        const promo = this.savedPromotions.find(p => p.id === promoId);
+        if (!promo) return;
+        this._loadSavedPromotion(promoId, { silent: true });
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        window.Utils.showNotification(`"${promo.name}" 프로모션 수정 모드로 전환했습니다.`, 'info');
     },
 
     // 저장된 스냅샷 보기 (모달)
@@ -691,12 +770,16 @@ window.PromotionModule = {
     },
 
     // 시뮬레이터에 설정 복원
-    _loadSavedPromotion(promoId) {
+    _loadSavedPromotion(promoId, options = {}) {
         const promo = this.savedPromotions.find(p => p.id === promoId);
         if (!promo) return;
+        const { silent = false } = options;
 
         this.currentMode   = promo.mode === 'fixed' ? 'fixed' : 'additional';
         this.activeCategory= promo.categoryFilter || '전체';
+        this.editingPromotionId = promoId;
+        this._loadPromoInputsFromItems(promo.items || []);
+        this.renderPage();
 
         const body = document.querySelector('.promo-body');
         if (!body) return;
@@ -704,7 +787,6 @@ window.PromotionModule = {
         body.querySelector('#promoNameInput').value      = promo.name || '';
         body.querySelector('#promoFixedRateInput').value = promo.mode === 'fixed' ? promo.discountRate : 0;
         body.querySelector('#promoAddRateInput').value   = promo.mode === 'additional' ? promo.additionalRate : 0;
-        this._loadPromoInputsFromItems(promo.items || []);
 
         // 저장 방식 토글 UI 동기화
         const fixedBtn = body.querySelector('#promoModeFixed');
@@ -719,7 +801,31 @@ window.PromotionModule = {
 
         this._renderCategoryTabs();
         this._renderTable(this._fixedRate(), this._addRate());
-        window.Utils.showNotification(`"${promo.name}" 프로모션을 불러왔습니다.`, 'success');
+        if (!silent) {
+            window.Utils.showNotification(`"${promo.name}" 프로모션을 불러왔습니다. 수정하려면 값 변경 후 상단의 수정 저장을 누르세요.`, 'success');
+        }
+    },
+
+    async _updatePromotion(promoId, name, mode, rate) {
+        const promo = this.savedPromotions.find(p => p.id === promoId);
+        if (!promo) {
+            window.Utils.showNotification('수정할 프로모션을 먼저 불러와 주세요.', 'error');
+            return;
+        }
+
+        const payload = this._buildPromotionPayload(name, mode, rate);
+        if (!payload) return;
+        const { id, ...promoData } = promo;
+
+        await window.firebaseDb.collection('promotions').doc(promoId).set({
+            ...promoData,
+            ...payload,
+            updatedAt: new Date(),
+        });
+
+        window.Utils.showNotification(`"${name}" 프로모션이 수정되었습니다.`, 'success');
+        await this.loadSavedPromotions();
+        this._loadSavedPromotion(promoId, { silent: true });
     },
 
     async _deleteSavedPromotion(promoId) {
@@ -730,6 +836,11 @@ window.PromotionModule = {
         await window.firebaseDb.collection('promotions').doc(promoId).delete();
         window.Utils.showNotification('프로모션이 삭제되었습니다.', 'success');
         await this.loadSavedPromotions();
+        if (this.editingPromotionId === promoId) {
+            this._clearEditingPromotion();
+            this.renderPage();
+            return;
+        }
         this._refreshSavedSection();
     },
 
