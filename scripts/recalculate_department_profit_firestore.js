@@ -149,6 +149,7 @@ function calculateDepartmentPricing({ stones, category, finalPrice, salesCost, d
 function calculateProduct(docData, settings, diamondRateMap) {
   const goldPrice = n(settings.goldPrice);
   const ownMargin = n(settings.ownMargin);
+  const ownMallFee = n(settings.ownMallCommission || settings.ownMallFee) || 13;
   const deptFee = n(settings.departmentCommission) || 25;
   const weight18kRate = n(settings.weightAdjustment18K) || 1;
   const stones = Array.isArray(docData.stones) ? docData.stones : [];
@@ -187,6 +188,10 @@ function calculateProduct(docData, settings, diamondRateMap) {
   const expectedPrice = Math.round((marginPrice + n(docData.priceAdj)) / 1000) * 1000;
   const finalPrice = (n(docData.finalPrice) || expectedPrice) + n(docData.sizeAddFee);
 
+  const discountPrice = finalPrice * (1 - n(docData.discountRate) / 100);
+  const ownMallProfit = discountPrice * (1 - ownMallFee / 100) - salesCost;
+  const ownMallProfitRate = discountPrice > 0 ? (ownMallProfit / discountPrice) * 100 : 0;
+
   const goldWeight18k = n(docData.goldWeight14k) * weight18kRate;
   const goldValue18k = goldWeight18k * goldPrice * (18 / 24);
   const productCost18k = stoneCost + n(docData.laborCost) + goldValue18k + n(docData.otherMaterial);
@@ -195,6 +200,10 @@ function calculateProduct(docData, settings, diamondRateMap) {
   const marginPrice18k = ownMargin > 0 ? salesCost18k / (1 - ownMargin / 100) : salesCost18k;
   const expectedPrice18k = Math.round(marginPrice18k / 1000) * 1000;
   const finalPrice18k = (n(docData.finalPrice18k) || expectedPrice18k) + n(docData.sizeAddFee);
+
+  const discountPrice18k = finalPrice18k * (1 - n(docData.discountRate) / 100);
+  const ownMallProfit18k = discountPrice18k * (1 - ownMallFee / 100) - salesCost18k;
+  const ownMallProfitRate18k = discountPrice18k > 0 ? (ownMallProfit18k / discountPrice18k) * 100 : 0;
 
   const deptCalc14k = calculateDepartmentPricing({
     stones,
@@ -227,6 +236,10 @@ function calculateProduct(docData, settings, diamondRateMap) {
     deptPrice18k: Math.round(deptCalc18k.deptPrice),
     deptProfit18k: Math.round(deptCalc18k.deptProfit),
     deptProfitRate18k: deptCalc18k.deptProfitRate18k ?? deptCalc18k.deptProfitRate,
+    ownMallProfit: Math.round(ownMallProfit),
+    ownMallProfitRate: ownMallProfitRate,
+    ownMallProfit18k: Math.round(ownMallProfit18k),
+    ownMallProfitRate18k: ownMallProfitRate18k,
     salesCost: Math.round(salesCost),
     salesCost18k: Math.round(salesCost18k),
     finalPrice: Math.round(finalPrice),
@@ -279,6 +292,10 @@ async function buildUpdates(collectionKey, settings, diamondRateMap) {
       deptPrice18k: calc.deptPrice18k,
       deptProfit18k: calc.deptProfit18k,
       deptProfitRate18k: calc.deptProfitRate18k,
+      ownMallProfit: calc.ownMallProfit,
+      ownMallProfitRate: calc.ownMallProfitRate,
+      ownMallProfit18k: calc.ownMallProfit18k,
+      ownMallProfitRate18k: calc.ownMallProfitRate18k,
       updatedAt: admin.firestore.Timestamp.now()
     };
 
@@ -290,9 +307,8 @@ async function buildUpdates(collectionKey, settings, diamondRateMap) {
         deptPrice: data.deptPrice,
         deptProfit: data.deptProfit,
         deptProfitRate: data.deptProfitRate,
-        deptPrice18k: data.deptPrice18k,
-        deptProfit18k: data.deptProfit18k,
-        deptProfitRate18k: data.deptProfitRate18k
+        ownMallProfit: data.ownMallProfit,
+        ownMallProfitRate: data.ownMallProfitRate
       },
       after: patch
     });
