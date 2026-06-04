@@ -291,7 +291,7 @@ window.PriceManagementModule = {
                 if (rateId) await this._updateDiamondRate(rateId, data);
                 else        await this._addDiamondRate(data);
                 wrapper.remove();
-                this.loadDiamondRates();
+                await this.loadDiamondRates();
             }
         );
     },
@@ -418,7 +418,7 @@ window.PriceManagementModule = {
                 if (chargeId) await this._updateOptionCharge(chargeId, data);
                 else          await this._addOptionCharge(data);
                 wrapper.remove();
-                this.loadOptionCharges();
+                await this.loadOptionCharges();
             }
         );
     },

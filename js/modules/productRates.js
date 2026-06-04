@@ -490,7 +490,7 @@ window.ProductRatesModule = {
 
                 await batch.commit();
                 w.remove();
-                this.load();
+                await this.load();
                 window.Utils.showNotification(`${checkedIds.length}개 항목의 할인율이 ${newRate}%로 변경되었습니다.`, 'success');
             }
         );
@@ -725,7 +725,7 @@ window.ProductRatesModule = {
                         .collection('items').add({ ...calculated, createdAt: new Date(), updatedAt: new Date() });
                 }
                 w.remove();
-                this.load();
+                await this.load();
             }
         );
 

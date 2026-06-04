@@ -220,7 +220,7 @@ window.AdminExpensesModule = {
                         .collection('items').add({ ...data, createdAt: new Date(), updatedAt: new Date() });
                 }
                 w.remove();
-                this.load();
+                await this.load();
             }
         );
     },

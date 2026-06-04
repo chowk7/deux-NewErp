@@ -418,7 +418,7 @@ window.CustomerManagementModule = {
                         .add({ ...data, createdAt: new Date(), updatedAt: new Date() });
                 }
                 wrapper.remove();
-                this.loadCustomers();
+                await this.loadCustomers();
             }
         );
     },

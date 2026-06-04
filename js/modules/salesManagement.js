@@ -1211,7 +1211,7 @@ window.SalesManagementModule = {
                     }
                 }
                 w.remove();
-                this.loadOrders();
+                await this.loadOrders();
             }
         );
 

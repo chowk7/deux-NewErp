@@ -375,10 +375,10 @@ window.OrderManagementModule = {
                 }
                 w.remove();
                 if (onComplete) {
-                    onComplete();
+                    await onComplete();
                 } else {
                     this.allItems = [];
-                    this.load();
+                    await this.load();
                 }
             }
         );

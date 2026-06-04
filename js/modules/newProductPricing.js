@@ -116,6 +116,44 @@ window.NewProductPricingModule = {
             () => this.renderTable(), this.getDefaultDisplayFieldKeys());
     },
 
+    sortProducts(column) {
+        if (this.sortState.column === column) {
+            this.sortState.direction = this.sortState.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+            this.sortState.column = column;
+            this.sortState.direction = 'asc';
+        }
+
+        this.products.sort((a, b) => {
+            let aVal = a[column];
+            let bVal = b[column];
+
+            if (aVal?.toDate) aVal = aVal.toDate();
+            if (bVal?.toDate) bVal = bVal.toDate();
+
+            if (aVal == null && bVal == null) return 0;
+            if (aVal == null) return 1;
+            if (bVal == null) return -1;
+
+            if (typeof aVal === 'number' && typeof bVal === 'number') {
+                return this.sortState.direction === 'asc' ? aVal - bVal : bVal - aVal;
+            }
+
+            if (aVal instanceof Date && bVal instanceof Date) {
+                return this.sortState.direction === 'asc' ? aVal - bVal : bVal - aVal;
+            }
+
+            const aStr = String(aVal).toLowerCase();
+            const bStr = String(bVal).toLowerCase();
+            if (this.sortState.direction === 'asc') {
+                return aStr.localeCompare(bStr, 'ko-KR');
+            }
+            return bStr.localeCompare(aStr, 'ko-KR');
+        });
+
+        this.renderTable();
+    },
+
     _formatCell(field, value) {
         if (value == null || value === '') return '-';
         if (field.type === 'number') {
@@ -296,13 +334,16 @@ window.NewProductPricingModule = {
         if (thead) {
             thead.innerHTML = `<tr>
                 <th style="text-align:center;width:40px;"><input type="checkbox" id="newProductPricingSelectAll"></th>
-                ${displayFields.map(f => `<th>${f.label}</th>`).join('')}
+                ${displayFields.map(f => `<th data-column="${f.key}" style="cursor:pointer;user-select:none;">${f.label}${this.sortState?.column === f.key ? (this.sortState.direction === 'asc' ? ' ▲' : ' ▼') : ''}</th>`).join('')}
                 <th>관리</th>
             </tr>`;
             thead.querySelector('#newProductPricingSelectAll')?.addEventListener('change', (e) => {
                 document.querySelectorAll('#newProductPricingTbody .row-checkbox')
                     .forEach(cb => cb.checked = e.target.checked);
                 this._updateBulkDeleteBtn();
+            });
+            thead.querySelectorAll('th[data-column]').forEach(th => {
+                th.addEventListener('click', () => this.sortProducts(th.dataset.column));
             });
         }
 
@@ -436,6 +477,43 @@ window.NewProductPricingModule = {
         this._showReferenceModal();
     },
 
+    _getStoneTypeOptions() {
+        return (this.diamondRates || [])
+            .map(d => d.diamondType)
+            .filter(Boolean);
+    },
+
+    _createStoneTypeControl(selectedValue = '') {
+        const searchableSelect = window.Utils.createSearchableSelect(
+            this._getStoneTypeOptions(), selectedValue, null, '나석 종류 검색...', 'stoneType'
+        );
+        const wrapDiv = document.createElement('div');
+        wrapDiv.className = 'stone-type-control';
+        wrapDiv.style.cssText = 'display:flex;gap:4px;align-items:flex-start;flex:1;';
+        wrapDiv.appendChild(searchableSelect);
+        wrapDiv.appendChild(this._createAddStoneTypeBtn(wrapDiv));
+        return wrapDiv;
+    },
+
+    _refreshStoneTypeControls(wrapper) {
+        wrapper.querySelectorAll('.stone-row').forEach(row => {
+            const currentInput = row.querySelector('.searchable-select-input[name="stoneType"]');
+            const selectedValue = currentInput?.value || row.querySelector('.stone-type-container')?.getAttribute('data-value') || '';
+            const existingControl = row.querySelector('.stone-type-control');
+            const newControl = this._createStoneTypeControl(selectedValue);
+
+            if (existingControl) {
+                existingControl.replaceWith(newControl);
+                return;
+            }
+
+            const placeholder = row.querySelector('.stone-type-container');
+            if (placeholder) {
+                placeholder.replaceWith(newControl);
+            }
+        });
+    },
+
     async _showReferenceModal() {
         let refProducts = [];
         try {
@@ -529,7 +607,6 @@ window.NewProductPricingModule = {
     async _openEditForm(product, existingId) {
         await this.loadDiamondRates();
         const stones = product?.stones || [];
-        const stoneOptions = (this.diamondRates || []).map(d => d.diamondType);
         const stoneSizeOptions = this.DEPARTMENT_STONE_SIZES
             .map(size => `<option value="${size}">${size}</option>`)
             .join('');
@@ -622,7 +699,7 @@ window.NewProductPricingModule = {
                         .collection('items').add({ ...calculated, createdAt: new Date(), updatedAt: new Date() });
                 }
                 w.remove();
-                this.load();
+                await this.load();
                 window.Utils.showNotification('저장되었습니다.', 'success');
             },
             '저장'
@@ -646,18 +723,8 @@ window.NewProductPricingModule = {
         // 나석 종류 검색 드롭다운 설정
         const setupStoneTypeSearchable = (container) => {
             container.querySelectorAll('.stone-type-container').forEach(el => {
-                if (el.querySelector('.searchable-select-input')) return;
                 const value = el.getAttribute('data-value') || '';
-                const searchableSelect = window.Utils.createSearchableSelect(
-                    stoneOptions, value, null, '나석 종류 검색...', 'stoneType'
-                );
-                const wrapDiv = document.createElement('div');
-                wrapDiv.style.cssText = 'display:flex;gap:4px;align-items:flex-start;';
-                wrapDiv.appendChild(searchableSelect);
-
-                const addBtn = this._createAddStoneTypeBtn(wrapDiv);
-                wrapDiv.appendChild(addBtn);
-                el.replaceWith(wrapDiv);
+                el.replaceWith(this._createStoneTypeControl(value));
             });
         };
 
@@ -714,15 +781,7 @@ window.NewProductPricingModule = {
             const addStoneBtn = wrapper.querySelector('#nppAddStoneBtn');
             container.insertBefore(newRow, addStoneBtn);
 
-            const searchableSelect = window.Utils.createSearchableSelect(
-                stoneOptions, '', null, '나석 종류 검색...', 'stoneType'
-            );
-            const wrapDiv = document.createElement('div');
-            wrapDiv.style.cssText = 'display:flex;gap:4px;align-items:flex-start;';
-            wrapDiv.appendChild(searchableSelect);
-            const addTypeBtn = this._createAddStoneTypeBtn(wrapDiv);
-            wrapDiv.appendChild(addTypeBtn);
-            stoneTypeContainer.replaceWith(wrapDiv);
+            stoneTypeContainer.replaceWith(this._createStoneTypeControl(''));
 
             updateCalc();
         });
@@ -791,6 +850,7 @@ window.NewProductPricingModule = {
                 </div>`;
             window.Utils.openModal('신규 나석 종류 추가', stoneBody, async (data, modal) => {
                 try {
+                    const targetRow = wrapDiv.closest('.stone-row');
                     await window.firebaseDb.collection('prices').doc('diamondRates').collection('items')
                         .doc(`STONE_${Date.now()}`).set({
                             diamondType: data.newStoneName,
@@ -800,9 +860,13 @@ window.NewProductPricingModule = {
                             createdAt: new Date(), updatedAt: new Date()
                         });
                     modal.remove();
-                    const stoneInput = wrapDiv.querySelector('.searchable-select-input[name="stoneType"]');
-                    if (stoneInput) stoneInput.value = data.newStoneName;
                     await this.loadDiamondRates();
+                    const wrapper = wrapDiv.closest('[data-modal]');
+                    if (wrapper) {
+                        this._refreshStoneTypeControls(wrapper);
+                    }
+                    const stoneInput = targetRow?.querySelector('.searchable-select-input[name="stoneType"]');
+                    if (stoneInput) stoneInput.value = data.newStoneName;
                     window.Utils.showNotification('신규 나석 종류가 추가되었습니다.', 'success');
                 } catch (err) {
                     window.Utils.showNotification('나석 추가 실패: ' + err.message, 'error');
