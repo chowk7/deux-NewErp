@@ -12,6 +12,8 @@ window.PromotionModule = {
     savedPromotions: [],
     activeCategory: '전체',
     currentMode: 'fixed',   // 'fixed' | 'additional'
+    promoInputs: {},
+    searchQuery: '',
 
     // 테이블에서 선택 가능한 기본 정보 컬럼
     DISPLAY_FIELDS: [
@@ -24,6 +26,9 @@ window.PromotionModule = {
         { key: 'productCost',      label: '제품원가' },
         { key: 'discountRate',     label: '현재할인율' },
         { key: 'discountPrice',    label: '현재할인가' },
+        { key: 'deptPrice',        label: '백화점가' },
+        { key: 'deptProfit',       label: '백화점이익' },
+        { key: 'deptProfitRate',   label: '백화점이익율' },
         { key: 'ownMallProfitRate',label: '현재이익률' },
         { key: 'finalPrice18k',    label: '18K최종소비자가' },
         { key: 'discountPrice18k', label: '18K현재할인가' },
@@ -71,8 +76,12 @@ window.PromotionModule = {
     },
 
     _filteredProducts() {
-        if (this.activeCategory === '전체') return this.products;
-        return this.products.filter(p => this._normalizeCategory(p.category) === this.activeCategory);
+        return this.products.filter(p => {
+            const catMatch = this.activeCategory === '전체' || this._normalizeCategory(p.category) === this.activeCategory;
+            if (!catMatch) return false;
+            if (!this.searchQuery) return true;
+            return (p.productName || '').toLowerCase().includes(this.searchQuery);
+        });
     },
 
     /**
@@ -107,6 +116,30 @@ window.PromotionModule = {
         return window.Utils.getDisplayFields('promotionTable', this._defaultDisplayKeys);
     },
 
+    _getProductInput(productId, fixedRate = this._fixedRate(), additionalRate = this._addRate()) {
+        if (!this.promoInputs[productId]) {
+            this.promoInputs[productId] = { fixedRate, additionalRate };
+        }
+        return this.promoInputs[productId];
+    },
+
+    _setFilteredProductInputs(fixedRate, additionalRate) {
+        this._filteredProducts().forEach(product => {
+            this.promoInputs[product.id] = { fixedRate, additionalRate };
+        });
+    },
+
+    _loadPromoInputsFromItems(items = []) {
+        this.promoInputs = {};
+        items.forEach(item => {
+            if (!item.productId) return;
+            this.promoInputs[item.productId] = {
+                fixedRate: parseFloat(item.fixedRateInput) || 0,
+                additionalRate: parseFloat(item.additionalRateInput) || 0,
+            };
+        });
+    },
+
     // ───── 렌더링 ─────
 
     renderPage() {
@@ -122,6 +155,8 @@ window.PromotionModule = {
 
         body.innerHTML = this._buildControlsHTML() + this._buildSavedListHTML();
         this._attachControlEvents();
+        const searchInput = body.querySelector('#promoSearchInput');
+        if (searchInput) searchInput.value = this.searchQuery;
         this._renderCategoryTabs();
         this._renderTable(0, 0);
     },
@@ -138,7 +173,7 @@ window.PromotionModule = {
                 </div>
                 <div style="border-left:2px solid #e5e7eb;padding-left:12px;">
                     <label style="font-size:0.8rem;color:#374151;font-weight:600;display:block;margin-bottom:4px;">
-                        전체 할인율 설정 <span style="font-size:0.75rem;color:#6b7280;font-weight:400;">(현재 할인율 교체)</span>
+                        전체 할인율 설정 <span style="font-size:0.75rem;color:#6b7280;font-weight:400;">(시뮬레이션 시 기본값 일괄 적용)</span>
                     </label>
                     <div style="display:flex;align-items:center;gap:6px;">
                         <input id="promoFixedRateInput" type="number" min="0" max="100" step="0.5" value="0"
@@ -148,7 +183,7 @@ window.PromotionModule = {
                 </div>
                 <div style="border-left:2px solid #e5e7eb;padding-left:12px;">
                     <label style="font-size:0.8rem;color:#374151;font-weight:600;display:block;margin-bottom:4px;">
-                        추가 할인 <span style="font-size:0.75rem;color:#6b7280;font-weight:400;">(현재 할인율 + 추가%)</span>
+                        추가 할인 <span style="font-size:0.75rem;color:#6b7280;font-weight:400;">(시뮬레이션 시 기본값 일괄 적용)</span>
                     </label>
                     <div style="display:flex;align-items:center;gap:6px;">
                         <input id="promoAddRateInput" type="number" min="0" max="100" step="0.5" value="0"
@@ -157,6 +192,14 @@ window.PromotionModule = {
                     </div>
                 </div>
                 <button id="promoCalcBtn" class="btn btn-primary" style="height:34px;">🔍 시뮬레이션</button>
+                <div style="border-left:2px solid #e5e7eb;padding-left:12px;">
+                    <label style="font-size:0.8rem;color:#6b7280;display:block;margin-bottom:4px;">제품명 검색</label>
+                    <div style="display:flex;gap:6px;align-items:center;">
+                        <input id="promoSearchInput" type="text" placeholder="상품명 검색..."
+                            style="padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;width:180px;">
+                        <button id="promoSearchBtn" class="btn btn-outline" style="height:34px;">검색</button>
+                    </div>
+                </div>
                 <div style="border-left:2px solid #e5e7eb;padding-left:12px;">
                     <label style="font-size:0.8rem;color:#6b7280;display:block;margin-bottom:4px;">저장 방식</label>
                     <div style="display:flex;">
@@ -175,12 +218,20 @@ window.PromotionModule = {
                     </div>
                 </div>
                 <button id="promoSaveBtn" class="btn btn-success" style="height:34px;">💾 저장</button>
+                <button id="promoExcelDownloadBtn" class="btn btn-secondary" style="height:34px;">📥 엑셀 다운로드</button>
                 <button id="promoDisplaySettingsBtn" class="btn btn-outline" style="height:34px;">📋 표시항목 설정</button>
             </div>
             <p style="font-size:0.78rem;color:#6b7280;margin:8px 0 0;">
-                ※ 두 값을 동시에 입력 후 <b>시뮬레이션</b>하면 테이블에 변경할인율과 프로모션할인율을 함께 비교할 수 있습니다.
-                저장 시 <b>저장 방식</b>에서 선택한 방식으로 저장됩니다.
+                ※ 상단 할인율은 <b>시뮬레이션</b> 시 현재 카테고리 제품에 일괄 적용되는 기본값입니다.
+                표 안에서 제품별로 전체 할인율과 추가 할인을 각각 따로 조정할 수 있으며, 저장 시 <b>저장 방식</b> 기준으로 저장됩니다.
             </p>
+            <div style="margin-top:10px;padding:12px 14px;border:1px solid #dbeafe;border-radius:8px;background:#f8fbff;font-size:0.78rem;line-height:1.6;color:#334155;">
+                <div style="font-weight:600;color:#1e40af;margin-bottom:4px;">공식 안내</div>
+                <div>표시항목의 백화점가 = 최종소비자가 + 5부 이상 나석 보증서 추가금 합계</div>
+                <div>표시항목의 백화점이익 = 비나석분 매출 × (1 - 백화점수수료율) + 나석분 매출 × (1 - 나석마진율) - 판매원가 - (5부 이상 나석 보증서 추가금 합계 × 0.8)</div>
+                <div>표시항목의 백화점이익율 = 백화점이익 / 백화점가 × 100</div>
+                <div style="margin-top:4px;color:#6b7280;">참고: 시뮬레이션의 변경이익, 프로모션이익은 현재 자사몰 이익 공식을 사용합니다.</div>
+            </div>
         </div>
         <div id="promoCategoryTabs" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;"></div>
         <div id="promoTableWrap" style="overflow-x:auto;"></div>`;
@@ -198,10 +249,11 @@ window.PromotionModule = {
             const savedAt  = p.savedAt?.toDate ? p.savedAt.toDate().toLocaleDateString('ko-KR') : '-';
             const modeLabel = p.mode === 'fixed' ? '전체 할인율 설정' : '추가 할인';
             const rateVal   = p.mode === 'fixed' ? p.discountRate : p.additionalRate;
+            const rateLabel = p.hasIndividualRates ? '개별 입력' : `${rateVal}%`;
             return `<tr>
                 <td style="padding:8px 10px;">${p.name || '(이름 없음)'}</td>
                 <td style="padding:8px 10px;text-align:center;">${modeLabel}</td>
-                <td style="padding:8px 10px;text-align:center;">${rateVal}%</td>
+                <td style="padding:8px 10px;text-align:center;">${rateLabel}</td>
                 <td style="padding:8px 10px;text-align:center;">${p.categoryFilter || '전체'}</td>
                 <td style="padding:8px 10px;text-align:center;">${p.itemCount || 0}개</td>
                 <td style="padding:8px 10px;text-align:center;color:#6b7280;">${savedAt}</td>
@@ -247,7 +299,20 @@ window.PromotionModule = {
         body.querySelector('#promoModeAdd').addEventListener('click',   () => applySaveModeUI('additional'));
 
         body.querySelector('#promoCalcBtn').addEventListener('click', () => {
+            this._setFilteredProductInputs(this._fixedRate(), this._addRate());
             this._renderTable(this._fixedRate(), this._addRate());
+        });
+
+        const applySearch = () => {
+            this.searchQuery = body.querySelector('#promoSearchInput')?.value?.trim().toLowerCase() || '';
+            this._renderCategoryTabs();
+            this._renderTable(this._fixedRate(), this._addRate());
+        };
+
+        body.querySelector('#promoSearchBtn').addEventListener('click', applySearch);
+        body.querySelector('#promoSearchInput').addEventListener('input', applySearch);
+        body.querySelector('#promoSearchInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') applySearch();
         });
 
         body.querySelector('#promoSaveBtn').addEventListener('click', () => {
@@ -257,6 +322,10 @@ window.PromotionModule = {
                 this.currentMode,
                 rate
             );
+        });
+
+        body.querySelector('#promoExcelDownloadBtn').addEventListener('click', () => {
+            this.downloadExcel();
         });
 
         body.querySelector('#promoDisplaySettingsBtn').addEventListener('click', () => {
@@ -272,14 +341,33 @@ window.PromotionModule = {
             if (loadBtn) this._loadSavedPromotion(loadBtn.dataset.promoLoad);
             if (delBtn)  this._deleteSavedPromotion(delBtn.dataset.promoDel);
         });
+
+        body.addEventListener('change', (e) => {
+            const input = e.target.closest('[data-promo-rate-input]');
+            if (!input) return;
+
+            const productId = input.dataset.productId;
+            const inputType = input.dataset.inputType;
+            const value = Math.max(0, Math.min(100, parseFloat(input.value) || 0));
+            input.value = value;
+
+            const current = this._getProductInput(productId);
+            current[inputType] = value;
+            this._renderTable(this._fixedRate(), this._addRate());
+        });
     },
 
     _renderCategoryTabs() {
         const tabsEl = document.getElementById('promoCategoryTabs');
         if (!tabsEl) return;
 
-        const counts = { '전체': this.products.length };
-        this.products.forEach(p => {
+        const visibleProducts = this.products.filter(p => {
+            if (!this.searchQuery) return true;
+            return (p.productName || '').toLowerCase().includes(this.searchQuery);
+        });
+
+        const counts = { '전체': visibleProducts.length };
+        visibleProducts.forEach(p => {
             const c = this._normalizeCategory(p.category);
             counts[c] = (counts[c] || 0) + 1;
         });
@@ -345,19 +433,20 @@ window.PromotionModule = {
 
         const colHeader = `<tr>
             ${displayKeys.map(k => `<th>${fieldMap[k]?.label || k}</th>`).join('')}
-            <th style="text-align:center;background:#faf5ff;color:#7c3aed;border-left:2px solid #c4b5fd;">변경할인율</th>
+            <th style="text-align:center;background:#faf5ff;color:#7c3aed;border-left:2px solid #c4b5fd;">변경할인율 입력</th>
             <th style="text-align:right;background:#faf5ff;color:#7c3aed;">변경할인가</th>
             <th style="text-align:right;background:#faf5ff;color:#7c3aed;">변경이익</th>
             <th style="text-align:center;background:#faf5ff;color:#7c3aed;">변경이익률</th>
-            <th style="text-align:center;background:#fff7ed;color:#ea580c;border-left:2px solid #fdba74;">프로모션할인율</th>
+            <th style="text-align:center;background:#fff7ed;color:#ea580c;border-left:2px solid #fdba74;">추가할인 입력</th>
             <th style="text-align:right;background:#fff7ed;color:#ea580c;">프로모션할인가</th>
             <th style="text-align:right;background:#fff7ed;color:#ea580c;">프로모션이익</th>
             <th style="text-align:center;background:#fff7ed;color:#ea580c;">프로모션이익률</th>
         </tr>`;
 
         const rows = filtered.map(p => {
-            const fixed = this._calcPromoItem(p, 'fixed', fixedRate);
-            const add   = this._calcPromoItem(p, 'additional', additionalRate);
+            const inputState = this._getProductInput(p.id, fixedRate, additionalRate);
+            const fixed = this._calcPromoItem(p, 'fixed', inputState.fixedRate);
+            const add   = this._calcPromoItem(p, 'additional', inputState.additionalRate);
             const origPrice  = parseFloat(p.discountPrice) || 0;
             const origProfit = parseFloat(p.ownMallProfit) || 0;
 
@@ -365,6 +454,7 @@ window.PromotionModule = {
                 const val = p[k];
                 if (k === 'category')        return `<td style="text-align:center;">${this._normalizeCategory(val)}</td>`;
                 if (k === 'discountRate')    return `<td style="text-align:center;">${fmtRate(parseFloat(val)||0)}</td>`;
+                if (k === 'deptProfitRate')  return `<td style="text-align:center;">${fmtRate(parseFloat(val)||0)}</td>`;
                 if (k === 'ownMallProfitRate') return `<td style="text-align:center;">${fmtRate(parseFloat(val)||0)}</td>`;
                 if (k !== 'productCode' && k !== 'ownCode' && k !== 'productName') {
                     const n = parseFloat(val);
@@ -375,11 +465,27 @@ window.PromotionModule = {
 
             return `<tr>
                 ${baseCells}
-                <td style="text-align:center;font-weight:600;color:#7c3aed;background:#faf5ff;border-left:2px solid #c4b5fd;">${fmtRate(fixed.promoRate)}</td>
+                <td style="text-align:center;background:#faf5ff;border-left:2px solid #c4b5fd;">
+                    <input type="number" min="0" max="100" step="0.5"
+                        value="${inputState.fixedRate}"
+                        data-promo-rate-input="true"
+                        data-product-id="${p.id}"
+                        data-input-type="fixedRate"
+                        style="width:76px;padding:4px 6px;border:1px solid #c4b5fd;border-radius:4px;text-align:right;">
+                    <div style="font-size:0.72rem;color:#7c3aed;margin-top:3px;">적용 ${fmtRate(fixed.promoRate)}</div>
+                </td>
                 <td style="text-align:right;background:#faf5ff;">${fmt(fixed.promoPrice)}${diffSpan(fixed.promoPrice - origPrice, fmt)}</td>
                 <td style="text-align:right;background:#faf5ff;${colorStyle(fixed.promoProfit)}">${fmt(fixed.promoProfit)}${diffSpan(fixed.promoProfit - origProfit, fmt)}</td>
                 <td style="text-align:center;background:#faf5ff;${colorStyle(fixed.promoProfitRate)}">${fmtRate(fixed.promoProfitRate)}</td>
-                <td style="text-align:center;font-weight:600;color:#ea580c;background:#fff7ed;border-left:2px solid #fdba74;">${fmtRate(add.promoRate)}</td>
+                <td style="text-align:center;background:#fff7ed;border-left:2px solid #fdba74;">
+                    <input type="number" min="0" max="100" step="0.5"
+                        value="${inputState.additionalRate}"
+                        data-promo-rate-input="true"
+                        data-product-id="${p.id}"
+                        data-input-type="additionalRate"
+                        style="width:76px;padding:4px 6px;border:1px solid #fdba74;border-radius:4px;text-align:right;">
+                    <div style="font-size:0.72rem;color:#ea580c;margin-top:3px;">실할인 ${fmtRate(add.promoRate)}</div>
+                </td>
                 <td style="text-align:right;background:#fff7ed;">${fmt(add.promoPrice)}${diffSpan(add.promoPrice - origPrice, fmt)}</td>
                 <td style="text-align:right;background:#fff7ed;${colorStyle(add.promoProfit)}">${fmt(add.promoProfit)}${diffSpan(add.promoProfit - origProfit, fmt)}</td>
                 <td style="text-align:center;background:#fff7ed;${colorStyle(add.promoProfitRate)}">${fmtRate(add.promoProfitRate)}</td>
@@ -399,8 +505,15 @@ window.PromotionModule = {
         if (rate < 0 || rate > 100) { window.Utils.showNotification('0~100 사이의 유효한 할인율을 입력하세요.', 'error'); return; }
 
         const filtered = this._filteredProducts();
+        const hasIndividualRates = filtered.some(p => {
+            const inputState = this._getProductInput(p.id, this._fixedRate(), this._addRate());
+            const targetRate = mode === 'fixed' ? inputState.fixedRate : inputState.additionalRate;
+            return targetRate !== rate;
+        });
         const items = filtered.map(p => {
-            const { promoRate, promoPrice, promoProfit, promoProfitRate } = this._calcPromoItem(p, mode, rate);
+            const inputState = this._getProductInput(p.id, this._fixedRate(), this._addRate());
+            const targetRate = mode === 'fixed' ? inputState.fixedRate : inputState.additionalRate;
+            const { promoRate, promoPrice, promoProfit, promoProfitRate } = this._calcPromoItem(p, mode, targetRate);
             return {
                 productId:            p.id,
                 productCode:          p.productCode || '',
@@ -409,6 +522,8 @@ window.PromotionModule = {
                 finalPrice:           parseFloat(p.finalPrice) || 0,
                 originalDiscountRate: parseFloat(p.discountRate) || 0,
                 originalDiscountPrice:parseFloat(p.discountPrice) || 0,
+                fixedRateInput:       parseFloat(inputState.fixedRate) || 0,
+                additionalRateInput:  parseFloat(inputState.additionalRate) || 0,
                 promoRate,
                 promoPrice,
                 promoProfit,
@@ -422,6 +537,7 @@ window.PromotionModule = {
             ...(mode === 'fixed' ? { discountRate: rate } : { additionalRate: rate }),
             categoryFilter: this.activeCategory,
             itemCount: items.length,
+            hasIndividualRates,
             items,
             savedAt: new Date(),
         });
@@ -439,12 +555,13 @@ window.PromotionModule = {
         const items = promo.items || [];
         const modeLabel = promo.mode === 'fixed' ? '전체 할인율 설정' : '추가 할인';
         const rateVal   = promo.mode === 'fixed' ? promo.discountRate : promo.additionalRate;
+        const rateLabel = promo.hasIndividualRates ? '개별 입력' : `${rateVal}%`;
         const savedAt   = promo.savedAt?.toDate ? promo.savedAt.toDate().toLocaleString('ko-KR') : '-';
         const fmt       = n => window.Utils.formatNumber(Math.round(n));
         const fmtRate   = n => (Math.round(n * 10) / 10) + '%';
         const colorStyle = v => v >= 0 ? 'color:#16a34a;' : 'color:#dc2626;';
 
-        const promoLabel = promo.mode === 'fixed' ? '변경할인율' : '프로모션할인율';
+        const promoLabel = promo.mode === 'fixed' ? '적용할인율' : '프로모션할인율';
         const priceLabel = promo.mode === 'fixed' ? '변경할인가' : '프로모션할인가';
 
         const rows = items.map(item => `<tr>
@@ -454,6 +571,8 @@ window.PromotionModule = {
             <td style="padding:5px 8px;text-align:right;">${fmt(item.finalPrice||0)}</td>
             <td style="padding:5px 8px;text-align:center;">${fmtRate(item.originalDiscountRate||0)}</td>
             <td style="padding:5px 8px;text-align:right;">${fmt(item.originalDiscountPrice||0)}</td>
+            <td style="padding:5px 8px;text-align:center;">${fmtRate(item.fixedRateInput||0)}</td>
+            <td style="padding:5px 8px;text-align:center;">${fmtRate(item.additionalRateInput||0)}</td>
             <td style="padding:5px 8px;text-align:center;font-weight:600;color:#7c3aed;">${fmtRate(item.promoRate||0)}</td>
             <td style="padding:5px 8px;text-align:right;font-weight:600;">${fmt(item.promoPrice||0)}</td>
             <td style="padding:5px 8px;text-align:right;${colorStyle(item.promoProfit||0)}">${fmt(item.promoProfit||0)}</td>
@@ -463,7 +582,7 @@ window.PromotionModule = {
         const body = `
             <div style="margin-bottom:12px;padding:10px 14px;background:#f8fafc;border-radius:6px;font-size:0.85rem;color:#374151;display:flex;flex-wrap:wrap;gap:16px;">
                 <span>방식: <b>${modeLabel}</b></span>
-                <span>할인율: <b>${rateVal}%</b></span>
+                <span>할인율: <b>${rateLabel}</b></span>
                 <span>카테고리: <b>${promo.categoryFilter || '전체'}</b></span>
                 <span>저장일: <b>${savedAt}</b></span>
                 <span>대상: <b>${items.length}개</b></span>
@@ -475,12 +594,14 @@ window.PromotionModule = {
                         <th style="text-align:right;">최종소비자가</th>
                         <th style="text-align:center;">현재할인율</th>
                         <th style="text-align:right;">현재할인가</th>
+                        <th style="text-align:center;">입력 전체할인율</th>
+                        <th style="text-align:center;">입력 추가할인</th>
                         <th style="text-align:center;color:#7c3aed;">${promoLabel}</th>
                         <th style="text-align:right;color:#7c3aed;">${priceLabel}</th>
                         <th style="text-align:right;color:#7c3aed;">이익(자사몰)</th>
                         <th style="text-align:center;color:#7c3aed;">이익률</th>
                     </tr></thead>
-                    <tbody>${rows || '<tr><td colspan="10" style="text-align:center;color:#9ca3af;">저장된 항목이 없습니다.</td></tr>'}</tbody>
+                    <tbody>${rows || '<tr><td colspan="12" style="text-align:center;color:#9ca3af;">저장된 항목이 없습니다.</td></tr>'}</tbody>
                 </table>
             </div>`;
 
@@ -501,6 +622,7 @@ window.PromotionModule = {
         body.querySelector('#promoNameInput').value      = promo.name || '';
         body.querySelector('#promoFixedRateInput').value = promo.mode === 'fixed' ? promo.discountRate : 0;
         body.querySelector('#promoAddRateInput').value   = promo.mode === 'additional' ? promo.additionalRate : 0;
+        this._loadPromoInputsFromItems(promo.items || []);
 
         // 저장 방식 토글 UI 동기화
         const fixedBtn = body.querySelector('#promoModeFixed');
@@ -532,5 +654,80 @@ window.PromotionModule = {
     _refreshSavedSection() {
         const savedSection = document.getElementById('promoSavedSection');
         if (savedSection) savedSection.outerHTML = this._buildSavedListHTML();
+    },
+
+    downloadExcel() {
+        const filtered = this._filteredProducts();
+        if (filtered.length === 0) {
+            window.Utils.showNotification('다운로드할 프로모션 데이터가 없습니다.', 'error');
+            return;
+        }
+
+        window.Utils.ensureXLSX(() => {
+            const fixedRate = this._fixedRate();
+            const additionalRate = this._addRate();
+            const displayKeys = this._getDisplayKeys();
+            const fieldMap = {};
+            this.DISPLAY_FIELDS.forEach(field => {
+                fieldMap[field.key] = field.label;
+            });
+
+            const headers = [
+                ...displayKeys.map(key => fieldMap[key] || key),
+                '변경할인율 입력',
+                '적용 변경할인율',
+                '변경할인가',
+                '변경이익',
+                '변경이익률',
+                '추가할인 입력',
+                '적용 프로모션할인율',
+                '프로모션할인가',
+                '프로모션이익',
+                '프로모션이익률',
+            ];
+
+            const rows = filtered.map(product => {
+                const inputState = this._getProductInput(product.id, fixedRate, additionalRate);
+                const fixed = this._calcPromoItem(product, 'fixed', inputState.fixedRate);
+                const additional = this._calcPromoItem(product, 'additional', inputState.additionalRate);
+
+                const baseValues = displayKeys.map(key => {
+                    if (key === 'category') return this._normalizeCategory(product[key]);
+                    return product[key] ?? '';
+                });
+
+                return [
+                    ...baseValues,
+                    inputState.fixedRate,
+                    fixed.promoRate,
+                    fixed.promoPrice,
+                    fixed.promoProfit,
+                    fixed.promoProfitRate,
+                    inputState.additionalRate,
+                    additional.promoRate,
+                    additional.promoPrice,
+                    additional.promoProfit,
+                    additional.promoProfitRate,
+                ];
+            });
+
+            const workbook = XLSX.utils.book_new();
+            const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+            worksheet['!cols'] = headers.map(header => ({
+                wch: Math.max(String(header).length + 2, 14),
+            }));
+            XLSX.utils.book_append_sheet(workbook, worksheet, '프로모션');
+
+            const date = new Date();
+            const stamp = [
+                date.getFullYear(),
+                String(date.getMonth() + 1).padStart(2, '0'),
+                String(date.getDate()).padStart(2, '0'),
+            ].join('');
+            const categoryLabel = this.activeCategory === '전체' ? '전체' : this.activeCategory.replace(/[()]/g, '');
+            const searchLabel = this.searchQuery ? `_${this.searchQuery.replace(/[^\w가-힣-]/g, '_')}` : '';
+            XLSX.writeFile(workbook, `프로모션_${categoryLabel}${searchLabel}_${stamp}.xlsx`);
+            window.Utils.showNotification('프로모션 엑셀 다운로드가 완료되었습니다.', 'success');
+        });
     },
 };
