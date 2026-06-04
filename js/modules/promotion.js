@@ -6,9 +6,11 @@
  * - 표시항목 설정 지원
  */
 window.PromotionModule = {
+    DEPARTMENT_STONE_SIZES: ['1ct', '1.5ct', '2ct', '3ct', '4ct', '5ct'],
 
     products: [],
     settings: {},
+    diamondRates: [],
     savedPromotions: [],
     activeCategory: '전체',
     currentMode: 'fixed',   // 'fixed' | 'additional'
@@ -42,13 +44,26 @@ window.PromotionModule = {
         const container = document.getElementById('promotionContent');
         if (!container) return;
 
-        const [settingsDoc, productSnap] = await Promise.all([
+        const [settingsDoc, deptSettingsDoc, diamondRatesSnap, productSnap] = await Promise.all([
             window.firebaseDb.collection('prices').doc('settings').get(),
+            window.firebaseDb.collection('adminSettings').doc('discount').get(),
+            window.firebaseDb.collection('prices').doc('diamondRates').collection('items').get(),
             window.firebaseDb.collection('prices').doc('productRates').collection('items')
                 .orderBy('createdAt', 'desc').get()
         ]);
 
-        this.settings = settingsDoc.exists ? settingsDoc.data() : {};
+        const settings = settingsDoc.exists ? settingsDoc.data() : {};
+        const deptSettings = deptSettingsDoc.exists ? deptSettingsDoc.data() : {};
+        const stonePrices = deptSettings.stonePrices
+            || settings.stonePrices
+            || window.Utils.legacyDeptStonePricesFromMatrix(deptSettings.departmentStonePriceMatrix || settings.departmentStonePriceMatrix || []);
+        this.settings = {
+            ...settings,
+            ...deptSettings,
+            stonePrices: window.Utils.normalizeDeptStonePrices(stonePrices),
+            departmentStonePriceMatrix: window.Utils.normalizeDeptStoneRowsFromPrices(stonePrices)
+        };
+        this.diamondRates = diamondRatesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         this.products = productSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
         await this.loadSavedPromotions();
@@ -89,16 +104,83 @@ window.PromotionModule = {
      * fixed:      promoRate = rate (현재 할인율을 교체)
      * additional: promoRate = 현재할인율 + rate (추가 할인)
      */
+    _normalizeStoneSize(value) {
+        const size = String(value || '').trim();
+        return this.DEPARTMENT_STONE_SIZES.includes(size) ? size : '';
+    },
+
+    _getDepartmentStonePrices() {
+        return window.Utils.normalizeDeptStonePrices(this.settings?.stonePrices || {});
+    },
+
+    _getStoneBasePrice(stone) {
+        const selectedStone = this.diamondRates?.find(d => d.diamondType === stone.type);
+        return parseFloat(selectedStone?.costWithoutVat || selectedStone?.costWithVat) || 0;
+    },
+
+    _findDepartmentStonePrice(stone, category) {
+        const stoneInfo = window.Utils.extractDeptStoneCarat(stone?.type);
+        const stonePrices = this._getDepartmentStonePrices();
+
+        if (stoneInfo) {
+            const groupKey = window.Utils.getDeptStoneGroupKey(category, stoneInfo.isFancy);
+            return window.Utils.getDeptStoneTierPrice(stonePrices[groupKey], stoneInfo.carat);
+        }
+
+        const legacyRows = window.Utils.normalizeDeptStoneRowsFromPrices(this.settings?.stonePrices || {});
+        const row = legacyRows.find(r => r.label === (stone?.type || ''));
+        const sizeKey = this._normalizeStoneSize(stone?.stoneSize || stone?.size || stone?.sizeCt || stone?.ct);
+        if (!row || !sizeKey) return 0;
+        return parseFloat(row.prices?.[sizeKey]) || 0;
+    },
+
+    _calculateDepartmentPricing({ stones, category, finalPrice, salesCost, deptFee, stoneW }) {
+        const stoneDeptMargin = parseFloat(this.settings?.departmentStoneMargin) || 15;
+        const normalizedStones = Array.isArray(stones) ? stones : [];
+
+        let stoneRetailTotal = 0;
+        normalizedStones.forEach(stone => {
+            const qty = parseFloat(stone.qty) || 0;
+            if (qty <= 0) return;
+
+            const basePrice = this._getStoneBasePrice(stone);
+            const deptStonePrice = this._findDepartmentStonePrice(stone, category);
+            const retailTotal = (deptStonePrice > 0 ? deptStonePrice : basePrice) * qty;
+            stoneRetailTotal += retailTotal;
+        });
+
+        const deptPrice = (parseFloat(finalPrice) || 0) + (parseFloat(stoneW) || 0);
+        const nonStoneDeptPrice = Math.max(deptPrice - stoneRetailTotal, 0);
+        const stoneRevenue = stoneRetailTotal * (1 - stoneDeptMargin / 100);
+        const baseRevenue = nonStoneDeptPrice * (1 - deptFee / 100);
+        const deptRevenue = baseRevenue + stoneRevenue;
+        const deptProfit = deptRevenue - (parseFloat(salesCost) || 0) - ((parseFloat(stoneW) || 0) * 0.8);
+        const deptProfitRate = deptPrice > 0 ? (deptProfit / deptPrice) * 100 : 0;
+
+        return { deptPrice, deptProfit, deptProfitRate };
+    },
+
     _calcPromoItem(p, mode, rate) {
-        const ownMallFee = parseFloat(this.settings.ownMallCommission) || 0;
+        const deptFee = parseFloat(this.settings.departmentCommission) || 25;
         const finalPrice  = parseFloat(p.finalPrice) || 0;
         const salesCost   = parseFloat(p.salesCost)  || 0;
         const origRate    = parseFloat(p.discountRate) || 0;
+        const stoneW      = parseFloat(p.stoneW) || 0;
+        const stones      = Array.isArray(p.stones) ? p.stones : [];
+        const category    = p.category || '';
 
         const promoRate     = mode === 'fixed' ? rate : origRate + rate;
         const promoPrice    = Math.round(finalPrice * (1 - promoRate / 100));
-        const promoProfit   = Math.round(promoPrice * (1 - ownMallFee / 100) - salesCost);
-        const promoProfitRate = promoPrice > 0 ? (promoProfit / promoPrice) * 100 : 0;
+        const deptCalc = this._calculateDepartmentPricing({
+            stones,
+            category,
+            finalPrice: promoPrice,
+            salesCost,
+            deptFee,
+            stoneW
+        });
+        const promoProfit = Math.round(deptCalc.deptProfit);
+        const promoProfitRate = deptCalc.deptProfitRate;
 
         return { promoRate, promoPrice, promoProfit, promoProfitRate };
     },
@@ -230,7 +312,7 @@ window.PromotionModule = {
                 <div>표시항목의 백화점가 = 최종소비자가 + 5부 이상 나석 보증서 추가금 합계</div>
                 <div>표시항목의 백화점이익 = 비나석분 매출 × (1 - 백화점수수료율) + 나석분 매출 × (1 - 나석마진율) - 판매원가 - (5부 이상 나석 보증서 추가금 합계 × 0.8)</div>
                 <div>표시항목의 백화점이익율 = 백화점이익 / 백화점가 × 100</div>
-                <div style="margin-top:4px;color:#6b7280;">참고: 시뮬레이션의 변경이익, 프로모션이익은 현재 자사몰 이익 공식을 사용합니다.</div>
+                <div style="margin-top:4px;color:#6b7280;">참고: 시뮬레이션의 변경이익, 프로모션이익도 같은 백화점 공식을 기준으로 재계산합니다.</div>
             </div>
         </div>
         <div id="promoCategoryTabs" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;"></div>
@@ -448,7 +530,7 @@ window.PromotionModule = {
             const fixed = this._calcPromoItem(p, 'fixed', inputState.fixedRate);
             const add   = this._calcPromoItem(p, 'additional', inputState.additionalRate);
             const origPrice  = parseFloat(p.discountPrice) || 0;
-            const origProfit = parseFloat(p.ownMallProfit) || 0;
+            const origProfit = parseFloat(p.deptProfit) || 0;
 
             const baseCells = displayKeys.map(k => {
                 const val = p[k];
@@ -598,7 +680,7 @@ window.PromotionModule = {
                         <th style="text-align:center;">입력 추가할인</th>
                         <th style="text-align:center;color:#7c3aed;">${promoLabel}</th>
                         <th style="text-align:right;color:#7c3aed;">${priceLabel}</th>
-                        <th style="text-align:right;color:#7c3aed;">이익(자사몰)</th>
+                        <th style="text-align:right;color:#7c3aed;">이익(백화점)</th>
                         <th style="text-align:center;color:#7c3aed;">이익률</th>
                     </tr></thead>
                     <tbody>${rows || '<tr><td colspan="12" style="text-align:center;color:#9ca3af;">저장된 항목이 없습니다.</td></tr>'}</tbody>
