@@ -407,6 +407,9 @@ window.InventoryManagementModule = {
         const item = itemId ? this.allItems.find(i => i.id === itemId) : null;
         const required = await window.Utils.getRequiredFields('inventory');
 
+        // productRates가 비어있으면 다시 로드
+        if (!this.productRates || this.productRates.length === 0) await this.loadProductRates();
+
         const defaultGoldPrice = (() => {
             if (item?.goldMarketPrice) return item.goldMarketPrice;
             return window.GoldInventoryModule?.getLatestAvgPrice?.() || null;
@@ -424,6 +427,15 @@ window.InventoryManagementModule = {
             const req = isRequired ? 'required' : '';
             const readonlyAttr = isCalc ? 'readonly style="background:#f3f4f6;color:#6b7280;"' : '';
             const calcLabel = isCalc ? ' <span style="font-size:0.75rem;color:#9ca3af;">(자동)</span>' : '';
+
+            // 상품명: 검색 가능한 드롭다운으로 교체
+            if (f.key === 'productName') {
+                return `
+                    <div class="form-group">
+                        <label>${f.label}${isRequired ? ' <span style="color:#ef4444;">*</span>' : ''}</label>
+                        <div id="inv-product-select-container" data-current="${val.replace(/"/g, '&quot;')}"></div>
+                    </div>`;
+            }
 
             if (f.type === 'select') {
                 const options = (f.options || []).map(o =>
@@ -510,6 +522,22 @@ window.InventoryManagementModule = {
             itemId ? '수정 저장' : '추가'
         );
 
+        // ===== 상품명 검색 드롭다운 연결 =====
+        const productContainer = wrapper.querySelector('#inv-product-select-container');
+        if (productContainer) {
+            const currentVal = productContainer.dataset.current || '';
+            const productOptions = this.productRates.map(p => p.productName).filter(Boolean);
+
+            const searchableSelect = window.Utils.createSearchableSelect(
+                productOptions,
+                currentVal,
+                (selectedName) => this._onProductSelected(selectedName, wrapper),
+                '상품명 검색...',
+                'productName'
+            );
+            productContainer.replaceWith(searchableSelect);
+        }
+
         // 나석정보 버튼
         wrapper.querySelector('#invStoneInfoBtn')?.addEventListener('click', async () => {
             if (!this.diamondRates || this.diamondRates.length === 0) await this.loadDiamondRates();
@@ -566,6 +594,35 @@ window.InventoryManagementModule = {
             form?.addEventListener('input', updateCalc);
             updateCalc();
         }, 50);
+    },
+
+    // 상품명 선택 시 제품단가표에서 관련 필드 자동 채우기
+    _onProductSelected(productName, wrapper) {
+        const product = this.productRates.find(p => p.productName === productName);
+        if (!product) return;
+
+        // 제품코드 → 종류 자동 추출
+        if (product.productCode) {
+            const codeChars = product.productCode.match(/[A-Za-z]/g);
+            if (codeChars && codeChars.length >= 3) {
+                const categoryChar = codeChars[2].toUpperCase();
+                const categoryMap = { 'E': 'E(귀걸이)', 'R': 'R(반지)', 'N': 'N(목걸이)', 'B': 'B(팔찌)' };
+                const categorySelect = wrapper.querySelector('[name="category"]');
+                if (categorySelect) categorySelect.value = categoryMap[categoryChar] || '기타';
+            }
+        }
+
+        // 색상 자동 채우기 (제품단가표에 color 필드가 있는 경우)
+        if (product.color) {
+            const colorSelect = wrapper.querySelector('[name="color"]');
+            if (colorSelect) colorSelect.value = product.color;
+        }
+
+        // 보증서 자동 채우기
+        if (product.stoneWarranty) {
+            const warrantySelect = wrapper.querySelector('[name="warranty"]');
+            if (warrantySelect) warrantySelect.value = product.stoneWarranty;
+        }
     },
 
     async deleteItem(itemId) {
