@@ -115,7 +115,8 @@ class DiamonJewelryApp {
             'promotion': 'promotionContent',
             'notes': 'notesContent',
             'images': 'imagesContent',
-            'word-templates': 'wordTemplatesContent'
+            'word-templates': 'wordTemplatesContent',
+            'inventory': 'inventoryContent'
         };
 
         const sectionId = sectionMap[menuId];
@@ -151,6 +152,9 @@ class DiamonJewelryApp {
                         await window.PromotionModule.load();
                     } else if (menuId === 'notes') {
                         notes.loadNotes().then(() => notes.renderNotes());
+                    } else if (window.InventoryManagementModule && menuId === 'inventory') {
+                        window.InventoryManagementModule.allItems = [];
+                        await window.InventoryManagementModule.load();
                     }
                 } catch (error) {
                     console.error(`[App] 메뉴 로드 실패 (${menuId}):`, error);
@@ -250,6 +254,7 @@ class DiamonJewelryApp {
         if (window.PromotionModule) window.PromotionModule.init();
         if (window.notes) window.notes.init();
         if (window.WordTemplateManager) window.WordTemplateManager.init();
+        if (window.InventoryManagementModule) window.InventoryManagementModule.init();
     }
 
     /**

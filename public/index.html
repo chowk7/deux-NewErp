@@ -154,6 +154,7 @@
                             <li><a href="#" data-menu="notes" class="nav-link">📝 노트</a></li>
                             <li><a href="#" data-menu="images" class="nav-link">🖼️ 이미지 관리</a></li>
                             <li><a href="#" data-menu="word-templates" class="nav-link">📄 양식 관리</a></li>
+                            <li><a href="#" data-menu="inventory" class="nav-link">📦 재고관리</a></li>
                         </ul>
                     </nav>
                 </div>
@@ -603,6 +604,25 @@
                         <p>준비 중입니다...</p>
                     </section>
 
+                    <!-- 재고관리 섹션 -->
+                    <section id="inventoryContent" class="content-section hidden">
+                        <h2>재고관리</h2>
+                        <div class="button-group">
+                            <button id="invAddBtn" class="btn btn-primary">+ 재고 추가</button>
+                            <button id="invDisplaySettingsBtn" class="btn btn-outline">📋 표시항목 설정</button>
+                            <button id="invRequiredSettingsBtn" class="btn btn-outline">⚙️ 필수항목 설정</button>
+                            <button id="invRefreshBtn" class="btn btn-outline">🔄 새로고침</button>
+                        </div>
+                        <div id="invFilterBar"></div>
+                        <div style="overflow-x:auto;">
+                            <table id="inventoryTable" class="data-table">
+                                <thead><tr></tr></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                        <div id="invPagination"></div>
+                    </section>
+
                     <!-- 양식 관리 섹션 -->
                     <section id="wordTemplatesContent" class="content-section hidden">
                         <h2>양식 관리</h2>
@@ -666,6 +686,7 @@
     <script src="/js/modules/newProductPricing.js"></script>
     <script src="/js/modules/promotion.js"></script>
     <script src="/js/modules/wordTemplateManager.js"></script>
+    <script src="/js/modules/inventoryManagement.js"></script>
     <script src="/js/app.js"></script>
 </body>
 </html>
