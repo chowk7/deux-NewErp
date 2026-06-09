@@ -34,6 +34,8 @@ window.InventoryManagementModule = {
         { key: 'manufacturingCost',label: '제조가격(자동)',   type: 'number', calc: true      },
         { key: 'quantity',        label: '재고수량',          type: 'number'                  },
         { key: 'entryDate',       label: '입고일',            type: 'date'                    },
+        { key: 'stockNote',       label: '재고처리',          type: 'text'                    },
+        { key: 'stockDone',       label: '재고처리완료',      type: 'checkbox'                },
     ],
 
     allItems: [],
@@ -243,6 +245,10 @@ window.InventoryManagementModule = {
         tbody.innerHTML = this.items.map(item => {
             const cells = displayDefs.map(f => {
                 let val = item[f.key];
+                if (f.type === 'checkbox') {
+                    const checked = val ? 'checked' : '';
+                    return `<td style="text-align:center;"><input type="checkbox" class="stockdone-checkbox" data-id="${item.id}" ${checked}></td>`;
+                }
                 if (f.type === 'number' && val !== undefined && val !== null && val !== '') {
                     val = window.Utils.formatNumber(Math.round(Number(val)));
                 } else if (f.type === 'date' && val) {
@@ -290,6 +296,24 @@ window.InventoryManagementModule = {
             if (btn.dataset.action === 'deleteItem') this.deleteItem(id);
         };
         table.addEventListener('click', this._tableHandler);
+
+        // 재고처리완료 체크박스 즉시 저장
+        table.querySelectorAll('.stockdone-checkbox').forEach(cb => {
+            cb.addEventListener('change', async (e) => {
+                const id = e.target.dataset.id;
+                const done = e.target.checked;
+                try {
+                    await window.firebaseDb
+                        .collection('inventory').doc('items').collection('records')
+                        .doc(id).update({ stockDone: done, updatedAt: new Date() });
+                    const cached = this.allItems.find(i => i.id === id);
+                    if (cached) cached.stockDone = done;
+                } catch (err) {
+                    window.Utils.showNotification('저장 실패', 'error');
+                    e.target.checked = !done;
+                }
+            });
+        });
 
         window.Utils.initResizableColumns?.(table);
     },
@@ -351,7 +375,9 @@ window.InventoryManagementModule = {
             const row = {};
             displayFields.forEach(f => {
                 let val = item[f.key];
-                if (f.type === 'date' && val) {
+                if (f.type === 'checkbox') {
+                    val = val ? 'Y' : 'N';
+                } else if (f.type === 'date' && val) {
                     val = val.toDate ? new Date(val.toDate()).toLocaleDateString('ko-KR') : val;
                 } else if (f.type === 'number' && val !== undefined && val !== null && val !== '') {
                     val = Math.round(Number(val));
@@ -385,6 +411,9 @@ window.InventoryManagementModule = {
                     this.FIELDS.forEach(f => {
                         if (f.type === 'number' && row[f.key] !== undefined) {
                             row[f.key] = parseFloat(row[f.key]) || 0;
+                        } else if (f.type === 'checkbox' && row[f.key] !== undefined) {
+                            const v = String(row[f.key]).trim().toUpperCase();
+                            row[f.key] = v === 'Y' || v === 'TRUE' || v === '1';
                         }
                     });
                     // 수동 입력값이 있으면 우선 사용, 없으면 자동계산
@@ -431,6 +460,18 @@ window.InventoryManagementModule = {
             const req = isRequired ? 'required' : '';
             const readonlyAttr = isCalc ? 'readonly style="background:#f3f4f6;color:#6b7280;"' : '';
             const calcLabel = isCalc ? ' <span style="font-size:0.75rem;color:#9ca3af;">(자동)</span>' : '';
+
+            // 체크박스 처리
+            if (f.type === 'checkbox') {
+                const checked = val === true || val === 'Y' ? 'checked' : '';
+                return `
+                    <div class="form-group">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                            <input type="checkbox" name="${f.key}" ${checked}>
+                            <span>${f.label}</span>
+                        </label>
+                    </div>`;
+            }
 
             // 상품명: 검색 가능한 드롭다운으로 교체
             if (f.key === 'productName') {
@@ -502,10 +543,12 @@ window.InventoryManagementModule = {
                     return;
                 }
 
-                // 숫자 변환
+                // 타입 변환
                 this.FIELDS.forEach(f => {
                     if (f.type === 'number' && data[f.key] !== undefined) {
                         data[f.key] = parseFloat(data[f.key]) || 0;
+                    } else if (f.type === 'checkbox') {
+                        data[f.key] = data[f.key] === 'on' || data[f.key] === true;
                     }
                 });
 
