@@ -338,7 +338,7 @@ window.InventoryManagementModule = {
     // ===== CSV =====
 
     _csvFields() {
-        return this.FIELDS.filter(f => !f.calc);
+        return this.FIELDS;
     },
 
     downloadTemplate() {
@@ -387,9 +387,13 @@ window.InventoryManagementModule = {
                             row[f.key] = parseFloat(row[f.key]) || 0;
                         }
                     });
+                    // 수동 입력값이 있으면 우선 사용, 없으면 자동계산
                     const calculated = this.calculate(row);
+                    const goldValue = (row.goldValue && row.goldValue !== 0) ? row.goldValue : calculated.goldValue;
+                    const stoneCostRef = (row.stoneCostRef && row.stoneCostRef !== 0) ? row.stoneCostRef : calculated.stoneCostRef;
+                    const manufacturingCost = (row.manufacturingCost && row.manufacturingCost !== 0) ? row.manufacturingCost : calculated.manufacturingCost;
                     const docRef = col.doc();
-                    batch.set(docRef, { ...calculated, createdAt: new Date(), updatedAt: new Date() });
+                    batch.set(docRef, { ...calculated, goldValue, stoneCostRef, manufacturingCost, createdAt: new Date(), updatedAt: new Date() });
                 }
                 await batch.commit();
 
