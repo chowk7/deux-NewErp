@@ -62,6 +62,12 @@ window.InventoryManagementModule = {
                 e.currentTarget.disabled = false;
                 e.currentTarget.textContent = '🔄 새로고침';
             });
+        document.getElementById('invDownloadTemplateBtn')
+            ?.addEventListener('click', () => this.downloadTemplate());
+        document.getElementById('invDownloadDataBtn')
+            ?.addEventListener('click', () => this.downloadData());
+        document.getElementById('invCsvUploadBtn')
+            ?.addEventListener('click', () => this.openCsvUpload());
 
         await this.loadDiamondRates();
         await this.loadProductRates();
@@ -327,6 +333,72 @@ window.InventoryManagementModule = {
                 this.renderPagination();
             });
         });
+    },
+
+    // ===== CSV =====
+
+    _csvFields() {
+        return this.FIELDS.filter(f => !f.calc);
+    },
+
+    downloadTemplate() {
+        window.Utils.downloadCsvTemplate(this._csvFields(), '재고관리_양식.csv');
+    },
+
+    downloadData() {
+        const displayFields = this.getDisplayFieldDefs();
+        const rows = this.items.map(item => {
+            const row = {};
+            displayFields.forEach(f => {
+                let val = item[f.key];
+                if (f.type === 'date' && val) {
+                    val = val.toDate ? new Date(val.toDate()).toLocaleDateString('ko-KR') : val;
+                } else if (f.type === 'number' && val !== undefined && val !== null && val !== '') {
+                    val = Math.round(Number(val));
+                } else if (val === undefined || val === null) {
+                    val = '';
+                }
+                row[f.key] = val;
+            });
+            return row;
+        });
+        window.Utils.downloadCsvData(displayFields, rows, '재고관리.csv');
+    },
+
+    openCsvUpload() {
+        window.Utils.openCsvUploadModal(
+            this._csvFields(),
+            async (rows, mode) => {
+                const col = window.firebaseDb
+                    .collection('inventory').doc('items').collection('records');
+
+                if (mode === 'replace') {
+                    const existing = await col.get();
+                    const delBatch = window.firebaseDb.batch();
+                    existing.docs.forEach(d => delBatch.delete(d.ref));
+                    await delBatch.commit();
+                    this.allItems = [];
+                }
+
+                const batch = window.firebaseDb.batch();
+                for (const row of rows) {
+                    this.FIELDS.forEach(f => {
+                        if (f.type === 'number' && row[f.key] !== undefined) {
+                            row[f.key] = parseFloat(row[f.key]) || 0;
+                        }
+                    });
+                    const calculated = this.calculate(row);
+                    const docRef = col.doc();
+                    batch.set(docRef, { ...calculated, createdAt: new Date(), updatedAt: new Date() });
+                }
+                await batch.commit();
+
+                this.allItems = [];
+                await this.load();
+                window.Utils.showNotification(`${rows.length}개 항목이 업로드되었습니다.`, 'success');
+            },
+            { importModeSelector: true }
+        );
     },
 
     // ===== 폼 모달 =====
