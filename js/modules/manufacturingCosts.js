@@ -18,7 +18,8 @@ window.ManufacturingCostsModule = {
         { key: 'goldWeight14k',   label: '금중량14K(g)',    type: 'number' },
         { key: 'goldWeightPure',  label: '금중량순금해리(g)',type: 'number' },
         { key: 'goldMarketPrice', label: '금시세(순금1g)',  type: 'number' },
-        { key: 'goldValue',       label: '금값',           type: 'number', calc: true },
+        { key: 'goldValue_auto',  label: '금값(자동)',      type: 'number', calc: true },
+        { key: 'goldValue',       label: '금값(입력)',      type: 'number' },
         { key: 'settingCost',     label: '물림비',         type: 'number' },
         { key: 'laborCost',       label: '공임',           type: 'number' },
         { key: 'platingCost',     label: '도금/각인',      type: 'number' },
@@ -100,7 +101,7 @@ window.ManufacturingCostsModule = {
     },
 
     getDefaultDisplayFieldKeys() {
-        return ['orderDate', 'customerName', 'productName', 'optionName', 'goldValue', 'stoneCostManual', 'manufacturingCost', 'inputCompleted', 'salesProfit', 'salesProfitRate'];
+        return ['orderDate', 'customerName', 'productName', 'optionName', 'goldValue_auto', 'goldValue', 'stoneCostManual', 'manufacturingCost', 'inputCompleted', 'salesProfit', 'salesProfitRate'];
     },
 
     getAllFields() {
@@ -247,8 +248,15 @@ window.ManufacturingCostsModule = {
             const needsUpdate = [];
             allItems = allItems.map(item => {
                 // 계산 필드 확인
-                const needsCalc = !item.goldValue || !item.manufacturingCost ||
-                                item.salesProfit === undefined || item.salesProfitRate === undefined;
+                const needsCalc =
+                    item.goldValue_auto === undefined ||
+                    item.goldValue_auto === null ||
+                    item.goldValue_auto === '' ||
+                    item.manufacturingCost === undefined ||
+                    item.manufacturingCost === null ||
+                    item.manufacturingCost === '' ||
+                    item.salesProfit === undefined ||
+                    item.salesProfitRate === undefined;
 
                 if (needsCalc) {
                     // 자동 계산
@@ -580,7 +588,7 @@ window.ManufacturingCostsModule = {
 
         const calc = this.calculate(data);
 
-        const calcFields = ['goldValue', 'stoneCostRef', 'manufacturingCost', 'salesProfit', 'salesProfitRate'];
+        const calcFields = ['goldValue_auto', 'stoneCostRef', 'manufacturingCost', 'salesProfit', 'salesProfitRate'];
         calcFields.forEach(k => {
             const el = wrapper.querySelector(`[name="${k}"]`);
             if (el) {
@@ -599,7 +607,13 @@ window.ManufacturingCostsModule = {
         // ========== 자동 계산 로직 ==========
         //
         // 1️⃣ 금값 = 금중량순금해리(g) × 금시세(순금1g)
-        const goldValue = n('goldWeightPure') * n('goldMarketPrice');
+        const goldValue_auto = n('goldWeightPure') * n('goldMarketPrice');
+        const rawGoldValue = data.goldValue;
+        const hasManualGoldValue = rawGoldValue !== undefined &&
+            rawGoldValue !== null &&
+            String(rawGoldValue).trim() !== '';
+        const goldValue = hasManualGoldValue ? n('goldValue') : '';
+        const appliedGoldValue = hasManualGoldValue ? goldValue : goldValue_auto;
 
         // 2️⃣ 제조가격 = 금값 + 물림비 + 공임 + 나석가격(수동입력) + 기타비용
         // 나석 가격 합산 + 보증서 추가금 계산
@@ -646,7 +660,7 @@ window.ManufacturingCostsModule = {
         const stoneUsed = n('stoneCostManual') > 0 ? n('stoneCostManual') : (stoneCostRef + stoneWarrantyCost);
 
         // 제조가격 = 금값 + 물림비 + 공임 + 나석가격 + 기타비용
-        const manufacturingCost = goldValue + n('settingCost') + n('laborCost') +
+        const manufacturingCost = appliedGoldValue + n('settingCost') + n('laborCost') +
             n('platingCost') + stoneUsed + n('otherCost');
 
         // 3️⃣ 매출이익 = 매출 × (1 - 수수료율(%)/100) - 제조가격
@@ -659,7 +673,16 @@ window.ManufacturingCostsModule = {
         const salesProfitRate = n('salesAmount') > 0
             ? (salesProfit / n('salesAmount')) * 100 : 0;
 
-        return { ...data, goldValue, stoneCostRef, stoneWarrantyFeeTotal, manufacturingCost, salesProfit, salesProfitRate };
+        return {
+            ...data,
+            goldValue_auto,
+            goldValue,
+            stoneCostRef,
+            stoneWarrantyFeeTotal,
+            manufacturingCost,
+            salesProfit,
+            salesProfitRate
+        };
     },
 
     async showForm(costId = null) {
@@ -770,6 +793,9 @@ window.ManufacturingCostsModule = {
                     if (k === 'inputCompleted') {
                         // 체크박스 값 boolean으로 변환
                         data[k] = data[k] === 'on' || data[k] === true;
+                    } else if (k === 'goldValue') {
+                        const rawGoldValue = String(data[k] ?? '').trim();
+                        data[k] = rawGoldValue === '' ? '' : (parseFloat(rawGoldValue) || 0);
                     } else if (k !== 'orderId' && k !== 'productionMonth' && k !== 'stoneArray' && k !== 'stoneQty_text') {
                         data[k] = parseFloat(data[k]) || 0;
                     }
@@ -892,7 +918,7 @@ window.ManufacturingCostsModule = {
             const fd = new FormData(wrapper.querySelector('#modalForm'));
             const data = Object.fromEntries(fd);
             const calc = this.calculate(data);
-            ['goldValue','stoneCostRef','manufacturingCost','salesProfit','salesProfitRate'].forEach(k => {
+            ['goldValue_auto','stoneCostRef','manufacturingCost','salesProfit','salesProfitRate'].forEach(k => {
                 const el = wrapper.querySelector(`[name="${k}"]`);
                 if (el) el.value = Math.round(calc[k] || 0);
             });

@@ -66,13 +66,14 @@ window.SalesManagementModule = {
             // 매출 필드
             ...this.ORDER_FIELDS,
             { key: 'separator1', label: '--- 제조원가 ---', type: 'text' },
-            // 제조원가 필드 (calc 필드 제외, 단 goldValue, manufacturingCost는 입력용으로 포함)
+            // 제조원가 필드 (calc 필드 제외, 단 manufacturingCost는 입력용으로 포함)
             { key: 'productWeight',   label: '제품중량(참고g)', type: 'number' },
             { key: 'stoneWeight',     label: '나석중량(참고ct)',type: 'number' },
             { key: 'goldWeight14k',   label: '금중량14K(g)',    type: 'number' },
             { key: 'goldWeightPure',  label: '금중량순금해리(g)',type: 'number' },
             { key: 'goldMarketPrice', label: '금시세(순금1g)',  type: 'number' },
-            { key: 'goldValue',       label: '금값',            type: 'number' },
+            { key: 'goldValue_auto',  label: '금값(자동)',       type: 'number' },
+            { key: 'goldValue',       label: '금값(입력)',       type: 'number' },
             { key: 'settingCost',     label: '물림비',          type: 'number' },
             { key: 'laborCost',       label: '공임',            type: 'number' },
             { key: 'platingCost',     label: '도금/각인',       type: 'number' },
@@ -1165,7 +1166,8 @@ window.SalesManagementModule = {
                         goldWeight14k: 0,
                         goldWeightPure: 0,
                         goldMarketPrice: 0,
-                        goldValue: 0,
+                        goldValue_auto: 0,
+                        goldValue: '',
                         settingCost: 0,
                         laborCost: 0,
                         platingCost: 0,
@@ -1972,10 +1974,15 @@ window.SalesManagementModule = {
                         });
 
                         ['orderAmount','salesAmount','commissionRate','productWeight','stoneWeight',
-                         'goldWeight14k','goldWeightPure','goldMarketPrice','goldValue','settingCost','laborCost',
+                         'goldWeight14k','goldWeightPure','goldMarketPrice','goldValue_auto','settingCost','laborCost',
                          'platingCost','stoneCostManual','stoneCostRef','otherCost','manufacturingCost'].forEach(k => {
                             if (row[k] !== undefined) row[k] = parseFloat(String(row[k]).replace(/,/g, '')) || 0;
                         });
+
+                        if (row.goldValue !== undefined) {
+                            const rawGoldValue = String(row.goldValue).replace(/,/g, '').trim();
+                            row.goldValue = rawGoldValue === '' ? '' : (parseFloat(rawGoldValue) || 0);
+                        }
 
                         for (let i = 1; i <= 10; i++) {
                             if (row[`stoneQty${i}`]) row[`stoneQty${i}`] = parseFloat(String(row[`stoneQty${i}`]).replace(/,/g, '')) || 0;
