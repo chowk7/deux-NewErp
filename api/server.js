@@ -172,6 +172,142 @@ const verifyToken = async (req, res, next) => {
     }
 };
 
+const normalizeRole = (role) => {
+    const normalized = String(role || '').trim().toLowerCase();
+    if (normalized === 'admin' || normalized === 'manager' || normalized === 'staff') {
+        return normalized;
+    }
+    if (normalized === 'user') return 'staff';
+    return 'staff';
+};
+
+const getUserProfile = async (uid) => {
+    const doc = await db.collection('users').doc(uid).get();
+    const data = doc.exists ? (doc.data() || {}) : {};
+    return {
+        uid,
+        ...data,
+        role: normalizeRole(data.role)
+    };
+};
+
+const requireRole = (roles) => async (req, res, next) => {
+    try {
+        const profile = await getUserProfile(req.userId);
+        req.userProfile = profile;
+
+        if (!roles.includes(profile.role)) {
+            return res.status(403).json({ error: '권한이 없습니다.' });
+        }
+
+        next();
+    } catch (error) {
+        console.error('Role verification error:', error);
+        res.status(500).json({ error: '권한 확인 중 오류가 발생했습니다.' });
+    }
+};
+
+// ===== 사용자/권한 API =====
+
+app.get('/api/users/me', verifyToken, async (req, res) => {
+    try {
+        const profile = await getUserProfile(req.userId);
+        res.status(200).json(profile);
+    } catch (error) {
+        console.error('Error fetching my profile:', error);
+        res.status(500).json({ error: '사용자 정보를 불러오지 못했습니다.' });
+    }
+});
+
+app.get('/api/users', verifyToken, requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+        const snapshot = await db.collection('users').get();
+        const users = snapshot.docs.map((doc) => {
+            const data = doc.data() || {};
+            return {
+                uid: doc.id,
+                email: data.email || '',
+                displayName: data.displayName || '',
+                role: normalizeRole(data.role),
+                createdAt: data.createdAt || null,
+                updatedAt: data.updatedAt || null
+            };
+        }).sort((a, b) => String(a.email || '').localeCompare(String(b.email || ''), 'ko'));
+
+        res.status(200).json(users);
+    } catch (error) {
+        console.error('Error fetching users:', error);
+        res.status(500).json({ error: '직원 목록을 불러오지 못했습니다.' });
+    }
+});
+
+app.put('/api/users/:uid/role', verifyToken, requireRole(['admin']), async (req, res) => {
+    try {
+        const { uid } = req.params;
+        const nextRole = normalizeRole(req.body?.role);
+
+        if (!['staff', 'manager'].includes(nextRole)) {
+            return res.status(400).json({ error: '권한은 staff 또는 manager만 설정할 수 있습니다.' });
+        }
+
+        if (uid === req.userId) {
+            return res.status(400).json({ error: '자기 자신의 권한은 변경할 수 없습니다.' });
+        }
+
+        const targetProfile = await getUserProfile(uid);
+        if (targetProfile.role === 'admin') {
+            return res.status(400).json({ error: '관리자 계정 권한은 여기서 변경할 수 없습니다.' });
+        }
+
+        let authUser = null;
+        try {
+            authUser = await admin.auth().getUser(uid);
+        } catch (error) {
+            if (error?.code !== 'auth/user-not-found') throw error;
+        }
+
+        await db.collection('users').doc(uid).set({
+            email: targetProfile.email || authUser?.email || '',
+            displayName: targetProfile.displayName || authUser?.displayName || '',
+            role: nextRole,
+            updatedAt: admin.firestore.Timestamp.now(),
+            updatedBy: req.userId
+        }, { merge: true });
+
+        res.status(200).json({ message: '직원 권한이 수정되었습니다.' });
+    } catch (error) {
+        console.error('Error updating user role:', error);
+        res.status(500).json({ error: '직원 권한을 수정하지 못했습니다.' });
+    }
+});
+
+app.delete('/api/users/:uid', verifyToken, requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+        const { uid } = req.params;
+
+        if (uid === req.userId) {
+            return res.status(400).json({ error: '자기 자신의 계정은 삭제할 수 없습니다.' });
+        }
+
+        const targetProfile = await getUserProfile(uid);
+        if (targetProfile.role === 'admin') {
+            return res.status(400).json({ error: '관리자 계정은 삭제할 수 없습니다.' });
+        }
+
+        try {
+            await admin.auth().deleteUser(uid);
+        } catch (error) {
+            if (error?.code !== 'auth/user-not-found') throw error;
+        }
+        await db.collection('users').doc(uid).delete().catch(() => {});
+
+        res.status(200).json({ message: '직원 계정을 삭제했습니다.' });
+    } catch (error) {
+        console.error('Error deleting user:', error);
+        res.status(500).json({ error: '직원 계정을 삭제하지 못했습니다.' });
+    }
+});
+
 // ===== 가격관리 API =====
 
 /**

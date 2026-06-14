@@ -6,6 +6,7 @@
 class DiamonJewelryApp {
     constructor() {
         this.currentUser = null;
+        this.currentUserProfile = null;
         this.currentPage = null;
         this.init();
     }
@@ -168,16 +169,55 @@ class DiamonJewelryApp {
      * 인증 상태 확인 및 UI 업데이트
      */
     checkAuthState() {
-        const unsubscribe = window.firebaseAuth.onAuthStateChanged((user) => {
+        const unsubscribe = window.firebaseAuth.onAuthStateChanged(async (user) => {
             if (user) {
                 this.currentUser = user;
+                this.currentUserProfile = await this.loadCurrentUserProfile(user);
                 this.showDashboard();
                 this.updateUserInfo();
             } else {
                 this.currentUser = null;
+                this.currentUserProfile = null;
                 this.showLoginPage();
             }
         });
+    }
+
+    normalizeRole(role) {
+        const normalized = String(role || '').trim().toLowerCase();
+        if (normalized === 'admin' || normalized === 'manager' || normalized === 'staff') {
+            return normalized;
+        }
+        if (normalized === 'user') return 'staff';
+        return 'staff';
+    }
+
+    getRoleLabel(role) {
+        const normalized = this.normalizeRole(role);
+        if (normalized === 'admin') return '관리자';
+        if (normalized === 'manager') return '매니저';
+        return '스태프';
+    }
+
+    async loadCurrentUserProfile(user) {
+        try {
+            const doc = await window.firebaseDb.collection('users').doc(user.uid).get();
+            const profile = doc.exists ? (doc.data() || {}) : {};
+            return {
+                uid: user.uid,
+                email: profile.email || user.email || '',
+                displayName: profile.displayName || user.displayName || '',
+                role: this.normalizeRole(profile.role)
+            };
+        } catch (error) {
+            console.error('[App] 사용자 프로필 로드 실패:', error);
+            return {
+                uid: user.uid,
+                email: user.email || '',
+                displayName: user.displayName || '',
+                role: 'staff'
+            };
+        }
     }
 
     /**
@@ -206,6 +246,15 @@ class DiamonJewelryApp {
         if (userEmailElement && this.currentUser) {
             userEmailElement.textContent = this.currentUser.email;
         }
+
+        const roleBadgeElement = document.getElementById('userRoleBadge');
+        if (roleBadgeElement) {
+            roleBadgeElement.textContent = this.getRoleLabel(this.currentUserProfile?.role);
+        }
+
+        if (window.EmployeeManagementModule) {
+            window.EmployeeManagementModule.setCurrentUserContext(this.currentUser, this.currentUserProfile);
+        }
     }
 
     /**
@@ -214,6 +263,7 @@ class DiamonJewelryApp {
     logout() {
         window.firebaseAuth.signOut().then(() => {
             this.currentUser = null;
+            this.currentUserProfile = null;
             this.showLoginPage();
         }).catch(error => {
             console.error('로그아웃 오류:', error);
@@ -255,6 +305,7 @@ class DiamonJewelryApp {
         if (window.notes) window.notes.init();
         if (window.WordTemplateManager) window.WordTemplateManager.init();
         if (window.InventoryManagementModule) window.InventoryManagementModule.init();
+        if (window.EmployeeManagementModule) window.EmployeeManagementModule.init();
     }
 
     /**

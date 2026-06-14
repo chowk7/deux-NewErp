@@ -93,7 +93,7 @@ class AuthModule {
                 email: email,
                 displayName: userCredential.user.displayName,
                 createdAt: new Date(),
-                role: 'user'
+                role: 'staff'
             });
 
             // 회원가입 성공 - 앱이 auth state 변경 감지하여 대시보드로 이동
