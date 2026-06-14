@@ -186,7 +186,9 @@ function calculateProduct(docData, settings, diamondRateMap) {
   const salesCost = vatCost + n(docData.shipping);
   const marginPrice = ownMargin > 0 ? salesCost / (1 - ownMargin / 100) : salesCost;
   const expectedPrice = Math.round((marginPrice + n(docData.priceAdj)) / 1000) * 1000;
-  const finalPrice = (n(docData.finalPrice) || expectedPrice) + n(docData.sizeAddFee);
+  const sizeAddFee14k = n(docData.sizeAddFee14k) || n(docData.sizeAddFee);
+  const sizeAddFee18k = n(docData.sizeAddFee18k) || n(docData.sizeAddFee);
+  const finalPrice = (n(docData.finalPrice) || expectedPrice) + sizeAddFee14k;
 
   const discountPrice = finalPrice * (1 - n(docData.discountRate) / 100);
   const ownMallProfit = discountPrice * (1 - ownMallFee / 100) - salesCost;
@@ -199,7 +201,7 @@ function calculateProduct(docData, settings, diamondRateMap) {
   const salesCost18k = vatCost18k + n(docData.shipping);
   const marginPrice18k = ownMargin > 0 ? salesCost18k / (1 - ownMargin / 100) : salesCost18k;
   const expectedPrice18k = Math.round(marginPrice18k / 1000) * 1000;
-  const finalPrice18k = (n(docData.finalPrice18k) || expectedPrice18k) + n(docData.sizeAddFee);
+  const finalPrice18k = (n(docData.finalPrice18k) || expectedPrice18k) + sizeAddFee18k;
 
   const discountPrice18k = finalPrice18k * (1 - n(docData.discountRate) / 100);
   const ownMallProfit18k = discountPrice18k * (1 - ownMallFee / 100) - salesCost18k;

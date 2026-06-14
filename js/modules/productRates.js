@@ -12,7 +12,8 @@ window.ProductRatesModule = {
           options: ['R(반지)','N(목걸이)','B(팔찌)','E(귀걸이)','기타'] },
         { key: 'productName',     label: '상품명',          type: 'text',   calc: false },
         { key: 'size',            label: '사이즈',          type: 'text',   calc: false },
-        { key: 'sizeAddFee',      label: '사이즈추가금',    type: 'number', calc: false },
+        { key: 'sizeAddFee14k',   label: '14K사이즈추가금', type: 'number', calc: false },
+        { key: 'sizeAddFee18k',   label: '18K사이즈추가금', type: 'number', calc: false },
         { key: 'stones',          label: '나석 정보',       type: 'custom', calc: false },
         { key: 'stoneCost',       label: '나석원가',        type: 'number', calc: true },
         { key: 'stoneWarranty',   label: '보증서',         type: 'select', calc: false, options: ['없음', 'VS', 'VVS'] },
@@ -571,7 +572,9 @@ window.ProductRatesModule = {
         const salesCost   = vatCost + n('shipping');
         const marginPrice = ownMargin > 0 ? salesCost / (1 - ownMargin / 100) : salesCost;
         const expectedPrice = Math.round((marginPrice + n('priceAdj')) / 1000) * 1000;
-        const finalPrice  = (n('finalPrice') || expectedPrice) + n('sizeAddFee');
+        const sizeAddFee14k = n('sizeAddFee14k') || n('sizeAddFee');
+        const sizeAddFee18k = n('sizeAddFee18k') || n('sizeAddFee');
+        const finalPrice  = (n('finalPrice') || expectedPrice) + sizeAddFee14k;
         const discountPrice = finalPrice * (1 - n('discountRate') / 100);
         const ownMallProfit = discountPrice * (1 - ownMallFee / 100) - salesCost;
         const ownMallProfitRate = discountPrice > 0 ? (ownMallProfit / discountPrice) * 100 : 0;
@@ -584,7 +587,7 @@ window.ProductRatesModule = {
         const salesCost18k  = vatCost18k + n('shipping');
         const marginPrice18k= ownMargin > 0 ? salesCost18k / (1 - ownMargin / 100) : salesCost18k;
         const expectedPrice18k = Math.round(marginPrice18k / 1000) * 1000;
-        const finalPrice18k = (n('finalPrice18k') || expectedPrice18k) + n('sizeAddFee');
+        const finalPrice18k = (n('finalPrice18k') || expectedPrice18k) + sizeAddFee18k;
         const discountPrice18k = finalPrice18k * (1 - n('discountRate') / 100);
         const ownMallProfit18k = discountPrice18k * (1 - ownMallFee / 100) - salesCost18k;
         const ownMallProfitRate18k = discountPrice18k > 0 ? (ownMallProfit18k / discountPrice18k) * 100 : 0;
@@ -666,7 +669,9 @@ window.ProductRatesModule = {
                                 </div>
                             </div>`;
                     }
-                    const val = product?.[f.key] ?? '';
+                    const val = product?.[f.key]
+                        ?? ((f.key === 'sizeAddFee14k' || f.key === 'sizeAddFee18k') ? product?.sizeAddFee : '')
+                        ?? '';
                     const isRequired = !f.calc && required.includes(f.key);
                     let input;
                     if (f.type === 'select') {
