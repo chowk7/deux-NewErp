@@ -586,8 +586,10 @@ window.SalesManagementModule = {
                     .collection('sales').doc('orders').collection('items')
                     .orderBy('createdAt', 'desc')
                     .get();
-                this.allOrders = this.attachExpectedProfit(
-                    snap.docs.map(d => ({ id: d.id, ...d.data() }))
+                this.allOrders = this.normalizeOrderDisplayFields(
+                    this.attachExpectedProfit(
+                        snap.docs.map(d => ({ id: d.id, ...d.data() }))
+                    )
                 );
             }
 
@@ -617,6 +619,53 @@ window.SalesManagementModule = {
             console.error('[SalesManagement] 제품가격표 로드 실패:', error);
             this.productRates = [];
         }
+    },
+
+    buildStoneInfoText(order = {}) {
+        if (order.stoneInfo) return order.stoneInfo;
+        if (order.stoneQty_text) return order.stoneQty_text;
+
+        if (order.stoneArray) {
+            try {
+                const parsed = typeof order.stoneArray === 'string'
+                    ? JSON.parse(order.stoneArray)
+                    : order.stoneArray;
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    const text = parsed
+                        .map(stone => {
+                            const qty = stone.stoneQty ?? stone.qty ?? 0;
+                            const type = stone.stoneType || stone.type || '';
+                            return qty && type ? `${qty} × ${type}` : '';
+                        })
+                        .filter(Boolean)
+                        .join(', ');
+                    if (text) return text;
+                }
+            } catch (error) {
+                console.warn('[SalesManagement] stoneArray 파싱 실패:', error);
+            }
+        }
+
+        if (Array.isArray(order.stones) && order.stones.length > 0) {
+            const text = order.stones
+                .map(stone => {
+                    const qty = stone.stoneQty ?? stone.qty ?? 0;
+                    const type = stone.stoneType || stone.type || '';
+                    return qty && type ? `${qty} × ${type}` : '';
+                })
+                .filter(Boolean)
+                .join(', ');
+            if (text) return text;
+        }
+
+        return '';
+    },
+
+    normalizeOrderDisplayFields(orders = []) {
+        return orders.map(order => ({
+            ...order,
+            stoneInfo: this.buildStoneInfoText(order)
+        }));
     },
 
     attachExpectedProfit(orders = []) {
@@ -2200,13 +2249,14 @@ window.SalesManagementModule = {
             const orderDate = order.orderDate?.toDate
                 ? new Date(order.orderDate.toDate()).toLocaleDateString('ko-KR')
                 : (order.orderDate || '');
+            const stoneInfo = this.buildStoneInfoText(order);
 
             return {
                 '주문일': orderDate,
                 '고객명': order.customerName || '',
                 '제품명': order.productName || '',
                 '옵션명': order.optionName || '',
-                '나석정보': order.stoneInfo || '',
+                '나석정보': stoneInfo,
                 '기타': order.remark || '',
                 '보증서': order.warranty || ''
             };
