@@ -181,14 +181,42 @@ const normalizeRole = (role) => {
     return 'staff';
 };
 
+const getRoleFromClaims = (claims = {}) => {
+    if (!claims || typeof claims !== 'object') return null;
+    if (claims.role) return normalizeRole(claims.role);
+    if (claims.admin === true) return 'admin';
+    if (claims.manager === true) return 'manager';
+    if (claims.staff === true) return 'staff';
+    return null;
+};
+
+const getAuthUserSafe = async (uid) => {
+    try {
+        return await admin.auth().getUser(uid);
+    } catch (error) {
+        if (error?.code === 'auth/user-not-found') return null;
+        throw error;
+    }
+};
+
+const buildUserProfile = ({ uid, firestoreData = {}, authUser = null }) => {
+    const claimsRole = getRoleFromClaims(authUser?.customClaims);
+    const firestoreRole = firestoreData?.role;
+    return {
+        uid,
+        email: firestoreData?.email || authUser?.email || '',
+        displayName: firestoreData?.displayName || authUser?.displayName || '',
+        createdAt: firestoreData?.createdAt || null,
+        updatedAt: firestoreData?.updatedAt || null,
+        role: normalizeRole(firestoreRole || claimsRole || 'staff')
+    };
+};
+
 const getUserProfile = async (uid) => {
     const doc = await db.collection('users').doc(uid).get();
     const data = doc.exists ? (doc.data() || {}) : {};
-    return {
-        uid,
-        ...data,
-        role: normalizeRole(data.role)
-    };
+    const authUser = await getAuthUserSafe(uid);
+    return buildUserProfile({ uid, firestoreData: data, authUser });
 };
 
 const requireRole = (roles) => async (req, res, next) => {
@@ -222,17 +250,35 @@ app.get('/api/users/me', verifyToken, async (req, res) => {
 app.get('/api/users', verifyToken, requireRole(['admin', 'manager']), async (req, res) => {
     try {
         const snapshot = await db.collection('users').get();
-        const users = snapshot.docs.map((doc) => {
-            const data = doc.data() || {};
-            return {
-                uid: doc.id,
-                email: data.email || '',
-                displayName: data.displayName || '',
-                role: normalizeRole(data.role),
-                createdAt: data.createdAt || null,
-                updatedAt: data.updatedAt || null
-            };
-        }).sort((a, b) => String(a.email || '').localeCompare(String(b.email || ''), 'ko'));
+        const firestoreMap = new Map();
+        snapshot.forEach((doc) => firestoreMap.set(doc.id, doc.data() || {}));
+
+        const authUsers = [];
+        let nextPageToken;
+        do {
+            const result = await admin.auth().listUsers(1000, nextPageToken);
+            authUsers.push(...result.users);
+            nextPageToken = result.pageToken;
+        } while (nextPageToken);
+
+        const merged = new Map();
+
+        authUsers.forEach((authUser) => {
+            merged.set(authUser.uid, buildUserProfile({
+                uid: authUser.uid,
+                firestoreData: firestoreMap.get(authUser.uid) || {},
+                authUser
+            }));
+        });
+
+        firestoreMap.forEach((data, uid) => {
+            if (!merged.has(uid)) {
+                merged.set(uid, buildUserProfile({ uid, firestoreData: data, authUser: null }));
+            }
+        });
+
+        const users = Array.from(merged.values())
+            .sort((a, b) => String(a.email || '').localeCompare(String(b.email || ''), 'ko'));
 
         res.status(200).json(users);
     } catch (error) {
@@ -259,11 +305,17 @@ app.put('/api/users/:uid/role', verifyToken, requireRole(['admin']), async (req,
             return res.status(400).json({ error: '관리자 계정 권한은 여기서 변경할 수 없습니다.' });
         }
 
-        let authUser = null;
-        try {
-            authUser = await admin.auth().getUser(uid);
-        } catch (error) {
-            if (error?.code !== 'auth/user-not-found') throw error;
+        const authUser = await getAuthUserSafe(uid);
+
+        if (authUser) {
+            const currentClaims = authUser.customClaims || {};
+            await admin.auth().setCustomUserClaims(uid, {
+                ...currentClaims,
+                role: nextRole,
+                admin: nextRole === 'admin',
+                manager: nextRole === 'manager',
+                staff: nextRole === 'staff'
+            });
         }
 
         await db.collection('users').doc(uid).set({

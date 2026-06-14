@@ -211,7 +211,7 @@ class EmployeeManagementModule {
                                 <option value="staff" ${role === 'staff' ? 'selected' : ''}>스태프</option>
                                 <option value="manager" ${role === 'manager' ? 'selected' : ''}>매니저</option>
                             </select>
-                            <button type="button" class="btn btn-outline btn-sm employee-role-save">저장</button>
+                            <button type="button" class="btn btn-outline btn-sm employee-role-save">수정</button>
                         </div>
                     ` : `
                         <span class="badge employee-role-badge">${this.getRoleLabel(role)}</span>
@@ -227,40 +227,48 @@ class EmployeeManagementModule {
 
     bindEmployeeActions(wrapper, employees) {
         const employeeMap = new Map(employees.map((employee) => [employee.uid, employee]));
+        const tableWrap = wrapper.querySelector('#employeeTableWrap');
+        if (!tableWrap) return;
 
-        wrapper.querySelectorAll('.employee-role-save').forEach((button) => {
-            button.addEventListener('click', async () => {
-                const row = button.closest('tr');
+        tableWrap.onclick = async (event) => {
+            const roleButton = event.target.closest('.employee-role-save');
+            if (roleButton) {
+                const row = roleButton.closest('tr');
                 const uid = row?.dataset.userId;
                 const select = row?.querySelector('.employee-role-select');
                 if (!uid || !select) return;
-                await this.updateEmployeeRole(uid, select.value, button, employeeMap.get(uid)?.email);
+                await this.updateEmployeeRole(uid, select.value, roleButton, employeeMap.get(uid)?.email, employeeMap.get(uid)?.role);
                 await this.renderEmployeeTable(wrapper);
-            });
-        });
+                return;
+            }
 
-        wrapper.querySelectorAll('.employee-delete-btn').forEach((button) => {
-            button.addEventListener('click', async () => {
-                if (button.disabled) return;
-                const row = button.closest('tr');
+            const deleteButton = event.target.closest('.employee-delete-btn');
+            if (deleteButton) {
+                if (deleteButton.disabled) return;
+                const row = deleteButton.closest('tr');
                 const uid = row?.dataset.userId;
                 const employee = employeeMap.get(uid);
                 if (!uid || !employee) return;
-                await this.deleteEmployee(uid, employee, button);
+                await this.deleteEmployee(uid, employee, deleteButton);
                 await this.renderEmployeeTable(wrapper);
-            });
-        });
+            }
+        };
     }
 
-    async updateEmployeeRole(uid, role, button, email) {
+    async updateEmployeeRole(uid, role, button, email, currentRole) {
         if (!this.canEditRoles()) {
             window.Utils.showNotification('직원 권한 수정은 관리자만 가능합니다.', 'error');
             return;
         }
 
+        if (this.normalizeRole(role) === this.normalizeRole(currentRole)) {
+            window.Utils.showNotification('변경된 권한이 없습니다.', 'info');
+            return;
+        }
+
         const originalText = button.textContent;
         button.disabled = true;
-        button.textContent = '저장 중...';
+        button.textContent = '수정 중...';
 
         try {
             const response = await fetch(`/api/users/${uid}/role`, {

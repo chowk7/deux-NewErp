@@ -201,8 +201,18 @@ class DiamonJewelryApp {
 
     async loadCurrentUserProfile(user) {
         try {
-            const doc = await window.firebaseDb.collection('users').doc(user.uid).get();
-            const profile = doc.exists ? (doc.data() || {}) : {};
+            const token = await user.getIdToken();
+            const response = await fetch('/api/users/me', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('사용자 프로필 API 조회 실패');
+            }
+
+            const profile = await response.json();
             return {
                 uid: user.uid,
                 email: profile.email || user.email || '',
@@ -211,12 +221,24 @@ class DiamonJewelryApp {
             };
         } catch (error) {
             console.error('[App] 사용자 프로필 로드 실패:', error);
-            return {
-                uid: user.uid,
-                email: user.email || '',
-                displayName: user.displayName || '',
-                role: 'staff'
-            };
+            try {
+                const doc = await window.firebaseDb.collection('users').doc(user.uid).get();
+                const profile = doc.exists ? (doc.data() || {}) : {};
+                return {
+                    uid: user.uid,
+                    email: profile.email || user.email || '',
+                    displayName: profile.displayName || user.displayName || '',
+                    role: this.normalizeRole(profile.role)
+                };
+            } catch (fallbackError) {
+                console.error('[App] 사용자 프로필 fallback 로드 실패:', fallbackError);
+                return {
+                    uid: user.uid,
+                    email: user.email || '',
+                    displayName: user.displayName || '',
+                    role: 'staff'
+                };
+            }
         }
     }
 
