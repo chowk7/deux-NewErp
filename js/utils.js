@@ -535,6 +535,41 @@ window.Utils = {
 
     // ===== 기타 =====
 
+    _getDisplayFieldsStorageKey(tableKey) {
+        return `${tableKey}_displayFields`;
+    },
+
+    _loadDisplayFields(tableKey) {
+        const storageKey = this._getDisplayFieldsStorageKey(tableKey);
+
+        try {
+            const localSaved = JSON.parse(localStorage.getItem(storageKey) || '[]');
+            if (Array.isArray(localSaved) && localSaved.length > 0) {
+                return localSaved;
+            }
+        } catch (error) {
+            console.warn('표시항목 localStorage 로드 실패:', error);
+        }
+
+        try {
+            const sessionSaved = JSON.parse(sessionStorage.getItem(storageKey) || '[]');
+            if (Array.isArray(sessionSaved) && sessionSaved.length > 0) {
+                localStorage.setItem(storageKey, JSON.stringify(sessionSaved));
+                return sessionSaved;
+            }
+        } catch (error) {
+            console.warn('표시항목 sessionStorage 로드 실패:', error);
+        }
+
+        return [];
+    },
+
+    _saveDisplayFields(tableKey, selectedKeys) {
+        const storageKey = this._getDisplayFieldsStorageKey(tableKey);
+        localStorage.setItem(storageKey, JSON.stringify(selectedKeys));
+        sessionStorage.setItem(storageKey, JSON.stringify(selectedKeys));
+    },
+
     /**
      * 표시 항목 선택 모달
      * @param {string} tableKey - 테이블 키
@@ -543,7 +578,7 @@ window.Utils = {
      */
     openDisplayFieldsModal(tableKey, fields, onSave, defaultKeys = null) {
         // 저장된 표시 필드 로드 (없으면 defaultKeys, 그것도 없으면 전체)
-        const savedFields = JSON.parse(sessionStorage.getItem(`${tableKey}_displayFields`) || '[]');
+        const savedFields = this._loadDisplayFields(tableKey);
         const fallback = defaultKeys || fields.map(f => f.key);
         const displayFieldKeys = savedFields.length > 0 ? savedFields : fallback;
 
@@ -564,7 +599,7 @@ window.Utils = {
         this.openModal('표시 항목 설정', bodyHtml, async (formData) => {
             const selectedKeys = Array.from(document.querySelectorAll('input[name="displayField"]:checked'))
                 .map(el => el.value);
-            sessionStorage.setItem(`${tableKey}_displayFields`, JSON.stringify(selectedKeys));
+            this._saveDisplayFields(tableKey, selectedKeys);
             if (onSave) onSave(selectedKeys);
         }, '저장');
     },
@@ -573,7 +608,7 @@ window.Utils = {
      * 저장된 표시 필드 조회
      */
     getDisplayFields(tableKey, allFieldKeys) {
-        const saved = JSON.parse(sessionStorage.getItem(`${tableKey}_displayFields`) || '[]');
+        const saved = this._loadDisplayFields(tableKey);
         return saved.length > 0 ? saved : allFieldKeys;
     },
 
