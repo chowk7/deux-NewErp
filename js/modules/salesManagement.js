@@ -29,6 +29,7 @@ window.SalesManagementModule = {
           options: ['없음','VS','VVS'] },
         { key: 'orderAmount',     label: '최종주문금액',  type: 'number', defaultRequired: true  },
         { key: 'salesAmount',     label: '매출금액',      type: 'number', defaultRequired: true  },
+        { key: 'expectedProfit',  label: '예상 수익금',   type: 'computed', defaultRequired: false },
         { key: 'purchasePath',    label: '구매경로',      type: 'select', defaultRequired: false,
           options: ['온라인','오프라인'] },
         { key: 'purchasePathDetail', label: '구매경로상세', type: 'select', defaultRequired: false,
@@ -52,6 +53,7 @@ window.SalesManagementModule = {
     orders: [],
     allOrders: [], // 필터링 전 전체 데이터
     filteredOrders: [], // 연도+검색 필터 적용 데이터
+    productRates: [],
     orderRequired: [],
     pageSize: 50,
     currentPage: 1,
@@ -262,7 +264,7 @@ window.SalesManagementModule = {
                         <div style="border: 1px solid #ddd; border-radius: 8px; padding: 16px; background: #fafafa;">
                             <div style="font-weight: bold; margin-bottom: 12px; color: #333;">주문 ${idx + 1}</div>
                             <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
-                                ${self.ORDER_FIELDS.filter(f => f.type !== 'status').map(f => {
+                                ${self.ORDER_FIELDS.filter(f => f.type !== 'status' && f.type !== 'computed').map(f => {
                                     const val = order[f.key] || '';
                                     const isRequired = f.defaultRequired;
                                     if (f.key === 'productName') {
@@ -385,7 +387,7 @@ window.SalesManagementModule = {
             const updatedOrders = originalOrders.map((order, idx) => {
                 const docId = docRefs.find(d => d.orderIdx === idx)?.id;
                 const updated = { ...order };
-                self.ORDER_FIELDS.filter(f => f.type !== 'status').forEach(f => {
+                self.ORDER_FIELDS.filter(f => f.type !== 'status' && f.type !== 'computed').forEach(f => {
                     const input = document.querySelector(`[name="order_${idx}_${f.key}"]`);
                     if (input) {
                         updated[f.key] = f.type === 'number' ? (parseFloat(input.value) || 0) : input.value;
@@ -579,11 +581,14 @@ window.SalesManagementModule = {
 
             // 처음 로드일 때만 Firebase에서 전체 데이터 조회
             if (this.allOrders.length === 0) {
+                await this.loadProductRates();
                 const snap = await window.firebaseDb
                     .collection('sales').doc('orders').collection('items')
                     .orderBy('createdAt', 'desc')
                     .get();
-                this.allOrders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                this.allOrders = this.attachExpectedProfit(
+                    snap.docs.map(d => ({ id: d.id, ...d.data() }))
+                );
             }
 
             this.applyOrderFilters();
@@ -600,6 +605,48 @@ window.SalesManagementModule = {
             console.error('[SalesManagement] loadOrders 실패:', error);
             window.Utils.showNotification('매출표 로드 실패', 'error');
         }
+    },
+
+    async loadProductRates() {
+        try {
+            const snap = await window.firebaseDb
+                .collection('prices').doc('productRates').collection('items')
+                .get();
+            this.productRates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        } catch (error) {
+            console.error('[SalesManagement] 제품가격표 로드 실패:', error);
+            this.productRates = [];
+        }
+    },
+
+    attachExpectedProfit(orders = []) {
+        const findProductRate = (order) => {
+            const productCode = (order.productCode || '').trim();
+            const productName = (order.productName || '').trim();
+
+            return this.productRates.find(product => {
+                const rateCode = (product.productCode || '').trim();
+                const rateName = (product.productName || '').trim();
+                if (productCode && rateCode && productCode === rateCode) return true;
+                if (productName && rateName && productName === rateName) return true;
+                return false;
+            });
+        };
+
+        return orders.map(order => {
+            const productRate = findProductRate(order);
+            const salesAmount = parseFloat(order.salesAmount) || 0;
+            const commissionRate = parseFloat(order.commissionRate) || 0;
+            const salesCost = parseFloat(productRate?.salesCost);
+            const expectedProfit = Number.isFinite(salesCost)
+                ? Math.round(salesAmount * (1 - commissionRate / 100) - salesCost)
+                : null;
+
+            return {
+                ...order,
+                expectedProfit
+            };
+        });
     },
 
     sortOrders(column) {
@@ -654,7 +701,7 @@ window.SalesManagementModule = {
         if (!tbody) return;
 
         // 기본 표시 필드 (표시항목 설정이 없을 때)
-        const defaultDisplayFields = ['orderDate', 'orderNumber', 'customerName', 'productName', 'orderAmount', 'salesAmount'];
+        const defaultDisplayFields = ['orderDate', 'orderNumber', 'customerName', 'productName', 'orderAmount', 'salesAmount', 'expectedProfit'];
 
         // sessionStorage에서 선택된 필드 로드
         const displayFieldKeys = window.Utils.getDisplayFields('orders',
@@ -695,16 +742,15 @@ window.SalesManagementModule = {
 
             // 이미지 링크 (주문관리 IMAGE_TYPES 참조)
             const imageTypes = window.OrderManagementModule?.IMAGE_TYPES || [];
-            const imageCell = imageTypes.length > 0
-                ? imageTypes.map(t => {
-                    const imgArr = o.images?.[t.key];
-                    const hasImages = Array.isArray(imgArr) ? imgArr.length > 0 : !!imgArr;
-                    return hasImages
-                        ? `<a href="#" style="font-size:0.75rem;margin-right:4px;"
-                            data-action="viewOrderImage" data-id="${o.id}" data-type="${t.key}">📎${t.label}${Array.isArray(imgArr) ? `(${imgArr.length})` : ''}</a>`
-                        : `<span style="color:#d1d5db;font-size:0.75rem;margin-right:4px;">${t.label}</span>`;
-                  }).join('')
-                : '';
+            const imageLinks = imageTypes.map(t => {
+                const imgArr = o.images?.[t.key];
+                const hasImages = Array.isArray(imgArr) ? imgArr.length > 0 : !!imgArr;
+                return hasImages
+                    ? `<a href="#" style="font-size:0.75rem;margin-right:4px;"
+                        data-action="viewOrderImage" data-id="${o.id}" data-type="${t.key}">📎${t.label}${Array.isArray(imgArr) ? `(${imgArr.length})` : ''}</a>`
+                    : '';
+            }).filter(Boolean);
+            const imageCell = imageLinks.length > 0 ? imageLinks.join('') : '<span style="color:#9ca3af;font-size:0.75rem;">-</span>';
 
             return `
                 <tr data-id="${o.id}">
@@ -936,7 +982,7 @@ window.SalesManagementModule = {
         }
 
         const body = `<div class="form-grid">` +
-            this.ORDER_FIELDS.filter(f => f.type !== 'status').map(f => {
+            this.ORDER_FIELDS.filter(f => f.type !== 'status' && f.type !== 'computed').map(f => {
                 const isRequired = req.includes(f.key);
                 let val = order?.[f.key] ?? '';
 
@@ -1135,7 +1181,11 @@ window.SalesManagementModule = {
                         images[key] = order.images[key];
                     }
                 }
-                data.images = images;
+                if (Object.keys(images).length > 0) {
+                    data.images = images;
+                } else {
+                    delete data.images;
+                }
 
                 // 이미지 파일 필드 제거 (Firestore에 저장할 수 없음)
                 delete data.img_salesReceipt;
@@ -1213,6 +1263,7 @@ window.SalesManagementModule = {
                     }
                 }
                 w.remove();
+                this.allOrders = [];
                 await this.loadOrders();
             }
         );
