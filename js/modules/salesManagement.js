@@ -1400,6 +1400,13 @@ window.SalesManagementModule = {
             }
         }
 
+        const getBackSupportGroup = () => wrapper.querySelector('[name="backSupport"]')?.closest('.form-group');
+        const setBackSupportVisibility = (isEarring) => {
+            const backSupportGroup = getBackSupportGroup();
+            if (!backSupportGroup) return;
+            backSupportGroup.style.display = isEarring ? '' : 'none';
+        };
+
         // 상품명 검색 드롭다운 설정
         const productContainer = wrapper.querySelector('#product-select-container');
         if (productContainer) {
@@ -1420,12 +1427,8 @@ window.SalesManagementModule = {
                     const categorySelect = wrapper.querySelector('[name="category"]');
                     if (categorySelect) categorySelect.value = category;
 
-                    // 귀걸이면 뒷침 표시, 아니면 숨김
-                    const isEarring = categoryChar === 'E';
-                    const backSupportGroup = wrapper.querySelector('[name="backSupport"]')?.parentElement?.parentElement;
-                    if (backSupportGroup) {
-                        backSupportGroup.style.display = isEarring ? '' : 'none';
-                    }
+                    // 귀걸이면 뒷침 표시, 아니면 해당 필드만 숨김
+                    setBackSupportVisibility(categoryChar === 'E');
                 }
             };
 
@@ -1508,6 +1511,9 @@ window.SalesManagementModule = {
                 });
             }
         }
+
+        const currentCategory = wrapper.querySelector('[name="category"]')?.value || order?.category || '';
+        setBackSupportVisibility(currentCategory === 'E(귀걸이)');
 
         // 구매경로 변경 시 구매경로상세 옵션 업데이트
         const purchaseSelect = wrapper.querySelector('[name="purchasePath"]');
