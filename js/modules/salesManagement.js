@@ -1403,10 +1403,36 @@ window.SalesManagementModule = {
         // 상품명 검색 드롭다운 설정
         const productContainer = wrapper.querySelector('#product-select-container');
         if (productContainer) {
+            const applyProductInfo = (productName) => {
+                const product = products.find(p => p.name === productName);
+                if (!product) return;
+
+                // 제품코드 자동 설정
+                const codeInput = wrapper.querySelector('[name="productCode"]');
+                if (codeInput) codeInput.value = product.code;
+
+                // 종류 자동 추출
+                const codeChars = product.code?.match(/[A-Za-z]/g);
+                if (codeChars && codeChars.length >= 3) {
+                    const categoryChar = codeChars[2].toUpperCase();
+                    const categoryMap = { 'E': 'E(귀걸이)', 'R': 'R(반지)', 'N': 'N(목걸이)', 'B': 'B(팔찌)' };
+                    const category = categoryMap[categoryChar] || '기타';
+                    const categorySelect = wrapper.querySelector('[name="category"]');
+                    if (categorySelect) categorySelect.value = category;
+
+                    // 귀걸이면 뒷침 표시, 아니면 숨김
+                    const isEarring = categoryChar === 'E';
+                    const backSupportGroup = wrapper.querySelector('[name="backSupport"]')?.parentElement?.parentElement;
+                    if (backSupportGroup) {
+                        backSupportGroup.style.display = isEarring ? '' : 'none';
+                    }
+                }
+            };
+
             const searchableSelect = window.Utils.createSearchableSelect(
                 productOptions,
                 order?.productName || '',
-                null,
+                applyProductInfo,
                 '상품명 검색...',
                 'productName'
             );
@@ -1415,31 +1441,8 @@ window.SalesManagementModule = {
             // 상품명 변경 시 자동으로 종류와 제품코드 업데이트
             const productInput = wrapper.querySelector('.searchable-select-input[name="productName"]');
             if (productInput) {
-                productInput.addEventListener('change', (e) => {
-                    const product = products.find(p => p.name === e.target.value);
-                    if (product) {
-                        // 제품코드 자동 설정
-                        const codeInput = wrapper.querySelector('[name="productCode"]');
-                        if (codeInput) codeInput.value = product.code;
-
-                        // 종류 자동 추출
-                        const codeChars = product.code.match(/[A-Za-z]/g);
-                        if (codeChars && codeChars.length >= 3) {
-                            const categoryChar = codeChars[2].toUpperCase();
-                            const categoryMap = { 'E': 'E(귀걸이)', 'R': 'R(반지)', 'N': 'N(목걸이)', 'B': 'B(팔찌)' };
-                            const category = categoryMap[categoryChar] || '기타';
-                            const categorySelect = wrapper.querySelector('[name="category"]');
-                            if (categorySelect) categorySelect.value = category;
-
-                            // 귀걸이면 뒷침 표시, 아니면 숨김
-                            const isEarring = categoryChar === 'E';
-                            const backSupportGroup = wrapper.querySelector('[name="backSupport"]')?.parentElement?.parentElement;
-                            if (backSupportGroup) {
-                                backSupportGroup.style.display = isEarring ? '' : 'none';
-                            }
-                        }
-                    }
-                });
+                productInput.addEventListener('change', (e) => applyProductInfo(e.target.value));
+                productInput.addEventListener('blur', (e) => applyProductInfo(e.target.value));
             }
 
             // 신규 상품 추가 버튼
