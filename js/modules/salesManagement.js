@@ -939,20 +939,26 @@ window.SalesManagementModule = {
 
         // 고객목록 로드
         let customerOptions = [];
+        let customerRecords = [];
         try {
             const customerSnap = await window.firebaseDb.collection('sales').doc('customers').collection('items').orderBy('customerName').get();
-            const customers = customerSnap.docs.map(d => d.data().customerName);
+            const customers = customerSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
             // 중복 고객명 처리: 동명이인이 있으면 (1), (2) 등으로 표시
-            const customerMap = {};
-            customers.forEach(name => {
-                customerMap[name] = (customerMap[name] || 0) + 1;
+            const customerNameCount = {};
+            customers.forEach(customer => {
+                const name = customer.customerName || '';
+                customerNameCount[name] = (customerNameCount[name] || 0) + 1;
             });
-            customerOptions = customers.map(name =>
-                customerMap[name] > 1
-                    ? `${name}(${customers.filter(c => c === name).indexOf(name) + 1})`
-                    : name
-            );
+
+            const customerNameIndex = {};
+            customerRecords = customers.map(customer => {
+                const name = customer.customerName || '';
+                customerNameIndex[name] = (customerNameIndex[name] || 0) + 1;
+                const label = customerNameCount[name] > 1 ? `${name}(${customerNameIndex[name]})` : name;
+                return { ...customer, _displayLabel: label };
+            });
+            customerOptions = customerRecords.map(customer => customer._displayLabel);
         } catch (e) {
             // 고객목록 없음 무시
         }
@@ -1017,12 +1023,16 @@ window.SalesManagementModule = {
                     // 구매경로상세: purchasePath에 따라 동적으로 변경
                     const onlineOptions = ['듀인피니스 공식몰','신세계V','SSG','더현대닷컴'];
                     const offlineOptions = ['현대백화점 압구정본점','현대백화점 무역점','현대백화점 킨텍스점','현대백화점 목동점'];
-                    const opts = (order?.purchasePath === '오프라인' ? offlineOptions : onlineOptions).map(opt =>
+                    const optionList = order?.purchasePath === '오프라인' ? offlineOptions : onlineOptions;
+                    const opts = optionList.map(opt =>
                         `<option value="${opt}" ${val === opt ? 'selected' : ''}>${opt}</option>`
                     ).join('');
+                    const customOption = val && !optionList.includes(val)
+                        ? `<option value="${val}" selected>${val}</option>`
+                        : '';
                     input = `<select name="${f.key}" class="purchase-detail-select">
-                                <option value="">선택</option>${opts}
-                                <option value="">+ 신규 입력</option>
+                                <option value="">선택</option>${opts}${customOption}
+                                <option value="__new__">+ 신규 입력</option>
                              </select>`;
                 } else if (f.type === 'select') {
                     const opts = (f.options || []).map(opt =>
@@ -1271,14 +1281,38 @@ window.SalesManagementModule = {
         // 고객명 검색 드롭다운 설정
         const customerContainer = wrapper.querySelector('#customer-select-container');
         if (customerContainer) {
+            const applyCustomerInfo = (selectedLabel) => {
+                const selectedCustomer = customerRecords.find(customer => customer._displayLabel === selectedLabel);
+                if (!selectedCustomer) return;
+
+                const fieldMap = {
+                    postalCode: selectedCustomer.postalCode || '',
+                    recipient: selectedCustomer.customerName || '',
+                    phone: selectedCustomer.phone || '',
+                    address: selectedCustomer.address || '',
+                    addressDetail: selectedCustomer.addressDetail || ''
+                };
+
+                Object.entries(fieldMap).forEach(([fieldName, fieldValue]) => {
+                    const input = wrapper.querySelector(`[name="${fieldName}"]`);
+                    if (input) input.value = fieldValue;
+                });
+            };
+
             const searchableSelect = window.Utils.createSearchableSelect(
                 customerOptions,
                 order?.customerName || '',
-                null,
+                applyCustomerInfo,
                 '고객명 검색...',
                 'customerName'
             );
             customerContainer.replaceWith(searchableSelect);
+
+            const customerInput = wrapper.querySelector('.searchable-select-input[name="customerName"]');
+            if (customerInput) {
+                customerInput.addEventListener('change', (e) => applyCustomerInfo(e.target.value));
+                customerInput.addEventListener('blur', (e) => applyCustomerInfo(e.target.value));
+            }
 
             // 신규 고객 추가 버튼 처리
             const newCustomerBtn = wrapper.querySelector('#newCustomerBtn');
@@ -1347,11 +1381,18 @@ window.SalesManagementModule = {
                             const customerInput = wrapper.querySelector('[name="customerName"]');
                             if (customerInput) customerInput.value = data.newCustomerName;
 
-                            // 우편번호 필드에도 자동 설정
-                            const postalCodeInput = wrapper.querySelector('[name="postalCode"]');
-                            if (postalCodeInput && data.newCustomerPostalCode) {
-                                postalCodeInput.value = data.newCustomerPostalCode;
-                            }
+                            // 신규 고객 정보도 주문 폼에 즉시 반영
+                            const fieldValues = {
+                                postalCode: data.newCustomerPostalCode || '',
+                                recipient: data.newCustomerName || '',
+                                phone: data.newCustomerPhone || '',
+                                address: data.newCustomerAddress || '',
+                                addressDetail: data.newCustomerAddressDetail || ''
+                            };
+                            Object.entries(fieldValues).forEach(([fieldName, fieldValue]) => {
+                                const input = wrapper.querySelector(`[name="${fieldName}"]`);
+                                if (input) input.value = fieldValue;
+                            });
                         },
                         '저장'
                     );
@@ -1467,18 +1508,30 @@ window.SalesManagementModule = {
 
         // 구매경로 변경 시 구매경로상세 옵션 업데이트
         const purchaseSelect = wrapper.querySelector('[name="purchasePath"]');
+        const updatePurchasePathDetailOptions = (purchasePath, selectedValue = '') => {
+            const detailSelect = wrapper.querySelector('[name="purchasePathDetail"]');
+            if (!detailSelect) return;
+
+            const onlineOptions = ['듀인피니스 공식몰','신세계V','SSG','더현대닷컴'];
+            const offlineOptions = ['현대백화점 압구정본점','현대백화점 무역점','현대백화점 킨텍스점','현대백화점 목동점'];
+            const options = purchasePath === '오프라인' ? offlineOptions : onlineOptions;
+            const customOption = selectedValue && !options.includes(selectedValue)
+                ? `<option value="${selectedValue}" selected>${selectedValue}</option>`
+                : '';
+
+            detailSelect.innerHTML = `<option value="">선택</option>` +
+                options.map(opt => `<option value="${opt}" ${selectedValue === opt ? 'selected' : ''}>${opt}</option>`).join('') +
+                customOption +
+                `<option value="__new__">+ 신규 입력</option>`;
+
+            if (!selectedValue) {
+                detailSelect.value = '';
+            }
+        };
+
         if (purchaseSelect) {
             purchaseSelect.addEventListener('change', (e) => {
-                const detailSelect = wrapper.querySelector('[name="purchasePathDetail"]');
-                if (detailSelect) {
-                    const onlineOptions = ['듀인피니스 공식몰','신세계V','SSG','더현대닷컴'];
-                    const offlineOptions = ['현대백화점 압구정본점','현대백화점 무역점','현대백화점 킨텍스점','현대백화점 목동점'];
-                    const options = e.target.value === '오프라인' ? offlineOptions : onlineOptions;
-                    detailSelect.innerHTML = `<option value="">선택</option>` +
-                        options.map(opt => `<option value="${opt}">${opt}</option>`).join('') +
-                        `<option value="">+ 신규 입력</option>`;
-                    detailSelect.value = '';
-                }
+                updatePurchasePathDetailOptions(e.target.value, '');
             });
         }
 
@@ -1486,10 +1539,12 @@ window.SalesManagementModule = {
         const detailSelect = wrapper.querySelector('[name="purchasePathDetail"]');
         if (detailSelect) {
             detailSelect.addEventListener('change', (e) => {
-                if (e.target.value === '+ 신규 입력' || e.target.value === '') {
+                if (e.target.value === '__new__') {
                     const value = prompt('새로운 구매경로상세를 입력하세요:');
                     if (value) {
-                        e.target.value = value;
+                        updatePurchasePathDetailOptions(purchaseSelect?.value || '', value);
+                    } else {
+                        e.target.value = '';
                     }
                 }
             });
