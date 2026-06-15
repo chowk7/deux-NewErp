@@ -138,6 +138,78 @@ window.ProductRatesModule = {
         }
     },
 
+    _toNumber(value) {
+        const num = parseFloat(value);
+        return Number.isFinite(num) ? num : 0;
+    },
+
+    _buildRecalculationInput(product = {}) {
+        const sizeAddFee14k = this._toNumber(product.sizeAddFee14k || product.sizeAddFee);
+        const sizeAddFee18k = this._toNumber(product.sizeAddFee18k || product.sizeAddFee);
+        const clonedStones = Array.isArray(product.stones)
+            ? product.stones.map(stone => ({ ...stone }))
+            : [];
+        const normalized = {
+            ...product,
+            stones: clonedStones
+        };
+
+        if (product.finalPrice !== undefined && product.finalPrice !== null && product.finalPrice !== '') {
+            normalized.finalPrice = Math.max(this._toNumber(product.finalPrice) - sizeAddFee14k, 0);
+        }
+
+        if (product.finalPrice18k !== undefined && product.finalPrice18k !== null && product.finalPrice18k !== '') {
+            normalized.finalPrice18k = Math.max(this._toNumber(product.finalPrice18k) - sizeAddFee18k, 0);
+        }
+
+        return normalized;
+    },
+
+    async recalculateProductsForDiamondTypes(diamondTypes = []) {
+        const targetTypes = Array.from(new Set(
+            (Array.isArray(diamondTypes) ? diamondTypes : [])
+                .map(type => String(type || '').trim())
+                .filter(Boolean)
+        ));
+
+        if (targetTypes.length === 0) {
+            return { updatedCount: 0, matchedCount: 0 };
+        }
+
+        await Promise.all([this.loadDiamondRates(), this.load()]);
+
+        const matchedProducts = this.products.filter(product =>
+            Array.isArray(product.stones) &&
+            product.stones.some(stone => targetTypes.includes(String(stone?.type || '').trim()))
+        );
+
+        if (matchedProducts.length === 0) {
+            return { updatedCount: 0, matchedCount: 0 };
+        }
+
+        const collection = window.firebaseDb.collection('prices').doc('productRates').collection('items');
+        let updatedCount = 0;
+
+        for (let start = 0; start < matchedProducts.length; start += 500) {
+            const batch = window.firebaseDb.batch();
+            const chunk = matchedProducts.slice(start, start + 500);
+
+            chunk.forEach(product => {
+                const calculated = this.calculate(this._buildRecalculationInput(product));
+                batch.update(collection.doc(product.id), {
+                    ...calculated,
+                    updatedAt: new Date()
+                });
+                updatedCount += 1;
+            });
+
+            await batch.commit();
+        }
+
+        await this.load();
+        return { updatedCount, matchedCount: matchedProducts.length };
+    },
+
     _normalizeStoneSize(value) {
         const size = String(value || '').trim();
         return this.DEPARTMENT_STONE_SIZES.includes(size) ? size : '';
