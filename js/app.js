@@ -8,11 +8,14 @@ class DiamonJewelryApp {
         this.currentUser = null;
         this.currentUserProfile = null;
         this.currentPage = null;
+        this.currentMenu = 'dashboard';
+        this.isApplyingHistory = false;
         this.init();
     }
 
     init() {
         this.setupEventListeners();
+        this.setupHistoryNavigation();
         this.checkAuthState();
     }
 
@@ -51,11 +54,49 @@ class DiamonJewelryApp {
         });
     }
 
+    setupHistoryNavigation() {
+        window.addEventListener('popstate', async (event) => {
+            const state = event.state;
+            if (!state || !state.appState) return;
+
+            this.isApplyingHistory = true;
+            try {
+                if (state.page === 'dashboard' && state.menuId) {
+                    this.switchPage('dashboard', { updateHistory: false });
+                    await this.handleMenuClick(state.menuId, { updateHistory: false });
+                } else if (state.page === 'login' || state.page === 'signup') {
+                    this.switchPage(state.page, { updateHistory: false });
+                }
+            } finally {
+                this.isApplyingHistory = false;
+            }
+        });
+    }
+
+    buildHistoryState(page, extra = {}) {
+        return {
+            appState: true,
+            page,
+            ...extra
+        };
+    }
+
+    updateHistory(state, mode = 'push') {
+        const url = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        if (mode === 'replace') {
+            window.history.replaceState(state, '', url);
+        } else {
+            window.history.pushState(state, '', url);
+        }
+    }
+
     /**
      * 페이지 전환
      * @param {string} pageName - 'login', 'signup', 'dashboard'
      */
-    switchPage(pageName) {
+    switchPage(pageName, options = {}) {
+        const { updateHistory = true, historyMode = 'push' } = options;
+
         // 모든 페이지 숨기기
         document.querySelectorAll('.page').forEach(page => {
             page.classList.add('hidden');
@@ -74,6 +115,13 @@ class DiamonJewelryApp {
             if (page) {
                 page.classList.remove('hidden');
                 this.currentPage = pageName;
+
+                if (updateHistory && !this.isApplyingHistory) {
+                    const state = pageName === 'dashboard'
+                        ? this.buildHistoryState('dashboard', { menuId: this.currentMenu || 'dashboard' })
+                        : this.buildHistoryState(pageName);
+                    this.updateHistory(state, historyMode);
+                }
             }
         }
     }
@@ -82,7 +130,9 @@ class DiamonJewelryApp {
      * 메뉴 클릭 처리
      * @param {string} menuId - 메뉴 항목 ID
      */
-    async handleMenuClick(menuId) {
+    async handleMenuClick(menuId, options = {}) {
+        const { updateHistory = true, historyMode = 'push' } = options;
+
         // 모든 콘텐츠 섹션 숨기기
         document.querySelectorAll('.content-section').forEach(section => {
             section.classList.add('hidden');
@@ -98,6 +148,8 @@ class DiamonJewelryApp {
         if (activeLink) {
             activeLink.classList.add('active');
         }
+
+        this.currentMenu = menuId;
 
         // 해당하는 섹션 보이기
         const sectionMap = {
@@ -125,6 +177,10 @@ class DiamonJewelryApp {
             const section = document.getElementById(sectionId);
             if (section) {
                 section.classList.remove('hidden');
+
+                if (updateHistory && !this.isApplyingHistory) {
+                    this.updateHistory(this.buildHistoryState('dashboard', { menuId }), historyMode);
+                }
 
                 // 해당 모듈 로드
                 try {
@@ -246,18 +302,20 @@ class DiamonJewelryApp {
      * 대시보드 표시
      */
     showDashboard() {
-        this.switchPage('dashboard');
+        this.currentMenu = 'dashboard';
+        this.switchPage('dashboard', { updateHistory: false });
         this.setupPriceManagementModule();
         this.setupSalesManagementModule();
         this.setupNewModules();
-        this.loadDashboard();
+        this.updateHistory(this.buildHistoryState('dashboard', { menuId: 'dashboard' }), 'replace');
+        this.handleMenuClick('dashboard', { updateHistory: false });
     }
 
     /**
      * 로그인 페이지 표시
      */
     showLoginPage() {
-        this.switchPage('login');
+        this.switchPage('login', { historyMode: 'replace' });
     }
 
     /**

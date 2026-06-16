@@ -919,8 +919,8 @@ window.ProductRatesModule = {
                     );
                 });
 
-                wrapper.appendChild(addBtn);
-                el.replaceWith(wrapper);
+                stoneTypeWrapper.appendChild(addBtn);
+                el.replaceWith(stoneTypeWrapper);
             });
         };
 
