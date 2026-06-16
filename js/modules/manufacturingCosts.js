@@ -100,6 +100,23 @@ window.ManufacturingCostsModule = {
         }
     },
 
+    findProductRate(productRates = [], { productCode = '', productName = '' } = {}) {
+        const normalizedCode = String(productCode || '').trim();
+        const normalizedName = String(productName || '').trim();
+        const items = Array.isArray(productRates) ? productRates : [];
+
+        if (normalizedCode) {
+            const byCode = items.find(item => String(item?.productCode || '').trim() === normalizedCode);
+            if (byCode) return byCode;
+        }
+
+        if (normalizedName) {
+            return items.find(item => String(item?.productName || '').trim() === normalizedName) || null;
+        }
+
+        return null;
+    },
+
     getDefaultDisplayFieldKeys() {
         return ['orderDate', 'customerName', 'productName', 'optionName', 'goldValue_auto', 'goldValue', 'stoneCostManual', 'manufacturingCost', 'inputCompleted', 'salesProfit', 'salesProfitRate'];
     },
@@ -857,53 +874,27 @@ window.ManufacturingCostsModule = {
                     console.log('[나석정보] diamondRates diamondTypes:', this.diamondRates.map(d => d.diamondType));
                     console.log('[나석정보] product stones:', product?.stones);
                     
-                    // 제품의 warranty 정보 가져오기
-                    let productWarranty = '없음';
-                    
-                    // 상품명으로 먼저 검색
-                    if (cost?.productName) {
-                        const product = this.productRates.find(p => p.productName === cost.productName);
-                        if (product && product.stones && product.stones.length > 0) {
-                            productWarranty = product.stoneWarranty || '없음';
-                            existingStones = product.stones.map(s => {
-                                const stoneTypeKey = s.stoneType || s.type || '';
-                                const diamond = this.diamondRates.find(d => d.diamondType === stoneTypeKey);
-                                const stonePrice = diamond?.costWithVat || 0;
-                                const qty = s.stoneQty || s.qty || 0;
-                                const warrantyFee = (productWarranty === 'VS' ? (diamond?.vsWarrantyFee || 0)
-                                                 : productWarranty === 'VVS' ? (diamond?.vvsWarrantyFee || 0) : 0) * qty;
-                                return {
-                                    stoneType: stoneTypeKey,
-                                    stoneQty: qty,
-                                    stonePrice: stonePrice,
-                                    totalPrice: stonePrice * qty,
-                                    warrantyFee: warrantyFee
-                                };
-                            });
-                        }
-                    }
-
-                    // 상품명으로 못 찾으면 productCode로 검색
-                    if (existingStones.length === 0 && cost?.productCode) {
-                        const product = this.productRates.find(p => p.productCode === cost.productCode);
-                        if (product && product.stones && product.stones.length > 0) {
-                            productWarranty = product.stoneWarranty || '없음';
-                            existingStones = product.stones.map(s => {
-                                const stoneTypeKey = s.stoneType || s.type || '';
-                                const diamond = this.diamondRates.find(d => d.diamondType === stoneTypeKey);
-                                const stonePrice = diamond?.costWithVat || 0;
-                                const qty = s.stoneQty || s.qty || 0;
-                                const warrantyFee = (productWarranty === 'VS' ? (diamond?.vsWarrantyFee || 0)
-                                                 : productWarranty === 'VVS' ? (diamond?.vvsWarrantyFee || 0) : 0) * qty;
-                                return {
-                                    stoneType: stoneTypeKey,
-                                    stoneQty: qty,
-                                    stonePrice: stonePrice,
-                                    totalPrice: stonePrice * qty,
-                                    warrantyFee: warrantyFee
-                                };
-                            });
-                        }
+                    const product = this.findProductRate(this.productRates, {
+                        productCode: cost?.productCode,
+                        productName: cost?.productName
+                    });
+                    if (product && product.stones && product.stones.length > 0) {
+                        const productWarranty = product.stoneWarranty || '없음';
+                        existingStones = product.stones.map(s => {
+                            const stoneTypeKey = s.stoneType || s.type || '';
+                            const diamond = this.diamondRates.find(d => d.diamondType === stoneTypeKey);
+                            const stonePrice = diamond?.costWithVat || 0;
+                            const qty = s.stoneQty || s.qty || 0;
+                            const warrantyFee = (productWarranty === 'VS' ? (diamond?.vsWarrantyFee || 0)
+                                             : productWarranty === 'VVS' ? (diamond?.vvsWarrantyFee || 0) : 0) * qty;
+                            return {
+                                stoneType: stoneTypeKey,
+                                stoneQty: qty,
+                                stonePrice: stonePrice,
+                                totalPrice: stonePrice * qty,
+                                warrantyFee: warrantyFee
+                            };
+                        });
                     }
                 }
 
@@ -1050,10 +1041,7 @@ window.ManufacturingCostsModule = {
                 productRates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             }
 
-            const targetProduct = productRates.find(p =>
-                (productName && p.productName === productName) ||
-                (productCode  && p.productCode  === productCode)
-            );
+            const targetProduct = this.findProductRate(productRates, { productCode, productName });
 
             if (!targetProduct || !targetProduct.stones || targetProduct.stones.length === 0) {
                 window.Utils.showNotification(
