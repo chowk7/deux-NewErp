@@ -60,7 +60,11 @@ window.SalesManagementModule = {
     selectedYear: 'all',
     searchQuery: '',
     showUndeliveredOnly: false,
-    orderSortState: { column: null, direction: 'asc' },
+    orderSortState: { column: 'orderDate', direction: 'desc' },
+    PURCHASE_PATH_DETAIL_OPTIONS: {
+        온라인: ['듀인피니스 공식몰', '신세계V', 'SSG', '더현대닷컴'],
+        오프라인: ['현대백화점 압구정본점', '현대백화점 무역점', '현대백화점 킨텍스점', '현대백화점 목동점']
+    },
 
     async init() {
         // 통합 CSV 필드 초기화 (매출 + 제조원가 + 주문관리)
@@ -280,6 +284,21 @@ window.SalesManagementModule = {
                                                 </datalist>
                                             </div>
                                         `;
+                                    } else if (f.key === 'purchasePathDetail') {
+                                        const options = self.getPurchasePathDetailOptions(order.purchasePath);
+                                        const customOption = val && !options.includes(val)
+                                            ? `<option value="${val}" selected>${val}</option>`
+                                            : '';
+                                        return `
+                                            <div style="display: flex; flex-direction: column; gap: 2px;">
+                                                <label style="font-size: 12px; color: #666;">${f.label}${isRequired ? ' *' : ''}</label>
+                                                <select name="order_${idx}_${f.key}" data-order-idx="${idx}" class="sync-purchase-detail-select" style="padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
+                                                    <option value="">선택</option>
+                                                    ${options.map(opt => `<option value="${opt}" ${val === opt ? 'selected' : ''}>${opt}</option>`).join('')}
+                                                    ${customOption}
+                                                </select>
+                                            </div>
+                                        `;
                                     } else if (f.type === 'select') {
                                         return `
                                             <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -336,9 +355,11 @@ window.SalesManagementModule = {
             </div>
         `;
 
-        window.Utils.openModal('📝 상세 수정 - 모든 필드', html, async () => {
+        const wrapper = window.Utils.openModal('📝 상세 수정 - 모든 필드', html, async () => {
             await self.saveDetailedSyncOrders(orders, productOptions);
         }, '저장');
+
+        this.initDetailedSyncPurchasePathFields(wrapper, orders);
     },
 
     async saveDetailedSyncOrders(originalOrders, productOptions = []) {
@@ -454,6 +475,58 @@ window.SalesManagementModule = {
         return `<input type="text" id="sync_${rowIdx}_${field.key}" value="${val}" style="width:120px;padding:4px;border:1px solid #ccc;border-radius:4px;">`;
     },
 
+    getPurchasePathDetailOptions(purchasePath) {
+        return this.PURCHASE_PATH_DETAIL_OPTIONS[purchasePath] || this.PURCHASE_PATH_DETAIL_OPTIONS.온라인;
+    },
+
+    buildPurchasePathDetailOptionsHtml(purchasePath, selectedValue = '') {
+        const options = this.getPurchasePathDetailOptions(purchasePath);
+        const customOption = selectedValue && !options.includes(selectedValue)
+            ? `<option value="${selectedValue}" selected>${selectedValue}</option>`
+            : '';
+
+        return `<option value="">선택</option>`
+            + options.map(opt => `<option value="${opt}" ${selectedValue === opt ? 'selected' : ''}>${opt}</option>`).join('')
+            + customOption
+            + `<option value="__new__">+ 신규 입력</option>`;
+    },
+
+    updatePurchasePathDetailSelect(detailSelect, purchasePath, selectedValue = '') {
+        if (!detailSelect) return;
+        detailSelect.innerHTML = this.buildPurchasePathDetailOptionsHtml(purchasePath, selectedValue);
+        detailSelect.value = selectedValue || '';
+    },
+
+    initDetailedSyncPurchasePathFields(wrapper, orders = []) {
+        orders.forEach((order, idx) => {
+            const purchaseSelect = wrapper.querySelector(`[name="order_${idx}_purchasePath"]`);
+            const detailSelect = wrapper.querySelector(`[name="order_${idx}_purchasePathDetail"]`);
+            if (!detailSelect) return;
+
+            this.updatePurchasePathDetailSelect(
+                detailSelect,
+                purchaseSelect?.value || order.purchasePath || '온라인',
+                order.purchasePathDetail || ''
+            );
+
+            if (purchaseSelect) {
+                purchaseSelect.addEventListener('change', (e) => {
+                    this.updatePurchasePathDetailSelect(detailSelect, e.target.value, '');
+                });
+            }
+
+            detailSelect.addEventListener('change', (e) => {
+                if (e.target.value !== '__new__') return;
+                const value = prompt('새로운 구매경로상세를 입력하세요:');
+                if (value) {
+                    this.updatePurchasePathDetailSelect(detailSelect, purchaseSelect?.value || order.purchasePath || '온라인', value);
+                } else {
+                    e.target.value = '';
+                }
+            });
+        });
+    },
+
     openOrderDisplaySettings() {
         const defaultKeys = ['orderDate', 'orderNumber', 'customerName', 'productName', 'orderAmount', 'salesAmount'];
         window.Utils.openDisplayFieldsModal('orders', this.ORDER_FIELDS,
@@ -530,6 +603,7 @@ window.SalesManagementModule = {
                 this.selectedYear = btn.dataset.year;
                 this.currentPage = 1;
                 this.applyOrderFilters();
+                this.filteredOrders = this.getSortedOrders(this.filteredOrders);
                 this.orders = this.filteredOrders.slice(0, this.pageSize);
                 this.renderOrdersTable();
                 this.renderPagination();
@@ -541,6 +615,7 @@ window.SalesManagementModule = {
             this.searchQuery = document.getElementById('ordersSearchInput')?.value?.trim() || '';
             this.currentPage = 1;
             this.applyOrderFilters();
+            this.filteredOrders = this.getSortedOrders(this.filteredOrders);
             this.orders = this.filteredOrders.slice(0, this.pageSize);
             this.renderOrdersTable();
             this.renderPagination();
@@ -555,6 +630,7 @@ window.SalesManagementModule = {
             this.showUndeliveredOnly = !this.showUndeliveredOnly;
             this.currentPage = 1;
             this.applyOrderFilters();
+            this.filteredOrders = this.getSortedOrders(this.filteredOrders);
             this.orders = this.filteredOrders.slice(0, this.pageSize);
             this.renderOrdersTable();
             this.renderPagination();
@@ -567,6 +643,7 @@ window.SalesManagementModule = {
             this.showUndeliveredOnly = false;
             this.currentPage = 1;
             this.applyOrderFilters();
+            this.filteredOrders = this.getSortedOrders(this.filteredOrders);
             this.orders = this.filteredOrders.slice(0, this.pageSize);
             this.renderOrdersTable();
             this.renderPagination();
@@ -594,12 +671,12 @@ window.SalesManagementModule = {
             }
 
             this.applyOrderFilters();
+            this.filteredOrders = this.getSortedOrders(this.filteredOrders);
 
             // 페이지에 맞는 데이터만 추출
             const startIdx = (this.currentPage - 1) * this.pageSize;
             const endIdx = startIdx + this.pageSize;
             this.orders = this.filteredOrders.slice(startIdx, endIdx);
-            this.orderSortState = { column: null, direction: 'asc' };
             this.renderOrdersTable();
             this.renderPagination();
             this.renderOrderFilterBar();
@@ -698,6 +775,40 @@ window.SalesManagementModule = {
         });
     },
 
+    getComparableOrderValue(order, column) {
+        let value = order?.[column];
+        if (value?.toDate) value = value.toDate();
+        return value;
+    },
+
+    getSortedOrders(orders = []) {
+        const { column, direction } = this.orderSortState || {};
+        if (!column) return [...orders];
+
+        return [...orders].sort((a, b) => {
+            let aVal = this.getComparableOrderValue(a, column);
+            let bVal = this.getComparableOrderValue(b, column);
+
+            if (aVal == null && bVal == null) return 0;
+            if (aVal == null) return 1;
+            if (bVal == null) return -1;
+
+            if (typeof aVal === 'number' && typeof bVal === 'number') {
+                return direction === 'asc' ? aVal - bVal : bVal - aVal;
+            }
+
+            if (aVal instanceof Date && bVal instanceof Date) {
+                return direction === 'asc' ? aVal - bVal : bVal - aVal;
+            }
+
+            const aStr = String(aVal).toLowerCase();
+            const bStr = String(bVal).toLowerCase();
+            return direction === 'asc'
+                ? aStr.localeCompare(bStr, 'ko-KR')
+                : bStr.localeCompare(aStr, 'ko-KR');
+        });
+    },
+
     sortOrders(column) {
         // 같은 컬럼 클릭 시 방향 전환, 다른 컬럼 클릭 시 asc로 정렬
         if (this.orderSortState.column === column) {
@@ -707,40 +818,10 @@ window.SalesManagementModule = {
             this.orderSortState.direction = 'asc';
         }
 
-        // 데이터 정렬
-        this.orders.sort((a, b) => {
-            let aVal = a[column];
-            let bVal = b[column];
-
-            // Firestore Timestamp 처리
-            if (aVal?.toDate) aVal = aVal.toDate();
-            if (bVal?.toDate) bVal = bVal.toDate();
-
-            // null/undefined 처리
-            if (aVal == null && bVal == null) return 0;
-            if (aVal == null) return 1;
-            if (bVal == null) return -1;
-
-            // 숫자 비교
-            if (typeof aVal === 'number' && typeof bVal === 'number') {
-                return this.orderSortState.direction === 'asc' ? aVal - bVal : bVal - aVal;
-            }
-
-            // 날짜 비교
-            if (aVal instanceof Date && bVal instanceof Date) {
-                return this.orderSortState.direction === 'asc' ? aVal - bVal : bVal - aVal;
-            }
-
-            // 문자열 비교
-            const aStr = String(aVal).toLowerCase();
-            const bStr = String(bVal).toLowerCase();
-            if (this.orderSortState.direction === 'asc') {
-                return aStr.localeCompare(bStr, 'ko-KR');
-            } else {
-                return bStr.localeCompare(aStr, 'ko-KR');
-            }
-        });
-
+        this.filteredOrders = this.getSortedOrders(this.filteredOrders);
+        const startIdx = (this.currentPage - 1) * this.pageSize;
+        const endIdx = startIdx + this.pageSize;
+        this.orders = this.filteredOrders.slice(startIdx, endIdx);
         this.renderOrdersTable();
     },
 
@@ -780,7 +861,7 @@ window.SalesManagementModule = {
                 // 날짜 포맷
                 if (field.type === 'date' && val) {
                     val = val.toDate ? new Date(val.toDate()).toLocaleDateString('ko-KR') : '-';
-                } else if (field.type === 'number' && val !== undefined && val !== null && val !== '') {
+                } else if ((field.type === 'number' || field.type === 'computed') && val !== undefined && val !== null && val !== '') {
                     val = window.Utils.formatNumber(val);
                 } else if (val === undefined || val === null || val === '') {
                     val = '-';
@@ -1069,19 +1150,8 @@ window.SalesManagementModule = {
                                 ${opts}
                              </datalist>`;
                 } else if (f.key === 'purchasePathDetail') {
-                    // 구매경로상세: purchasePath에 따라 동적으로 변경
-                    const onlineOptions = ['듀인피니스 공식몰','신세계V','SSG','더현대닷컴'];
-                    const offlineOptions = ['현대백화점 압구정본점','현대백화점 무역점','현대백화점 킨텍스점','현대백화점 목동점'];
-                    const optionList = order?.purchasePath === '오프라인' ? offlineOptions : onlineOptions;
-                    const opts = optionList.map(opt =>
-                        `<option value="${opt}" ${val === opt ? 'selected' : ''}>${opt}</option>`
-                    ).join('');
-                    const customOption = val && !optionList.includes(val)
-                        ? `<option value="${val}" selected>${val}</option>`
-                        : '';
                     input = `<select name="${f.key}" class="purchase-detail-select">
-                                <option value="">선택</option>${opts}${customOption}
-                                <option value="__new__">+ 신규 입력</option>
+                                ${this.buildPurchasePathDetailOptionsHtml(order?.purchasePath || '온라인', val)}
                              </select>`;
                 } else if (f.type === 'select') {
                     const opts = (f.options || []).map(opt =>
@@ -1569,22 +1639,7 @@ window.SalesManagementModule = {
         const updatePurchasePathDetailOptions = (purchasePath, selectedValue = '') => {
             const detailSelect = wrapper.querySelector('[name="purchasePathDetail"]');
             if (!detailSelect) return;
-
-            const onlineOptions = ['듀인피니스 공식몰','신세계V','SSG','더현대닷컴'];
-            const offlineOptions = ['현대백화점 압구정본점','현대백화점 무역점','현대백화점 킨텍스점','현대백화점 목동점'];
-            const options = purchasePath === '오프라인' ? offlineOptions : onlineOptions;
-            const customOption = selectedValue && !options.includes(selectedValue)
-                ? `<option value="${selectedValue}" selected>${selectedValue}</option>`
-                : '';
-
-            detailSelect.innerHTML = `<option value="">선택</option>` +
-                options.map(opt => `<option value="${opt}" ${selectedValue === opt ? 'selected' : ''}>${opt}</option>`).join('') +
-                customOption +
-                `<option value="__new__">+ 신규 입력</option>`;
-
-            if (!selectedValue) {
-                detailSelect.value = '';
-            }
+            this.updatePurchasePathDetailSelect(detailSelect, purchasePath, selectedValue);
         };
 
         if (purchaseSelect) {

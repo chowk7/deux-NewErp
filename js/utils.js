@@ -66,7 +66,9 @@ window.Utils = {
                     const data = Object.fromEntries(formData);
                     ['img_salesReceipt', 'img_orderSheet'].forEach(key => {
                         if (formData.has(key)) {
-                            data[key] = formData.getAll(key);
+                            data[key] = formData.getAll(key).filter(file =>
+                                file instanceof File && file.name && file.size > 0
+                            );
                         }
                     });
                     await onSubmit(data, wrapper);
