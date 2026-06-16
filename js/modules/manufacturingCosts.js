@@ -1113,4 +1113,82 @@ window.ManufacturingCostsModule = {
             );
         }
     },
+
+    /**
+     * 전체 주문의 나석정보를 제품단가표 기준으로 일괄 재채움
+     * - productCode 우선 매칭 → 없으면 productName 정확 매칭
+     * - stoneArray/stoneQty_text/stones 필드 덮어씀
+     * - 제조원가 파생값도 재계산
+     * @param {Function} [onProgress] - (done, total, productName) 콜백
+     * @returns {{ updated: number, skipped: number, errors: string[] }}
+     */
+    async batchRefillStoneInfo(onProgress) {
+        const result = { updated: 0, skipped: 0, errors: [] };
+
+        try {
+            const [ordersSnap, ratesSnap, diamondSnap] = await Promise.all([
+                window.firebaseDb.collection('sales').doc('orders').collection('items').get(),
+                window.firebaseDb.collection('prices').doc('productRates').collection('items').get(),
+                window.firebaseDb.collection('prices').doc('diamondRates').collection('items').get(),
+            ]);
+
+            const productRates = ratesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const diamondRates = diamondSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const orders = ordersSnap.docs.map(d => ({ _docId: d.id, ...d.data() }));
+            const total = orders.length;
+
+            const col = window.firebaseDb.collection('sales').doc('orders').collection('items');
+
+            for (let i = 0; i < orders.length; i++) {
+                const order = orders[i];
+                const { _docId, productName = '', productCode = '' } = order;
+
+                if (onProgress) onProgress(i + 1, total, productName);
+
+                if (!productName && !productCode) { result.skipped++; continue; }
+
+                const targetProduct = this.findProductRate(productRates, { productCode, productName });
+                if (!targetProduct || !targetProduct.stones || targetProduct.stones.length === 0) {
+                    result.skipped++;
+                    continue;
+                }
+
+                const warranty = targetProduct.stoneWarranty || '없음';
+                const stoneArray = targetProduct.stones
+                    .filter(s => (s.type || s.stoneType) && (s.qty || s.stoneQty) > 0)
+                    .map(s => {
+                        const typeKey = s.type || s.stoneType || '';
+                        const qty = s.qty || s.stoneQty || 0;
+                        const diamond = diamondRates.find(d => d.diamondType === typeKey);
+                        const stonePrice = diamond?.costWithVat || 0;
+                        const warrantyFee = (warranty === 'VS'  ? (diamond?.vsWarrantyFee  || 0)
+                                          : warranty === 'VVS' ? (diamond?.vvsWarrantyFee || 0) : 0) * qty;
+                        return { stoneType: typeKey, stoneQty: qty, stonePrice, totalPrice: stonePrice * qty, warrantyFee };
+                    });
+
+                if (stoneArray.length === 0) { result.skipped++; continue; }
+
+                const stoneQtyText = stoneArray.map(s => `${s.stoneQty} × ${s.stoneType}`).join(', ');
+                const dataForCalc = { ...order, stoneArray: JSON.stringify(stoneArray), stoneQty_text: stoneQtyText };
+                const calculated = this.calculate(dataForCalc);
+
+                try {
+                    await col.doc(_docId).set({
+                        ...calculated,
+                        stoneArray:    JSON.stringify(stoneArray),
+                        stoneQty_text: stoneQtyText,
+                        stones:        targetProduct.stones,
+                        updatedAt:     new Date()
+                    }, { merge: true });
+                    result.updated++;
+                } catch (e) {
+                    result.errors.push(`${productName}(${_docId}): ${e.message}`);
+                }
+            }
+        } catch (err) {
+            result.errors.push('일괄 처리 오류: ' + err.message);
+        }
+
+        return result;
+    },
 };

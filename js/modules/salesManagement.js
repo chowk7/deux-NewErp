@@ -589,6 +589,11 @@ window.SalesManagementModule = {
                         🚚 배송완료 전만 보기
                     </button>
                 </div>
+                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                    <button class="btn btn-sm btn-outline" id="batchRefillStoneBtn" title="제품단가표 기준으로 전체 주문의 나석정보를 다시 채웁니다">
+                        💎 나석정보 일괄 재채움
+                    </button>
+                </div>
                 <div style="display:flex;gap:6px;align-items:center;margin-left:auto;flex-wrap:wrap;">
                     <input type="text" id="ordersSearchInput" placeholder="고객명 또는 상품명"
                         value="${this.searchQuery.replace(/"/g, '&quot;')}"
@@ -609,6 +614,33 @@ window.SalesManagementModule = {
                 this.renderPagination();
                 this.renderOrderFilterBar();
             });
+        });
+
+        document.getElementById('batchRefillStoneBtn')?.addEventListener('click', async () => {
+            if (!window.ManufacturingCostsModule) {
+                window.Utils.showNotification('ManufacturingCostsModule이 로드되지 않았습니다.', 'error');
+                return;
+            }
+            const confirmed = confirm('전체 주문의 나석정보를 제품단가표 기준으로 일괄 재채움합니다.\n잘못 매칭된 나석정보가 수정됩니다. 계속하시겠습니까?');
+            if (!confirmed) return;
+
+            const btn = document.getElementById('batchRefillStoneBtn');
+            if (btn) { btn.disabled = true; btn.textContent = '💎 처리 중...'; }
+
+            try {
+                const result = await window.ManufacturingCostsModule.batchRefillStoneInfo((done, total, name) => {
+                    if (btn) btn.textContent = `💎 처리 중 (${done}/${total})`;
+                });
+                const msg = `완료: ${result.updated}건 업데이트, ${result.skipped}건 건너뜀` +
+                    (result.errors.length ? `, ${result.errors.length}건 오류` : '');
+                window.Utils.showNotification(msg, result.errors.length ? 'warning' : 'success');
+                if (result.errors.length) console.warn('[batchRefill] errors:', result.errors);
+                await this.loadOrders(this.currentPage);
+            } catch (e) {
+                window.Utils.showNotification('일괄 재채움 오류: ' + e.message, 'error');
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = '💎 나석정보 일괄 재채움'; }
+            }
         });
 
         document.getElementById('ordersSearchBtn')?.addEventListener('click', () => {
