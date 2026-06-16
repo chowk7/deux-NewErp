@@ -301,12 +301,14 @@ window.ManufacturingCostsModule = {
                 try {
                     await batch.commit();
                     console.log(`[ManufacturingCosts] 자동 계산 업데이트: ${needsUpdate.length}개 항목`);
+                    this.costs = allItems;
                 } catch (error) {
                     console.error('Failed to update calculated fields:', error);
+                    this.costs = [];
                 }
+            } else {
+                this.costs = allItems;
             }
-
-            this.costs = allItems;
 
             this.renderTable();
             this.renderPagination();

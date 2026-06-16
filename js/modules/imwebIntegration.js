@@ -500,7 +500,7 @@ window.ImwebIntegrationModule = {
 
             if (window.SalesManagementModule) {
                 window.SalesManagementModule.allOrders = [];
-                window.SalesManagementModule.loadOrders();
+                await window.SalesManagementModule.loadOrders();
             }
             if (window.ManufacturingCostsModule) {
                 window.ManufacturingCostsModule.load();

@@ -76,8 +76,9 @@ window.AdminExpensesModule = {
             .collection('sales').doc('adminExpenses').collection('items')
             .orderBy('date', 'desc');
 
-        if (this.filterYear) {
-            query = query.where('expenseYear', '==', String(this.filterYear));
+        const yearNum = parseInt(this.filterYear);
+        if (!isNaN(yearNum) && yearNum > 0) {
+            query = query.where('expenseYear', '==', String(yearNum));
         }
 
         const snap = await query.get();
@@ -203,8 +204,10 @@ window.AdminExpensesModule = {
             async (data, w) => {
                 // 데이터 정규화
                 data.amount = parseFloat(data.amount) || 0;
-                data.expenseYear = String(data.expenseYear || new Date().getFullYear());
-                data.expenseMonth = String(data.expenseMonth || String(new Date().getMonth() + 1).padStart(2,'0')).padStart(2,'0');
+                const parsedYear = parseInt(data.expenseYear);
+                data.expenseYear = String(!isNaN(parsedYear) && parsedYear > 0 ? parsedYear : new Date().getFullYear());
+                const parsedMonth = parseInt(data.expenseMonth);
+                data.expenseMonth = String(!isNaN(parsedMonth) && parsedMonth >= 1 && parsedMonth <= 12 ? parsedMonth : new Date().getMonth() + 1).padStart(2, '0');
 
                 // date를 Firestore Timestamp로 변환
                 if (data.date && typeof data.date === 'string') {

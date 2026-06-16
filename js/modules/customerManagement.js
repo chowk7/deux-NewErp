@@ -427,7 +427,7 @@ window.CustomerManagementModule = {
         if (!(await window.Utils.confirm('이 고객을 삭제하시겠습니까?'))) return;
         await window.firebaseDb
             .collection('sales').doc('customers').collection('items').doc(id).delete();
-        this.loadCustomers();
+        await this.loadCustomers();
     },
 
     downloadTemplate() {

@@ -31,25 +31,25 @@ window.ProfitLossModule = {
         const yearStart = new Date(year, 0, 1);
         const yearEnd   = new Date(year + 1, 0, 1);
 
-        const ordersSnap = await window.firebaseDb
-            .collection('sales').doc('orders').collection('items')
-            .where('orderDate', '>=', yearStart)
-            .where('orderDate', '<',  yearEnd)
-            .get();
+        const [ordersSnap, mfgSnap, expSnap] = await Promise.all([
+            window.firebaseDb
+                .collection('sales').doc('orders').collection('items')
+                .where('orderDate', '>=', yearStart)
+                .where('orderDate', '<',  yearEnd)
+                .get(),
+            // 2. 월별 매출원가 집계 (sales/orders/items에서 manufacturingCost 필드로 로드)
+            window.firebaseDb
+                .collection('sales').doc('orders').collection('items')
+                .where('manufacturingCost', '>', 0)
+                .get(),
+            // 3. 월별 판관비 집계
+            window.firebaseDb
+                .collection('sales').doc('adminExpenses').collection('items')
+                .where('expenseYear', '==', String(year))
+                .get(),
+        ]);
         const orders = ordersSnap.docs.map(d => d.data());
-
-        // 2. 월별 매출원가 집계 (sales/orders/items에서 manufacturingCost 필드로 로드)
-        const mfgSnap = await window.firebaseDb
-            .collection('sales').doc('orders').collection('items')
-            .where('manufacturingCost', '>', 0)
-            .get();
         const mfgCosts = mfgSnap.docs.map(d => d.data());
-
-        // 3. 월별 판관비 집계
-        const expSnap = await window.firebaseDb
-            .collection('sales').doc('adminExpenses').collection('items')
-            .where('expenseYear', '==', String(year))
-            .get();
         const expenses = expSnap.docs.map(d => d.data());
 
         // 월별 데이터 구성
