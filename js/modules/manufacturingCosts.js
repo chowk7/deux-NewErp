@@ -105,13 +105,15 @@ window.ManufacturingCostsModule = {
         const normalizedName = String(productName || '').trim();
         const items = Array.isArray(productRates) ? productRates : [];
 
-        if (normalizedCode) {
-            const byCode = items.find(item => String(item?.productCode || '').trim() === normalizedCode);
-            if (byCode) return byCode;
+        // 제품명 우선 매칭
+        if (normalizedName) {
+            const byName = items.find(item => String(item?.productName || '').trim() === normalizedName);
+            if (byName) return byName;
         }
 
-        if (normalizedName) {
-            return items.find(item => String(item?.productName || '').trim() === normalizedName) || null;
+        // 제품명 없을 때만 코드로 폴백
+        if (normalizedCode) {
+            return items.find(item => String(item?.productCode || '').trim() === normalizedCode) || null;
         }
 
         return null;
