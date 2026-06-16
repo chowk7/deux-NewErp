@@ -722,6 +722,8 @@ window.ManufacturingCostsModule = {
         const salesField = { key: 'salesAmount', label: '매출금액(이익계산용)', type: 'number', calc: false };
         // 주문번호 필드 추가
         const orderField = { key: 'orderId', label: '주문번호(연결)', type: 'text', calc: false };
+        // 수수료율 참고 필드 추가 (매출표에서 가져옴, 이익 계산에 사용)
+        const commissionField = { key: 'commissionRate', label: '수수료율(%)(참고)', type: 'number', calc: false };
         
         // 금시세 기본값: 금재고에서 미리 조회
         const defaultGoldPrice = (() => {
@@ -735,8 +737,8 @@ window.ManufacturingCostsModule = {
             if (f.key === 'goldMarketPrice' && (!val || val === 0)) {
                 if (defaultGoldPrice) val = Math.round(defaultGoldPrice);
             }
-            // 주문번호(orderId)와 매출금액(salesAmount)은 수정 불가
-            const isReadOnly = f.key === 'orderId' || f.key === 'salesAmount' || f.calc;
+            // 주문번호(orderId), 매출금액(salesAmount), 수수료율(commissionRate)은 수정 불가 (매출표에서 관리)
+            const isReadOnly = f.key === 'orderId' || f.key === 'salesAmount' || f.key === 'commissionRate' || f.calc;
             const isRequired = !isReadOnly && f.type !== 'checkbox' && required.includes(f.key);
 
             // "입력 완료" 체크박스 특별 처리
@@ -803,6 +805,7 @@ window.ManufacturingCostsModule = {
             <div class="form-grid">
                 ${makeInput(orderField)}
                 ${makeInput(salesField)}
+                ${makeInput(commissionField)}
                 ${allFields.map(makeInput).join('')}
                 ${stoneSection}
             </div>`;
@@ -827,8 +830,9 @@ window.ManufacturingCostsModule = {
                     .collection('items').doc(costId)
                     .update({ ...calculated, updatedAt: new Date() });
                 w.remove();
+                const savedPage = this.currentPage;
                 this.allCosts = [];  // 캐시 비우기
-                this.load();
+                this.load(savedPage);
             }
         );
 
@@ -876,8 +880,6 @@ window.ManufacturingCostsModule = {
                         this.diamondRates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                     }
                     console.log('[나석정보] diamondRates diamondTypes:', this.diamondRates.map(d => d.diamondType));
-                    console.log('[나석정보] product stones:', product?.stones);
-                    
                     const product = this.findProductRate(this.productRates, {
                         productCode: cost?.productCode,
                         productName: cost?.productName

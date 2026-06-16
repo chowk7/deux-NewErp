@@ -324,15 +324,36 @@ window.OrderManagementModule = {
                     images[t.key] = this._imagePaths(item, t.key);
                 });
 
-                // 새 파일 업로드 (타입별 여러 파일)
+                const baseDocData = {
+                    orderId:             data.orderId || '',
+                    stoneRequestDate:    data.stoneRequestDate    || null,
+                    workshopRequestDate: data.workshopRequestDate || null,
+                    completionDate:      data.completionDate      || null,
+                    shippingReadyDate:   data.shippingReadyDate   || null,
+                    stoneRequested:      data.stoneRequested,
+                    workshopRequested:   data.workshopRequested,
+                    productionComplete:  data.productionComplete,
+                    shippingReady:       data.shippingReady,
+                    delivered:           data.delivered,
+                    updatedAt: new Date(),
+                };
+
+                // 신규 추가 시 먼저 Firestore에 저장하여 실제 문서 ID 확보
+                let resolvedItemId = itemId;
+                if (!itemId) {
+                    const newDocRef = await window.firebaseDb.collection('sales').doc('orders')
+                        .collection('items').add({ ...baseDocData, images, createdAt: new Date() });
+                    resolvedItemId = newDocRef.id;
+                }
+
+                // 이미지 업로드 (실제 문서 ID 사용)
                 const token = await window.firebaseAuth.currentUser.getIdToken();
                 for (const t of this.IMAGE_TYPES) {
                     const fileInput = wrapper.querySelector(`[name="img_${t.key}"]`);
                     if (!fileInput?.files?.length) continue;
 
-                    const docId = itemId || 'new_' + Date.now();
                     for (const file of fileInput.files) {
-                        const folder = `orders/${docId}/${t.key}`;
+                        const folder = `orders/${resolvedItemId}/${t.key}`;
                         const formData = new FormData();
                         formData.append('file', file);
                         formData.append('folder', folder);
@@ -344,34 +365,23 @@ window.OrderManagementModule = {
                         });
                         if (!uploadRes.ok) {
                             const err = await uploadRes.json();
-                            throw new Error(err.error || '이미지 업로드 실패');
+                            window.Utils.showNotification(`이미지 업로드 실패: ${err.error || '알 수 없는 오류'}`, 'error');
+                            continue;
                         }
                         const { path } = await uploadRes.json();
                         images[t.key].push(path);
                     }
                 }
 
-                const docData = {
-                    orderId:             data.orderId || '',
-                    stoneRequestDate:    data.stoneRequestDate    || null,
-                    workshopRequestDate: data.workshopRequestDate || null,
-                    completionDate:      data.completionDate      || null,
-                    shippingReadyDate:   data.shippingReadyDate   || null,
-                    stoneRequested:      data.stoneRequested,
-                    workshopRequested:   data.workshopRequested,
-                    productionComplete:  data.productionComplete,
-                    shippingReady:       data.shippingReady,
-                    delivered:           data.delivered,
-                    images,
-                    updatedAt: new Date(),
-                };
+                const docData = { ...baseDocData, images };
 
                 if (itemId) {
                     await window.firebaseDb.collection('sales').doc('orders')
                         .collection('items').doc(itemId).update(docData);
                 } else {
+                    // 신규 문서는 이미 생성됨 — 이미지 경로만 update
                     await window.firebaseDb.collection('sales').doc('orders')
-                        .collection('items').add({ ...docData, createdAt: new Date() });
+                        .collection('items').doc(resolvedItemId).update({ images, updatedAt: new Date() });
                 }
                 w.remove();
                 if (onComplete) {
