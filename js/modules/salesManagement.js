@@ -8,9 +8,7 @@ window.SalesManagementModule = {
         { key: 'orderDate',       label: '주문일',       type: 'date',   defaultRequired: true  },
         { key: 'orderNumber',     label: '주문번호',      type: 'text',   defaultRequired: true  },
         { key: 'customerName',    label: '고객명',        type: 'text',   defaultRequired: true  },
-        { key: 'postalCode',      label: '우편번호',      type: 'text',   defaultRequired: false },
         { key: 'productName',     label: '상품명',        type: 'text',   defaultRequired: true  },
-        { key: 'optionName',      label: '옵션명',        type: 'text',   defaultRequired: false },
         { key: 'stoneInfo',       label: '나석정보',      type: 'text',   defaultRequired: false },
         { key: 'remark',          label: '기타',          type: 'text',   defaultRequired: false },
         { key: 'category',        label: '종류',          type: 'select', defaultRequired: false,
@@ -25,6 +23,7 @@ window.SalesManagementModule = {
         { key: 'chainThickness',  label: '체인굵기',      type: 'text',   defaultRequired: false },
         { key: 'backSupport',     label: '뒷침',          type: 'select', defaultRequired: false,
           options: ['일반','프리미엄'] },
+        { key: 'optionName',      label: '옵션명',        type: 'text',   defaultRequired: false },
         { key: 'warranty',        label: '보증서',        type: 'select', defaultRequired: false,
           options: ['없음','VS','VVS'] },
         { key: 'orderAmount',     label: '최종주문금액',  type: 'number', defaultRequired: true  },
@@ -40,6 +39,7 @@ window.SalesManagementModule = {
         { key: 'phone',           label: '연락처',        type: 'text',   defaultRequired: false },
         { key: 'address',         label: '주소',          type: 'text',   defaultRequired: false },
         { key: 'addressDetail',   label: '주소상세',      type: 'text',   defaultRequired: false },
+        { key: 'postalCode',      label: '우편번호',      type: 'text',   defaultRequired: false },
         { key: 'stoneRequested',     label: '나석신청', type: 'status', defaultRequired: false },
         { key: 'workshopRequested',  label: '공방신청', type: 'status', defaultRequired: false },
         { key: 'productionComplete', label: '제작완료', type: 'status', defaultRequired: false },
@@ -1162,7 +1162,25 @@ window.SalesManagementModule = {
                 let input;
 
                 // 특별한 필드 처리
-                if (f.key === 'customerName') {
+                if (f.key === 'stoneInfo') {
+                    // 나석정보: 자동생성 readonly + 나석정보 입력 버튼
+                    let stoneDisplayText = val;
+                    try {
+                        const arr = JSON.parse(order?.stoneArray || '[]');
+                        if (arr.length > 0) {
+                            stoneDisplayText = arr.map(s => `${s.stoneQty} × ${s.stoneType}`).join(', ');
+                        }
+                    } catch(e) {}
+                    input = `<div style="display:flex;gap:6px;align-items:flex-start;">
+                                <input type="text" name="${f.key}" id="stoneInfoDisplay"
+                                    value="${stoneDisplayText}"
+                                    readonly style="background:#f3f4f6;flex:1;">
+                                <button type="button" class="btn btn-sm btn-outline" id="salesStoneInfoBtn"
+                                    style="white-space:nowrap;padding:8px 12px;margin-top:0;">나석정보 입력</button>
+                             </div>
+                             <input type="hidden" name="stoneArray" id="stoneArrayInput"
+                                value='${(order?.stoneArray || '[]').replace(/'/g, "&#39;")}'>`;
+                } else if (f.key === 'customerName') {
                     // 고객명: 검색 드롭다운 + 신규 입력
                     input = `<div id="customer-select-container" style="width:100%;"></div>
                              <button type="button" class="btn btn-sm btn-secondary" id="newCustomerBtn" style="margin-top:6px; width:100%;">+ 신규 고객 추가</button>`;
@@ -1288,6 +1306,16 @@ window.SalesManagementModule = {
                             data.category = categoryMap[categoryChar] || '기타';
                         }
                     }
+                }
+
+                // stoneArray에서 stoneInfo 자동 생성 (수기 입력 불가이므로 항상 덮어씀)
+                if (data.stoneArray) {
+                    try {
+                        const arr = JSON.parse(data.stoneArray);
+                        data.stoneInfo = arr.length > 0
+                            ? arr.map(s => `${s.stoneQty} × ${s.stoneType}`).join(', ')
+                            : '';
+                    } catch(e) {}
                 }
 
                 // 옵션명 자동생성: {길이}/{색상}/{사이즈}/{잠금장치}/{체인굵기}/{뒷침}
@@ -1428,6 +1456,39 @@ window.SalesManagementModule = {
                 await this.loadOrders();
             }
         );
+
+        // 나석정보 입력 버튼 이벤트
+        const salesStoneInfoBtn = wrapper.querySelector('#salesStoneInfoBtn');
+        if (salesStoneInfoBtn && window.StoneInputModalModule) {
+            salesStoneInfoBtn.addEventListener('click', async () => {
+                // diamondRates 로드 (ManufacturingCostsModule 캐시 우선)
+                let diamondRates = window.ManufacturingCostsModule?.diamondRates || [];
+                if (diamondRates.length === 0) {
+                    try {
+                        const snap = await window.firebaseDb
+                            .collection('prices').doc('diamondRates').collection('items').get();
+                        diamondRates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                        if (window.ManufacturingCostsModule) {
+                            window.ManufacturingCostsModule.diamondRates = diamondRates;
+                        }
+                    } catch(e) {}
+                }
+
+                let existingStones = [];
+                try {
+                    const stoneArrayInput = wrapper.querySelector('#stoneArrayInput');
+                    existingStones = JSON.parse(stoneArrayInput?.value || '[]');
+                } catch(e) {}
+
+                window.StoneInputModalModule.open(diamondRates, existingStones, (stoneArray) => {
+                    const stoneQtyText = stoneArray.map(s => `${s.stoneQty} × ${s.stoneType}`).join(', ');
+                    const stoneInfoDisplay = wrapper.querySelector('#stoneInfoDisplay');
+                    const stoneArrayInput = wrapper.querySelector('#stoneArrayInput');
+                    if (stoneInfoDisplay) stoneInfoDisplay.value = stoneQtyText;
+                    if (stoneArrayInput) stoneArrayInput.value = JSON.stringify(stoneArray);
+                });
+            });
+        }
 
         // 고객명 검색 드롭다운 설정
         const customerContainer = wrapper.querySelector('#customer-select-container');
