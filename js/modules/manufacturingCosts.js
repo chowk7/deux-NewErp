@@ -740,11 +740,13 @@ window.ManufacturingCostsModule = {
         // 수수료율 참고 필드 추가 (매출표에서 가져옴, 이익 계산에 사용)
         const commissionField = { key: 'commissionRate', label: '수수료율(%)(참고)', type: 'number', calc: false };
         
-        // 금시세 기본값: 금재고에서 미리 조회
-        const defaultGoldPrice = (() => {
-            if (cost && cost.goldMarketPrice && cost.goldMarketPrice !== 0) return cost.goldMarketPrice;
-            return window.GoldInventoryModule?.getLatestAvgPrice?.() || null;
-        })();
+        // 금시세 기본값: 기존 저장값 우선, 없으면 금재고 최신 평단가 (async 함수이므로 await 필요)
+        let defaultGoldPrice = null;
+        if (cost && cost.goldMarketPrice && cost.goldMarketPrice !== 0) {
+            defaultGoldPrice = cost.goldMarketPrice;
+        } else if (window.GoldInventoryModule?.getLatestAvgPrice) {
+            defaultGoldPrice = await window.GoldInventoryModule.getLatestAvgPrice();
+        }
 
         const makeInput = (f) => {
             // 금시세: 기존값이 있으면 사용, 없으면 defaultGoldPrice(금재고 최신 평단가) 사용
