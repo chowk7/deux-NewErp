@@ -455,6 +455,49 @@ window.SalesManagementModule = {
                 }
             }
 
+            // 신규 고객 자동 추가 (고객목록에 없는 경우)
+            try {
+                const customerSnap = await window.firebaseDb
+                    .collection('sales').doc('customers').collection('items').get();
+                const existingKeys = new Set(customerSnap.docs.map(d => {
+                    const cd = d.data();
+                    const name = (cd.customerName || '').trim();
+                    const phone = (cd.phone || '').replace(/\D/g, '');
+                    return phone ? `${name}|${phone}` : name;
+                }));
+                const newCustKeys = new Set();
+                const custCol = window.firebaseDb.collection('sales').doc('customers').collection('items');
+                const custBatch = window.firebaseDb.batch();
+                let newCustCount = 0;
+                for (const order of updatedOrders) {
+                    const name = (order.customerName || '').trim();
+                    const phone = (order.phone || '').replace(/\D/g, '');
+                    const key = phone ? `${name}|${phone}` : name;
+                    if (!name || existingKeys.has(key) || newCustKeys.has(key)) continue;
+                    newCustKeys.add(key);
+                    const ref = custCol.doc();
+                    custBatch.set(ref, {
+                        customerName: name,
+                        phone: order.phone || '',
+                        address: order.address || '',
+                        addressDetail: order.addressDetail || '',
+                        postalCode: '',
+                        email: '',
+                        ownMallSignup: false,
+                        createdAt: new Date(),
+                        updatedAt: new Date(),
+                        source: 'popup_sync'
+                    });
+                    newCustCount++;
+                }
+                if (newCustCount > 0) {
+                    await custBatch.commit();
+                    window.Utils.showNotification(`신규 고객 ${newCustCount}명 고객목록에 자동 추가됐습니다.`, 'success');
+                }
+            } catch(custErr) {
+                console.error('[SalesManagement] 신규 고객 자동추가 실패:', custErr);
+            }
+
             window.Utils.showNotification(`${updatedOrders.length}건 저장 완료`, 'success');
             self.allOrders = [];
             await self.loadOrders(1);
@@ -1125,6 +1168,12 @@ window.SalesManagementModule = {
             // 고객목록 없음 무시
         }
 
+        // 저장 시 고객명 검증에 사용할 허용 목록 (신규 추가 시 동적으로 갱신)
+        const validCustomerNames = new Set([
+            ...customerOptions,
+            ...customerRecords.map(c => c.customerName || '')
+        ]);
+
         // 제품단가표 로드
         let products = [];
         try {
@@ -1285,6 +1334,16 @@ window.SalesManagementModule = {
             orderId ? '주문 수정' : '주문 추가',
             body,
             async (data, w) => {
+                // 고객명 검증: 고객목록에 없는 고객은 저장 불가
+                const enteredCustomer = (data.customerName || '').trim();
+                if (enteredCustomer && !validCustomerNames.has(enteredCustomer)) {
+                    window.Utils.showNotification(
+                        `"${enteredCustomer}"은(는) 고객목록에 없는 고객입니다. 먼저 "+ 신규 고객 추가"로 등록해주세요.`,
+                        'error'
+                    );
+                    throw new Error('고객 미등록');
+                }
+
                 // 날짜 변환
                 if (data.orderDate) {
                     data.orderDate = firebase.firestore.Timestamp.fromDate(new Date(data.orderDate));
@@ -1588,6 +1647,9 @@ window.SalesManagementModule = {
                                 .set(customerData);
 
                             modal.remove();
+
+                            // 허용 목록에 신규 고객 추가 (저장 시 검증 통과를 위해)
+                            validCustomerNames.add(data.newCustomerName);
 
                             // 원래 폼의 고객명 필드에 자동 설정
                             const customerInput = wrapper.querySelector('[name="customerName"]');
