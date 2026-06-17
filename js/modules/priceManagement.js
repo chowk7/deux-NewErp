@@ -635,5 +635,99 @@ window.PriceManagementModule = {
             console.error('Failed to sync product rates from diamond rates:', error);
             window.Utils.showNotification('제품가격표 나석원가 반영 중 오류가 발생했습니다.', 'error');
         }
+
+        // 관련 주문들도 자동 재계산
+        await this._syncOrdersForDiamondTypes(diamondTypes);
+    },
+
+    async _syncOrdersForDiamondTypes(diamondTypes = []) {
+        if (!window.ManufacturingCostsModule?.calculate || !window.ManufacturingCostsModule?.findProductRate) {
+            return;
+        }
+
+        const targetTypes = Array.from(new Set(
+            (Array.isArray(diamondTypes) ? diamondTypes : [])
+                .map(type => String(type || '').trim())
+                .filter(Boolean)
+        ));
+        if (targetTypes.length === 0) return;
+
+        try {
+            const [ordersSnap, ratesSnap, diamondSnap] = await Promise.all([
+                window.firebaseDb.collection('sales').doc('orders').collection('items').get(),
+                window.firebaseDb.collection('prices').doc('productRates').collection('items').get(),
+                window.firebaseDb.collection('prices').doc('diamondRates').collection('items').get(),
+            ]);
+
+            const productRates = ratesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const diamondRates = diamondSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const orders = ordersSnap.docs.map(d => ({ _docId: d.id, ...d.data() }));
+
+            // 변경된 나석종류를 사용하는 제품만 필터링
+            const targetProducts = productRates.filter(pr =>
+                Array.isArray(pr.stones) &&
+                pr.stones.some(s => targetTypes.includes(String(s.type || s.stoneType || '').trim()))
+            );
+            if (targetProducts.length === 0) return;
+
+            // 해당 제품을 사용하는 주문만 필터링
+            const targetOrders = orders.filter(order => {
+                if (!order.productName && !order.productCode) return false;
+                const pr = window.ManufacturingCostsModule.findProductRate(productRates, {
+                    productCode: order.productCode,
+                    productName: order.productName
+                });
+                return pr && targetProducts.some(tp => tp.id === pr.id);
+            });
+
+            if (targetOrders.length === 0) return;
+
+            const col = window.firebaseDb.collection('sales').doc('orders').collection('items');
+            let updatedCount = 0;
+
+            for (const order of targetOrders) {
+                const { _docId, productName = '', productCode = '' } = order;
+
+                const targetProduct = window.ManufacturingCostsModule.findProductRate(productRates, { productCode, productName });
+                if (!targetProduct || !targetProduct.stones || targetProduct.stones.length === 0) continue;
+
+                const warranty = targetProduct.stoneWarranty || '없음';
+                const stoneArray = targetProduct.stones
+                    .filter(s => (s.type || s.stoneType) && (s.qty || s.stoneQty) > 0)
+                    .map(s => {
+                        const typeKey = s.type || s.stoneType || '';
+                        const qty = s.qty || s.stoneQty || 0;
+                        const diamond = diamondRates.find(d => d.diamondType === typeKey);
+                        const stonePrice = diamond?.costWithVat || 0;
+                        const warrantyFee = (warranty === 'VS' ? (diamond?.vsWarrantyFee || 0)
+                                          : warranty === 'VVS' ? (diamond?.vvsWarrantyFee || 0) : 0) * qty;
+                        return { stoneType: typeKey, stoneQty: qty, stonePrice, totalPrice: stonePrice * qty, warrantyFee };
+                    });
+
+                if (stoneArray.length === 0) continue;
+
+                const stoneQtyText = stoneArray.map(s => `${s.stoneQty} × ${s.stoneType}`).join(', ');
+                const dataForCalc = { ...order, stoneArray: JSON.stringify(stoneArray), stoneQty_text: stoneQtyText };
+                const calculated = window.ManufacturingCostsModule.calculate(dataForCalc);
+
+                await col.doc(_docId).set({
+                    ...calculated,
+                    stoneArray:    JSON.stringify(stoneArray),
+                    stoneQty_text: stoneQtyText,
+                    stones:        targetProduct.stones,
+                    updatedAt:     new Date()
+                }, { merge: true });
+                updatedCount++;
+            }
+
+            if (updatedCount > 0) {
+                window.Utils.showNotification(
+                    `매출표 ${updatedCount}개 주문의 나석정보를 자동 재계산했습니다.`,
+                    'success'
+                );
+            }
+        } catch (error) {
+            console.error('Failed to sync orders from diamond rates:', error);
+        }
     }
 };
