@@ -1149,18 +1149,21 @@ window.SalesManagementModule = {
             const customerSnap = await window.firebaseDb.collection('sales').doc('customers').collection('items').orderBy('customerName').get();
             const customers = customerSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-            // 중복 고객명 처리: 동명이인이 있으면 (1), (2) 등으로 표시
+            // 동명이인 처리: 같은 이름이 있으면 전화번호 뒷 4자리로 구분
+            // 예) 박수진 010-2222-3456 → 박수진(3456)
             const customerNameCount = {};
             customers.forEach(customer => {
                 const name = customer.customerName || '';
                 customerNameCount[name] = (customerNameCount[name] || 0) + 1;
             });
 
-            const customerNameIndex = {};
             customerRecords = customers.map(customer => {
                 const name = customer.customerName || '';
-                customerNameIndex[name] = (customerNameIndex[name] || 0) + 1;
-                const label = customerNameCount[name] > 1 ? `${name}(${customerNameIndex[name]})` : name;
+                let label = name;
+                if (customerNameCount[name] > 1) {
+                    const phone4 = (customer.phone || '').replace(/\D/g, '').slice(-4);
+                    label = phone4 ? `${name}(${phone4})` : `${name}(${customer.id.slice(-4)})`;
+                }
                 return { ...customer, _displayLabel: label };
             });
             customerOptions = customerRecords.map(customer => customer._displayLabel);
@@ -1343,6 +1346,10 @@ window.SalesManagementModule = {
                     );
                     throw new Error('고객 미등록');
                 }
+
+                // 동명이인 레이블(박수진(3456)) 대신 실제 고객명(박수진) 저장
+                const actualName = w.querySelector('#_actualCustomerName')?.value;
+                if (actualName) data.customerName = actualName;
 
                 // 날짜 변환
                 if (data.orderDate) {
@@ -1568,6 +1575,16 @@ window.SalesManagementModule = {
                     const input = wrapper.querySelector(`[name="${fieldName}"]`);
                     if (input) input.value = fieldValue;
                 });
+
+                // 저장 시 실제 고객명(레이블 아닌 원본)을 사용하기 위해 hidden input에 보관
+                let actualNameInput = wrapper.querySelector('#_actualCustomerName');
+                if (!actualNameInput) {
+                    actualNameInput = document.createElement('input');
+                    actualNameInput.type = 'hidden';
+                    actualNameInput.id = '_actualCustomerName';
+                    wrapper.querySelector('#modalForm')?.appendChild(actualNameInput);
+                }
+                actualNameInput.value = selectedCustomer.customerName || '';
             };
 
             const searchableSelect = window.Utils.createSearchableSelect(
