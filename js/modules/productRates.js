@@ -652,7 +652,8 @@ window.ProductRatesModule = {
         const expectedPrice = Math.round((marginPrice + n('priceAdj')) / 1000) * 1000;
         const sizeAddFee14k = n('sizeAddFee14k') || n('sizeAddFee');
         const sizeAddFee18k = n('sizeAddFee18k') || n('sizeAddFee');
-        const finalPrice  = (n('finalPrice') || expectedPrice) + sizeAddFee14k;
+        const baseFinalPrice14k = (n('finalPrice') || expectedPrice);
+        const finalPrice  = baseFinalPrice14k + sizeAddFee14k;
         const discountPrice = finalPrice * (1 - n('discountRate') / 100);
         const ownMallProfit = discountPrice * (1 - ownMallFee / 100) - salesCost;
         const ownMallProfitRate = discountPrice > 0 ? (ownMallProfit / discountPrice) * 100 : 0;
@@ -665,14 +666,16 @@ window.ProductRatesModule = {
         const salesCost18k  = vatCost18k + n('shipping');
         const marginPrice18k= ownMargin > 0 ? salesCost18k / (1 - ownMargin / 100) : salesCost18k;
         const expectedPrice18k = Math.round(marginPrice18k / 1000) * 1000;
-        const finalPrice18k = (n('finalPrice18k') || expectedPrice18k) + sizeAddFee18k;
+        const baseFinalPrice18k = (n('finalPrice18k') || expectedPrice18k);
+        const finalPrice18k = baseFinalPrice18k + sizeAddFee18k;
         const discountPrice18k = finalPrice18k * (1 - n('discountRate') / 100);
         const ownMallProfit18k = discountPrice18k * (1 - ownMallFee / 100) - salesCost18k;
         const ownMallProfitRate18k = discountPrice18k > 0 ? (ownMallProfit18k / discountPrice18k) * 100 : 0;
+        // deptPrice는 사이즈추가금 제외한 기본가격 기준 (DI_store_management에서 사이즈별 추가금 별도 적용)
         const deptCalc14k = this._calculateDepartmentPricing({
             stones,
             category: data.category,
-            finalPrice,
+            finalPrice: baseFinalPrice14k,
             salesCost,
             deptFee,
             stoneWarrantyFee,
@@ -681,7 +684,7 @@ window.ProductRatesModule = {
         const deptCalc18k = this._calculateDepartmentPricing({
             stones,
             category: data.category,
-            finalPrice: finalPrice18k,
+            finalPrice: baseFinalPrice18k,
             salesCost: salesCost18k,
             deptFee,
             stoneWarrantyFee,
@@ -798,7 +801,9 @@ window.ProductRatesModule = {
                     const f = this.FIELDS.find(f => f.key === k);
                     if (f?.type === 'number') data[k] = parseFloat(data[k]) || 0;
                 });
-                const calculated = this.calculate(data);
+                // finalPrice는 Firestore에 sizeAddFee 포함값으로 저장되어 있으므로
+                // calculate() 재호출 전 sizeAddFee를 빼서 정규화 (double-add 방지)
+                const calculated = this.calculate(this._buildRecalculationInput(data));
                 if (productId) {
                     await window.firebaseDb.collection('prices').doc('productRates')
                         .collection('items').doc(productId)
