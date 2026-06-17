@@ -144,25 +144,13 @@ window.ProductRatesModule = {
     },
 
     _buildRecalculationInput(product = {}) {
-        const sizeAddFee14k = this._toNumber(product.sizeAddFee14k || product.sizeAddFee);
-        const sizeAddFee18k = this._toNumber(product.sizeAddFee18k || product.sizeAddFee);
         const clonedStones = Array.isArray(product.stones)
             ? product.stones.map(stone => ({ ...stone }))
             : [];
-        const normalized = {
+        return {
             ...product,
             stones: clonedStones
         };
-
-        if (product.finalPrice !== undefined && product.finalPrice !== null && product.finalPrice !== '') {
-            normalized.finalPrice = Math.max(this._toNumber(product.finalPrice) - sizeAddFee14k, 0);
-        }
-
-        if (product.finalPrice18k !== undefined && product.finalPrice18k !== null && product.finalPrice18k !== '') {
-            normalized.finalPrice18k = Math.max(this._toNumber(product.finalPrice18k) - sizeAddFee18k, 0);
-        }
-
-        return normalized;
     },
 
     async recalculateProductsForDiamondTypes(diamondTypes = [], renameMap = {}) {
@@ -652,8 +640,7 @@ window.ProductRatesModule = {
         const expectedPrice = Math.round((marginPrice + n('priceAdj')) / 1000) * 1000;
         const sizeAddFee14k = n('sizeAddFee14k') || n('sizeAddFee');
         const sizeAddFee18k = n('sizeAddFee18k') || n('sizeAddFee');
-        const baseFinalPrice14k = (n('finalPrice') || expectedPrice);
-        const finalPrice  = baseFinalPrice14k + sizeAddFee14k;
+        const finalPrice = (n('finalPrice') || expectedPrice);
         const discountPrice = finalPrice * (1 - n('discountRate') / 100);
         const ownMallProfit = discountPrice * (1 - ownMallFee / 100) - salesCost;
         const ownMallProfitRate = discountPrice > 0 ? (ownMallProfit / discountPrice) * 100 : 0;
@@ -666,16 +653,15 @@ window.ProductRatesModule = {
         const salesCost18k  = vatCost18k + n('shipping');
         const marginPrice18k= ownMargin > 0 ? salesCost18k / (1 - ownMargin / 100) : salesCost18k;
         const expectedPrice18k = Math.round(marginPrice18k / 1000) * 1000;
-        const baseFinalPrice18k = (n('finalPrice18k') || expectedPrice18k);
-        const finalPrice18k = baseFinalPrice18k + sizeAddFee18k;
+        const finalPrice18k = (n('finalPrice18k') || expectedPrice18k);
         const discountPrice18k = finalPrice18k * (1 - n('discountRate') / 100);
         const ownMallProfit18k = discountPrice18k * (1 - ownMallFee / 100) - salesCost18k;
         const ownMallProfitRate18k = discountPrice18k > 0 ? (ownMallProfit18k / discountPrice18k) * 100 : 0;
-        // deptPrice는 사이즈추가금 제외한 기본가격 기준 (DI_store_management에서 사이즈별 추가금 별도 적용)
+        // deptPrice = finalPrice + stoneW (사이즈추가금 미포함)
         const deptCalc14k = this._calculateDepartmentPricing({
             stones,
             category: data.category,
-            finalPrice: baseFinalPrice14k,
+            finalPrice: finalPrice,
             salesCost,
             deptFee,
             stoneWarrantyFee,
@@ -684,7 +670,7 @@ window.ProductRatesModule = {
         const deptCalc18k = this._calculateDepartmentPricing({
             stones,
             category: data.category,
-            finalPrice: baseFinalPrice18k,
+            finalPrice: finalPrice18k,
             salesCost: salesCost18k,
             deptFee,
             stoneWarrantyFee,
