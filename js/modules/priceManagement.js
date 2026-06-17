@@ -320,7 +320,10 @@ window.PriceManagementModule = {
             .update({ ...saved,
                       updatedAt: new Date() });
 
-        await this._syncProductRatesForDiamondTypes([previous?.diamondType, saved.diamondType]);
+        const renameMap = (previous?.diamondType && previous.diamondType !== saved.diamondType)
+            ? { [previous.diamondType]: saved.diamondType }
+            : {};
+        await this._syncProductRatesForDiamondTypes([previous?.diamondType, saved.diamondType].filter(Boolean), renameMap);
     },
 
     async deleteDiamondRate(id) {
@@ -618,13 +621,13 @@ window.PriceManagementModule = {
         return result;
     },
 
-    async _syncProductRatesForDiamondTypes(diamondTypes = []) {
+    async _syncProductRatesForDiamondTypes(diamondTypes = [], renameMap = {}) {
         if (!window.ProductRatesModule?.recalculateProductsForDiamondTypes) {
             return;
         }
 
         try {
-            const result = await window.ProductRatesModule.recalculateProductsForDiamondTypes(diamondTypes);
+            const result = await window.ProductRatesModule.recalculateProductsForDiamondTypes(diamondTypes, renameMap);
             if (result?.updatedCount > 0) {
                 window.Utils.showNotification(
                     `제품가격표 ${result.updatedCount}개 항목의 나석원가를 다시 계산했습니다.`,
@@ -637,13 +640,13 @@ window.PriceManagementModule = {
         }
 
         // 관련 주문들도 자동 재계산
-        await this._syncOrdersForDiamondTypes(diamondTypes);
+        await this._syncOrdersForDiamondTypes(diamondTypes, renameMap);
 
         // 신제품가격산정 데이터도 자동 재계산
-        await this._syncNewProductPricingForDiamondTypes(diamondTypes);
+        await this._syncNewProductPricingForDiamondTypes(diamondTypes, renameMap);
     },
 
-    async _syncOrdersForDiamondTypes(diamondTypes = []) {
+    async _syncOrdersForDiamondTypes(diamondTypes = [], renameMap = {}) {
         if (!window.ManufacturingCostsModule?.calculate || !window.ManufacturingCostsModule?.findProductRate) {
             return;
         }
@@ -698,7 +701,8 @@ window.PriceManagementModule = {
                 const stoneArray = targetProduct.stones
                     .filter(s => (s.type || s.stoneType) && (s.qty || s.stoneQty) > 0)
                     .map(s => {
-                        const typeKey = s.type || s.stoneType || '';
+                        const rawType = s.type || s.stoneType || '';
+                        const typeKey = renameMap[rawType] || rawType;
                         const qty = s.qty || s.stoneQty || 0;
                         const diamond = diamondRates.find(d => d.diamondType === typeKey);
                         const stonePrice = diamond?.costWithVat || 0;
@@ -734,7 +738,7 @@ window.PriceManagementModule = {
         }
     },
 
-    async _syncNewProductPricingForDiamondTypes(diamondTypes = []) {
+    async _syncNewProductPricingForDiamondTypes(diamondTypes = [], renameMap = {}) {
         if (!window.NewProductPricingModule?.calculate) {
             return;
         }
@@ -771,8 +775,20 @@ window.PriceManagementModule = {
 
             for (const product of targetProducts) {
                 const { _docId, ...data } = product;
+                // 이름 변경 시 stones 배열의 type 필드도 갱신
+                if (Object.keys(renameMap).length > 0 && Array.isArray(data.stones)) {
+                    data.stones = data.stones.map(s => ({
+                        ...s,
+                        type: renameMap[s.type] || s.type
+                    }));
+                }
                 const calculated = window.NewProductPricingModule.calculate(data);
-                await col.doc(_docId).update({ ...calculated, updatedAt: new Date() });
+                const updatedStones = Object.keys(renameMap).length > 0 ? data.stones : undefined;
+                await col.doc(_docId).update({
+                    ...calculated,
+                    ...(updatedStones ? { stones: updatedStones } : {}),
+                    updatedAt: new Date()
+                });
                 updatedCount++;
             }
 

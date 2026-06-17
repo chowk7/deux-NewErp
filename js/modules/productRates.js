@@ -165,7 +165,7 @@ window.ProductRatesModule = {
         return normalized;
     },
 
-    async recalculateProductsForDiamondTypes(diamondTypes = []) {
+    async recalculateProductsForDiamondTypes(diamondTypes = [], renameMap = {}) {
         const targetTypes = Array.from(new Set(
             (Array.isArray(diamondTypes) ? diamondTypes : [])
                 .map(type => String(type || '').trim())
@@ -187,6 +187,7 @@ window.ProductRatesModule = {
             return { updatedCount: 0, matchedCount: 0 };
         }
 
+        const hasRename = Object.keys(renameMap).length > 0;
         const collection = window.firebaseDb.collection('prices').doc('productRates').collection('items');
         let updatedCount = 0;
 
@@ -195,9 +196,14 @@ window.ProductRatesModule = {
             const chunk = matchedProducts.slice(start, start + 500);
 
             chunk.forEach(product => {
-                const calculated = this.calculate(this._buildRecalculationInput(product));
+                // 이름 변경 시 stones 배열의 type 필드도 갱신
+                const renamedProduct = hasRename && Array.isArray(product.stones)
+                    ? { ...product, stones: product.stones.map(s => ({ ...s, type: renameMap[s.type] || s.type })) }
+                    : product;
+                const calculated = this.calculate(this._buildRecalculationInput(renamedProduct));
                 batch.update(collection.doc(product.id), {
                     ...calculated,
+                    ...(hasRename ? { stones: renamedProduct.stones } : {}),
                     updatedAt: new Date()
                 });
                 updatedCount += 1;
