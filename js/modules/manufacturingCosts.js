@@ -49,7 +49,7 @@ window.ManufacturingCostsModule = {
     currentPage: 1,
     selectedYear: 'all',
     searchQuery: '',
-    mfgSortState: { column: null, direction: 'asc' },
+    mfgSortState: { column: 'orderDate', direction: 'desc' },
 
     async init() {
         // 나석단가표 로드
@@ -176,6 +176,21 @@ window.ManufacturingCostsModule = {
                 (o.customerName || '').toLowerCase().includes(q) ||
                 (o.productName || '').toLowerCase().includes(q)
             );
+        }
+        // 현재 정렬 상태 적용
+        const { column, direction } = this.mfgSortState;
+        if (column) {
+            const dir = direction === 'asc' ? 1 : -1;
+            data = [...data].sort((a, b) => {
+                let av = a[column], bv = b[column];
+                if (av && av.toDate) av = av.toDate();
+                if (bv && bv.toDate) bv = bv.toDate();
+                if (av instanceof Date && bv instanceof Date) return (av - bv) * dir;
+                if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
+                av = av == null ? '' : String(av);
+                bv = bv == null ? '' : String(bv);
+                return av.localeCompare(bv, 'ko') * dir;
+            });
         }
         this.filteredCosts = data;
     },
