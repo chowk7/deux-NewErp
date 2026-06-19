@@ -7,6 +7,7 @@ window.ProfitLossModule = {
     EXPENSE_TYPES: ['R&D비용','광고선전비','재료매입','판관비','운송비','지급수수료','포장비','임대료','기타'],
 
     plData: [],
+    productRates: [],
     selectedYear: new Date().getFullYear(),
 
     async init() {
@@ -31,16 +32,14 @@ window.ProfitLossModule = {
         const yearStart = new Date(year, 0, 1);
         const yearEnd   = new Date(year + 1, 0, 1);
 
-        const [ordersSnap, mfgSnap, expSnap] = await Promise.all([
+        const [ordersSnap, productSnap, expSnap] = await Promise.all([
             window.firebaseDb
                 .collection('sales').doc('orders').collection('items')
                 .where('orderDate', '>=', yearStart)
                 .where('orderDate', '<',  yearEnd)
                 .get(),
-            // 2. 월별 매출원가 집계 (sales/orders/items에서 manufacturingCost 필드로 로드)
             window.firebaseDb
-                .collection('sales').doc('orders').collection('items')
-                .where('manufacturingCost', '>', 0)
+                .collection('prices').doc('productRates').collection('items')
                 .get(),
             // 3. 월별 판관비 집계
             window.firebaseDb
@@ -49,7 +48,7 @@ window.ProfitLossModule = {
                 .get(),
         ]);
         const orders = ordersSnap.docs.map(d => d.data());
-        const mfgCosts = mfgSnap.docs.map(d => d.data());
+        this.productRates = productSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         const expenses = expSnap.docs.map(d => d.data());
 
         // 월별 데이터 구성
@@ -65,13 +64,9 @@ window.ProfitLossModule = {
             });
             const revenue = monthOrders.reduce((s, o) => s + (o.salesAmount || 0), 0);
 
-            // 해당 월 매출원가 (orderDate 기준 - 매출과 같은 월)
-            const monthMfg = mfgCosts.filter(m => {
-                if (!m.orderDate?.toDate) return false;
-                const d = m.orderDate.toDate();
-                return d.getFullYear() === year && (d.getMonth() + 1) === month;
-            });
-            const cogs = monthMfg.reduce((s, m) => s + (m.manufacturingCost || 0), 0);
+            // 해당 월 매출원가:
+            // 입력완료건은 실제 제조원가, 미완료건은 예상수익금 계산과 동일하게 productRates.salesCost를 사용
+            const cogs = monthOrders.reduce((sum, order) => sum + this.getOrderCogs(order), 0);
 
             // 월별 매출이익합계
             const grossProfit  = revenue - cogs;
@@ -101,6 +96,38 @@ window.ProfitLossModule = {
         });
 
         this.renderTable();
+    },
+
+    findProductRate(order = {}) {
+        const productCode = (order.productCode || '').trim();
+        const productName = (order.productName || '').trim();
+
+        return this.productRates.find(product => {
+            const rateCode = (product.productCode || '').trim();
+            const rateName = (product.productName || '').trim();
+            if (productCode && rateCode && productCode === rateCode) return true;
+            if (productName && rateName && productName === rateName) return true;
+            return false;
+        });
+    },
+
+    isInputCompleted(order = {}) {
+        const value = order.inputCompleted;
+        if (typeof value === 'string') {
+            const normalized = value.trim().toLowerCase();
+            return normalized === 'true' || normalized === 'y' || normalized === 'yes' || normalized === '완료';
+        }
+        return Boolean(value);
+    },
+
+    getOrderCogs(order = {}) {
+        const manufacturingCost = parseFloat(order.manufacturingCost) || 0;
+        if (this.isInputCompleted(order)) return manufacturingCost;
+
+        const salesCost = parseFloat(this.findProductRate(order)?.salesCost);
+        if (Number.isFinite(salesCost)) return salesCost;
+
+        return manufacturingCost;
     },
 
     renderTable() {
