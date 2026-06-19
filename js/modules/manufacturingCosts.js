@@ -591,9 +591,6 @@ window.ManufacturingCostsModule = {
             .map(s => `${s.stoneQty} × ${s.stoneType}`)
             .join(', ');
 
-        // 나석 가격 합계 계산
-        const totalStonePrice = stoneArray.reduce((sum, s) => sum + (s.totalPrice || 0), 0);
-
         // 폼 필드 업데이트
         const stoneQtyDisplay = wrapper.querySelector('#stoneQtyDisplay');
         const stoneQtyInput = wrapper.querySelector('#stoneQtyInput');
@@ -618,8 +615,6 @@ window.ManufacturingCostsModule = {
         const fd = new FormData(wrapper.querySelector('#modalForm'));
         const data = Object.fromEntries(fd);
 
-        // 나석 정보를 수동 입력 필드로 설정 (계산에서 사용하도록)
-        data.stoneCostManual = totalStonePrice;
         data.stoneArray = JSON.stringify(stoneArray);
 
         const calc = this.calculate(data);
@@ -689,11 +684,12 @@ window.ManufacturingCostsModule = {
             }
         }
 
-        // 제조원가에 포함될 보증서 추가금 (80% 적용)
+        // 나석가격(참고)은 보증서 원가 80%까지 포함한 기준값으로 저장한다.
         const stoneWarrantyCost = stoneWarrantyFeeTotal * stoneWarrantyCostRate;
+        stoneCostRef += stoneWarrantyCost;
 
         // 수동입력이 있으면 수동, 없으면 참고값 사용
-        const stoneUsed = n('stoneCostManual') > 0 ? n('stoneCostManual') : (stoneCostRef + stoneWarrantyCost);
+        const stoneUsed = n('stoneCostManual') > 0 ? n('stoneCostManual') : stoneCostRef;
 
         // 제조가격 = 금값 + 물림비 + 공임 + 나석가격 + 기타비용
         const manufacturingCost = appliedGoldValue + n('settingCost') + n('laborCost') +
