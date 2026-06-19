@@ -54,6 +54,7 @@ window.SalesManagementModule = {
     allOrders: [], // 필터링 전 전체 데이터
     filteredOrders: [], // 연도+검색 필터 적용 데이터
     productRates: [],
+    customPurchasePathDetailOptions: {},
     orderRequired: [],
     pageSize: 50,
     currentPage: 1,
@@ -67,6 +68,8 @@ window.SalesManagementModule = {
     },
 
     async init() {
+        await this.loadPurchasePathDetailSettings();
+
         // 통합 CSV 필드 초기화 (매출 + 제조원가 + 주문관리)
         this.INTEGRATED_CSV_FIELDS = [
             // 매출 필드
@@ -285,17 +288,11 @@ window.SalesManagementModule = {
                                             </div>
                                         `;
                                     } else if (f.key === 'purchasePathDetail') {
-                                        const options = self.getPurchasePathDetailOptions(order.purchasePath);
-                                        const customOption = val && !options.includes(val)
-                                            ? `<option value="${val}" selected>${val}</option>`
-                                            : '';
                                         return `
                                             <div style="display: flex; flex-direction: column; gap: 2px;">
                                                 <label style="font-size: 12px; color: #666;">${f.label}${isRequired ? ' *' : ''}</label>
                                                 <select name="order_${idx}_${f.key}" data-order-idx="${idx}" class="sync-purchase-detail-select" style="padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
-                                                    <option value="">선택</option>
-                                                    ${options.map(opt => `<option value="${opt}" ${val === opt ? 'selected' : ''}>${opt}</option>`).join('')}
-                                                    ${customOption}
+                                                    ${self.buildPurchasePathDetailOptionsHtml(order.purchasePath, val)}
                                                 </select>
                                             </div>
                                         `;
@@ -518,8 +515,65 @@ window.SalesManagementModule = {
         return `<input type="text" id="sync_${rowIdx}_${field.key}" value="${val}" style="width:120px;padding:4px;border:1px solid #ccc;border-radius:4px;">`;
     },
 
+    normalizePurchasePathDetailOptions(rawOptions = {}) {
+        const normalized = {};
+        Object.keys(this.PURCHASE_PATH_DETAIL_OPTIONS).forEach(key => {
+            const values = Array.isArray(rawOptions?.[key]) ? rawOptions[key] : [];
+            normalized[key] = [...new Set(
+                values
+                    .map(value => String(value || '').trim())
+                    .filter(Boolean)
+            )];
+        });
+        return normalized;
+    },
+
+    async loadPurchasePathDetailSettings() {
+        try {
+            const doc = await window.firebaseDb
+                .collection('settings')
+                .doc('salesManagement')
+                .get();
+            this.customPurchasePathDetailOptions = this.normalizePurchasePathDetailOptions(
+                doc.exists ? doc.data()?.purchasePathDetailOptions : {}
+            );
+        } catch (error) {
+            console.error('[SalesManagement] 구매경로상세 설정 로드 실패:', error);
+            this.customPurchasePathDetailOptions = {};
+        }
+    },
+
+    async savePurchasePathDetailSettings() {
+        const normalized = this.normalizePurchasePathDetailOptions(this.customPurchasePathDetailOptions);
+        this.customPurchasePathDetailOptions = normalized;
+        await window.firebaseDb
+            .collection('settings')
+            .doc('salesManagement')
+            .set({ purchasePathDetailOptions: normalized }, { merge: true });
+    },
+
+    async addCustomPurchasePathDetailOption(purchasePath, rawValue) {
+        const category = this.PURCHASE_PATH_DETAIL_OPTIONS[purchasePath] ? purchasePath : '온라인';
+        const value = String(rawValue || '').trim();
+        if (!value) return '';
+
+        const baseOptions = this.PURCHASE_PATH_DETAIL_OPTIONS[category] || [];
+        const customOptions = this.customPurchasePathDetailOptions[category] || [];
+        if (baseOptions.includes(value) || customOptions.includes(value)) return value;
+
+        this.customPurchasePathDetailOptions = {
+            ...this.customPurchasePathDetailOptions,
+            [category]: [...customOptions, value]
+        };
+        await this.savePurchasePathDetailSettings();
+        return value;
+    },
+
     getPurchasePathDetailOptions(purchasePath) {
-        return this.PURCHASE_PATH_DETAIL_OPTIONS[purchasePath] || this.PURCHASE_PATH_DETAIL_OPTIONS.온라인;
+        const category = this.PURCHASE_PATH_DETAIL_OPTIONS[purchasePath] ? purchasePath : '온라인';
+        const defaultOptions = this.PURCHASE_PATH_DETAIL_OPTIONS[category] || [];
+        const customOptions = this.customPurchasePathDetailOptions[category] || [];
+        return [...new Set([...defaultOptions, ...customOptions])];
     },
 
     buildPurchasePathDetailOptionsHtml(purchasePath, selectedValue = '') {
@@ -558,11 +612,25 @@ window.SalesManagementModule = {
                 });
             }
 
-            detailSelect.addEventListener('change', (e) => {
+            detailSelect.addEventListener('change', async (e) => {
                 if (e.target.value !== '__new__') return;
                 const value = prompt('새로운 구매경로상세를 입력하세요:');
                 if (value) {
-                    this.updatePurchasePathDetailSelect(detailSelect, purchaseSelect?.value || order.purchasePath || '온라인', value);
+                    try {
+                        const savedValue = await this.addCustomPurchasePathDetailOption(
+                            purchaseSelect?.value || order.purchasePath || '온라인',
+                            value
+                        );
+                        this.updatePurchasePathDetailSelect(
+                            detailSelect,
+                            purchaseSelect?.value || order.purchasePath || '온라인',
+                            savedValue
+                        );
+                    } catch (error) {
+                        console.error('[SalesManagement] 구매경로상세 신규 저장 실패:', error);
+                        window.Utils.showNotification('구매경로상세 저장 실패: ' + error.message, 'error');
+                        e.target.value = '';
+                    }
                 } else {
                     e.target.value = '';
                 }
@@ -1823,11 +1891,21 @@ window.SalesManagementModule = {
         // 구매경로상세에서 신규입력 처리
         const detailSelect = wrapper.querySelector('[name="purchasePathDetail"]');
         if (detailSelect) {
-            detailSelect.addEventListener('change', (e) => {
+            detailSelect.addEventListener('change', async (e) => {
                 if (e.target.value === '__new__') {
                     const value = prompt('새로운 구매경로상세를 입력하세요:');
                     if (value) {
-                        updatePurchasePathDetailOptions(purchaseSelect?.value || '', value);
+                        try {
+                            const savedValue = await this.addCustomPurchasePathDetailOption(
+                                purchaseSelect?.value || order?.purchasePath || '온라인',
+                                value
+                            );
+                            updatePurchasePathDetailOptions(purchaseSelect?.value || '', savedValue);
+                        } catch (error) {
+                            console.error('[SalesManagement] 구매경로상세 신규 저장 실패:', error);
+                            window.Utils.showNotification('구매경로상세 저장 실패: ' + error.message, 'error');
+                            e.target.value = '';
+                        }
                     } else {
                         e.target.value = '';
                     }
