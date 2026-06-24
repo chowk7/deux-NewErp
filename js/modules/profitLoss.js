@@ -66,7 +66,10 @@ window.ProfitLossModule = {
 
             // 해당 월 매출원가:
             // 입력완료건은 실제 제조원가, 미완료건은 예상수익금 계산과 동일하게 productRates.salesCost를 사용
-            const cogs = monthOrders.reduce((sum, order) => sum + this.getOrderCogs(order), 0);
+            // 여기에 주문별 수수료 비용도 함께 포함한다.
+            const cogs = monthOrders.reduce((sum, order) => {
+                return sum + this.getOrderCogs(order) + this.getOrderCommissionCost(order);
+            }, 0);
 
             // 월별 매출이익합계
             const grossProfit  = revenue - cogs;
@@ -128,6 +131,12 @@ window.ProfitLossModule = {
         if (Number.isFinite(salesCost)) return salesCost;
 
         return manufacturingCost;
+    },
+
+    getOrderCommissionCost(order = {}) {
+        const salesAmount = parseFloat(order.salesAmount) || 0;
+        const commissionRate = parseFloat(order.commissionRate) || 0;
+        return salesAmount * (commissionRate / 100);
     },
 
     renderTable() {
