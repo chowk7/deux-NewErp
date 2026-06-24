@@ -131,8 +131,8 @@ class EmployeeManagementModule {
         await this.renderEmployeeTable(wrapper);
     }
 
-    async getAuthHeaders() {
-        const token = await window.firebaseAuth.currentUser.getIdToken();
+    async getAuthHeaders(forceRefresh = false) {
+        const token = await window.firebaseAuth.currentUser.getIdToken(forceRefresh);
         return {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
@@ -151,27 +151,35 @@ class EmployeeManagementModule {
     }
 
     async fetchMenuPermissions() {
-        const response = await fetch('/api/settings/menu-permissions', {
-            headers: await this.getAuthHeaders()
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+            const response = await fetch('/api/settings/menu-permissions', {
+                headers: await this.getAuthHeaders(attempt > 0)
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (response.ok) return payload;
+            if (attempt === 0 && (response.status === 401 || response.status === 403)) {
+                continue;
+            }
             throw new Error(payload.error || '메뉴 권한 설정을 불러오지 못했습니다.');
         }
-        return payload;
+        throw new Error('메뉴 권한 설정을 불러오지 못했습니다.');
     }
 
     async saveMenuPermissions(staffMenus) {
-        const response = await fetch('/api/settings/menu-permissions', {
-            method: 'PUT',
-            headers: await this.getAuthHeaders(),
-            body: JSON.stringify({ staffMenus })
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+            const response = await fetch('/api/settings/menu-permissions', {
+                method: 'PUT',
+                headers: await this.getAuthHeaders(attempt > 0),
+                body: JSON.stringify({ staffMenus })
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (response.ok) return payload;
+            if (attempt === 0 && (response.status === 401 || response.status === 403)) {
+                continue;
+            }
             throw new Error(payload.error || '메뉴 권한을 저장하지 못했습니다.');
         }
-        return payload;
+        throw new Error('메뉴 권한을 저장하지 못했습니다.');
     }
 
     async loadAdminMenuSection() {

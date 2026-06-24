@@ -193,6 +193,7 @@ const verifyToken = async (req, res, next) => {
         const token = authHeader.substring(7);
         const decodedToken = await admin.auth().verifyIdToken(token);
         req.userId = decodedToken.uid;
+        req.userToken = decodedToken;
         next();
     } catch (error) {
         console.error('Token verification error:', error);
@@ -270,33 +271,40 @@ const getAuthUserSafe = async (uid) => {
     }
 };
 
-const buildUserProfile = ({ uid, firestoreData = {}, authUser = null }) => {
-    const claimsRole = getRoleFromClaims(authUser?.customClaims);
+const buildUserProfile = ({ uid, firestoreData = {}, authUser = null, tokenData = null }) => {
+    const claimsRole = getRoleFromClaims(authUser?.customClaims || tokenData);
     const firestoreRole = firestoreData?.role;
-    const resolvedEmail = firestoreData?.email || authUser?.email || '';
+    const resolvedEmail = firestoreData?.email || authUser?.email || tokenData?.email || '';
     const resolvedRole = isAdminEmail(resolvedEmail)
         ? 'admin'
         : normalizeRole(firestoreRole || claimsRole || 'staff');
     return {
         uid,
         email: resolvedEmail,
-        displayName: firestoreData?.displayName || authUser?.displayName || '',
+        displayName: firestoreData?.displayName || authUser?.displayName || tokenData?.name || '',
         createdAt: firestoreData?.createdAt || null,
         updatedAt: firestoreData?.updatedAt || null,
         role: resolvedRole
     };
 };
 
-const getUserProfile = async (uid) => {
+const getUserProfile = async (uid, tokenData = null) => {
     const doc = await db.collection('users').doc(uid).get();
     const data = doc.exists ? (doc.data() || {}) : {};
-    const authUser = await getAuthUserSafe(uid);
-    return buildUserProfile({ uid, firestoreData: data, authUser });
+    let authUser = null;
+
+    try {
+        authUser = await getAuthUserSafe(uid);
+    } catch (error) {
+        console.warn('Auth profile lookup fallback:', error?.message || error);
+    }
+
+    return buildUserProfile({ uid, firestoreData: data, authUser, tokenData });
 };
 
 const requireRole = (roles) => async (req, res, next) => {
     try {
-        const profile = await getUserProfile(req.userId);
+        const profile = await getUserProfile(req.userId, req.userToken);
         req.userProfile = profile;
 
         if (!roles.includes(profile.role)) {
@@ -314,7 +322,7 @@ const requireRole = (roles) => async (req, res, next) => {
 
 app.get('/api/users/me', verifyToken, async (req, res) => {
     try {
-        const profile = await getUserProfile(req.userId);
+        const profile = await getUserProfile(req.userId, req.userToken);
         const allowedMenus = await getAllowedMenusForRole(profile.role);
         res.status(200).json({
             ...profile,
