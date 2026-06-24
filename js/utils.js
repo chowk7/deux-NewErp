@@ -138,15 +138,17 @@ window.Utils = {
 
     extractDeptStoneCarat(typeText) {
         const typeStr = String(typeText || '').trim();
-        const isCarat = /캐럿|ct$/i.test(typeStr);
-        if (!isCarat) return null;
+        const match = typeStr.match(/([0-9]+(?:\.[0-9]+)?)\s*(캐럿|ct)/i);
+        if (!match) return null;
 
-        const numPart = typeStr.replace(/캐럿|ct$/i, '').trim();
-        const isFancy = /^[^0-9\s]/.test(numPart);
-        const carat = parseFloat(numPart.replace(/[^0-9.]/g, '')) || 0;
+        const prefix = typeStr.slice(0, match.index).trim();
+        const carat = parseFloat(match[1]) || 0;
         if (!carat) return null;
 
-        return { carat, isFancy };
+        return {
+            carat,
+            isFancy: /[^\d\s./()-]/.test(prefix)
+        };
     },
 
     normalizeDeptStoneRowsFromPrices(stonePrices = {}) {
@@ -850,7 +852,7 @@ window.Utils = {
      */
     showAdditionalOrderModal(orderData = {}) {
         return new Promise((resolve) => {
-            const onlineOptions = ['듀인피니스 공식몰', '신세계V', 'SSG', '더현대닷컴'];
+            const onlineOptions = ['듀인피니스 공식몰', '신세계V', 'SSG', '더현대하이'];
             const offlineOptions = ['현대백화점 압구정본점', '현대백화점 무역점', '현대백화점 킨텍스점', '현대백화점 목동점'];
             const warrantyOptions = ['없음', 'VS', 'VVS'];
 
