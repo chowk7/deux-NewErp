@@ -705,6 +705,31 @@ window.SalesManagementModule = {
         return String(value ?? '');
     },
 
+    getOrderFilterSuggestions(key) {
+        const field = this.ORDER_FIELDS.find((item) => item.key === key);
+        const suggestions = new Set();
+
+        if (field?.type === 'status') {
+            suggestions.add('y');
+            suggestions.add('n');
+        }
+
+        if (Array.isArray(field?.options)) {
+            field.options.forEach((option) => {
+                if (option !== undefined && option !== null && option !== '') {
+                    suggestions.add(String(option));
+                }
+            });
+        }
+
+        this.allOrders.forEach((order) => {
+            const value = this.getOrderFilterValue(order, key).trim();
+            if (value) suggestions.add(value);
+        });
+
+        return Array.from(suggestions).slice(0, 100);
+    },
+
     renderOrderFilterBar() {
         const container = document.getElementById('ordersFilterBar');
         if (!container) return;
@@ -1127,31 +1152,23 @@ window.SalesManagementModule = {
             const filterCells = ['<th></th>'];
             displayFieldKeys.forEach((key) => {
                 const field = fieldMap[key];
-                if (field?.type === 'status') {
-                    const currentValue = this.columnFilters[key] || '';
-                    filterCells.push(`
-                        <th>
-                            <select data-filter-column="${key}" style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;">
-                                <option value="">전체</option>
-                                <option value="y" ${currentValue === 'y' ? 'selected' : ''}>Y</option>
-                                <option value="n" ${currentValue === 'n' ? 'selected' : ''}>N</option>
-                            </select>
-                        </th>
-                    `);
-                } else {
-                    filterCells.push(`
-                        <th>
-                            <input data-filter-column="${key}" type="text" value="${String(this.columnFilters[key] || '').replace(/"/g, '&quot;')}"
-                                placeholder="필터" style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;">
-                        </th>
-                    `);
-                }
+                const listId = `orders-filter-list-${key}`;
+                const suggestions = this.getOrderFilterSuggestions(key);
+                filterCells.push(`
+                    <th>
+                        <input data-filter-column="${key}" type="text" list="${listId}" value="${String(this.columnFilters[key] || '').replace(/"/g, '&quot;')}"
+                            placeholder="${field?.type === 'status' ? 'Y/N 또는 직접입력' : '선택 또는 직접입력'}"
+                            style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;">
+                        <datalist id="${listId}">
+                            ${suggestions.map((option) => `<option value="${String(option).replace(/"/g, '&quot;')}"></option>`).join('')}
+                        </datalist>
+                    </th>
+                `);
             });
             filterCells.push('<th></th><th></th>');
             filterRow.innerHTML = filterCells.join('');
             filterRow.querySelectorAll('[data-filter-column]').forEach((input) => {
-                const eventName = input.tagName === 'SELECT' ? 'change' : 'input';
-                input.addEventListener(eventName, (e) => {
+                input.addEventListener('input', (e) => {
                     this.columnFilters[e.target.dataset.filterColumn] = e.target.value || '';
                     this.currentPage = 1;
                     this.applyOrderFilters();

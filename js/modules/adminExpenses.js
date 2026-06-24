@@ -39,6 +39,8 @@ window.AdminExpensesModule = {
 
         document.getElementById('addAdminExpenseBtn')
             ?.addEventListener('click', () => this.showForm());
+        document.getElementById('bulkDeleteAdminExpenseBtn')
+            ?.addEventListener('click', () => this.bulkDelete());
 
         document.getElementById('expenseYearFilter')
             ?.addEventListener('change', (e) => {
@@ -251,7 +253,8 @@ window.AdminExpensesModule = {
         const tbody = document.querySelector('#adminExpensesTable tbody');
         if (!tbody) return;
         if (this.expenses.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="8" style="text-align:center">데이터가 없습니다.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="9" style="text-align:center">데이터가 없습니다.</td></tr>`;
+            this.updateBulkDeleteButton();
             return;
         }
         tbody.innerHTML = this.expenses.map(e => {
@@ -266,6 +269,7 @@ window.AdminExpensesModule = {
             }
             return `
             <tr>
+                <td style="text-align:center;"><input type="checkbox" class="admin-expense-row-checkbox" data-id="${e.id}"></td>
                 <td>${dateStr}</td>
                 <td><span class="badge">${e.accountType || '-'}</span></td>
                 <td>${e.description || '-'}</td>
@@ -311,7 +315,52 @@ window.AdminExpensesModule = {
                 th.style.cursor = 'pointer';
                 th.style.userSelect = 'none';
             });
+
+            const headerCheckbox = document.getElementById('adminExpenseHeaderCheckbox');
+            if (headerCheckbox) {
+                headerCheckbox.checked = false;
+                headerCheckbox.onchange = (e) => {
+                    table.querySelectorAll('tbody .admin-expense-row-checkbox').forEach((cb) => {
+                        cb.checked = e.target.checked;
+                    });
+                    this.updateBulkDeleteButton();
+                };
+            }
+
+            table.querySelectorAll('tbody .admin-expense-row-checkbox').forEach((checkbox) => {
+                checkbox.addEventListener('change', () => this.updateBulkDeleteButton());
+            });
         }
+        this.updateBulkDeleteButton();
+    },
+
+    updateBulkDeleteButton() {
+        const button = document.getElementById('bulkDeleteAdminExpenseBtn');
+        if (!button) return;
+        const checkedCount = document.querySelectorAll('#adminExpensesTable tbody .admin-expense-row-checkbox:checked').length;
+        button.style.display = checkedCount > 0 ? '' : 'none';
+        button.textContent = `🗑️ 선택 삭제 (${checkedCount})`;
+    },
+
+    getSelectedExpenseIds() {
+        return Array.from(document.querySelectorAll('#adminExpensesTable tbody .admin-expense-row-checkbox:checked'))
+            .map((checkbox) => checkbox.dataset.id)
+            .filter(Boolean);
+    },
+
+    async bulkDelete() {
+        const selectedIds = this.getSelectedExpenseIds();
+        if (selectedIds.length === 0) {
+            window.Utils.showNotification('선택된 항목이 없습니다.', 'warning');
+            return;
+        }
+        if (!(await window.Utils.confirm(`선택한 ${selectedIds.length}개 항목을 삭제하시겠습니까?`))) return;
+
+        const collection = window.firebaseDb.collection('sales').doc('adminExpenses').collection('items');
+        const batch = window.firebaseDb.batch();
+        selectedIds.forEach((id) => batch.delete(collection.doc(id)));
+        await batch.commit();
+        await this.load();
     },
 
     renderSummary() {
@@ -351,7 +400,15 @@ window.AdminExpensesModule = {
 
         const body = `<div class="form-grid">` + fields.map(f => {
             let val = exp?.[f.key] ?? '';
-            if (f.key === 'date' && !val) val = today;
+            if (f.key === 'date') {
+                if (val?.toDate) {
+                    val = this.normalizeDateString(val);
+                } else if (val) {
+                    val = this.normalizeDateString(val);
+                } else {
+                    val = today;
+                }
+            }
             if (f.key === 'expenseYear' && !val) val = String(now.getFullYear());
             if (f.key === 'expenseMonth' && !val) val = String(now.getMonth() + 1).padStart(2,'0');
 

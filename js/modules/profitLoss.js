@@ -64,12 +64,10 @@ window.ProfitLossModule = {
             });
             const revenue = monthOrders.reduce((s, o) => s + (o.salesAmount || 0), 0);
 
-            // 해당 월 매출원가:
-            // 입력완료건은 실제 제조원가, 미완료건은 예상수익금 계산과 동일하게 productRates.salesCost를 사용
-            // 여기에 주문별 수수료 비용도 함께 포함한다.
-            const cogs = monthOrders.reduce((sum, order) => {
-                return sum + this.getOrderCogs(order) + this.getOrderCommissionCost(order);
-            }, 0);
+            // 해당 월 제품원가와 수수료를 분리 집계한다.
+            const productCogs = monthOrders.reduce((sum, order) => sum + this.getOrderCogs(order), 0);
+            const commissionCogs = monthOrders.reduce((sum, order) => sum + this.getOrderCommissionCost(order), 0);
+            const cogs = productCogs + commissionCogs;
 
             // 월별 매출이익합계
             const grossProfit  = revenue - cogs;
@@ -92,7 +90,7 @@ window.ProfitLossModule = {
 
             return {
                 year, month,
-                revenue, cogs, grossProfit, grossMargin,
+                revenue, productCogs, commissionCogs, cogs, grossProfit, grossMargin,
                 ...expByType,
                 totalExpenses, operatingProfit, operatingMargin,
             };
@@ -150,6 +148,8 @@ window.ProfitLossModule = {
             <tr>
                 <td>${row.month}월</td>
                 <td style="text-align:right;">${fmt(row.revenue)}</td>
+                <td style="text-align:right;">${fmt(row.productCogs)}</td>
+                <td style="text-align:right;">${fmt(row.commissionCogs)}</td>
                 <td style="text-align:right;">${fmt(row.cogs)}</td>
                 <td style="text-align:right;font-weight:600;">${fmt(row.grossProfit)}</td>
                 <td style="text-align:right;">${pct(row.grossMargin)}</td>
@@ -164,7 +164,7 @@ window.ProfitLossModule = {
 
         // 연간 합계 행
         const totals = this.plData.reduce((acc, row) => {
-            ['revenue','cogs','grossProfit','totalExpenses','operatingProfit',
+            ['revenue','productCogs','commissionCogs','cogs','grossProfit','totalExpenses','operatingProfit',
              ...this.EXPENSE_TYPES].forEach(k => { acc[k] = (acc[k] || 0) + (row[k] || 0); });
             return acc;
         }, {});
@@ -175,6 +175,8 @@ window.ProfitLossModule = {
             <tr style="background:#f3f4f6;font-weight:700;border-top:2px solid #374151;">
                 <td>연간합계</td>
                 <td style="text-align:right;">${fmt(totals.revenue)}</td>
+                <td style="text-align:right;">${fmt(totals.productCogs)}</td>
+                <td style="text-align:right;">${fmt(totals.commissionCogs)}</td>
                 <td style="text-align:right;">${fmt(totals.cogs)}</td>
                 <td style="text-align:right;">${fmt(totals.grossProfit)}</td>
                 <td style="text-align:right;">${pct(totalGrossMargin)}</td>
@@ -189,7 +191,10 @@ window.ProfitLossModule = {
     downloadData() {
         const fields = [
             { key: 'year',    label: '연도' }, { key: 'month', label: '월' },
-            { key: 'revenue', label: '매출' }, { key: 'cogs', label: '매출원가' },
+            { key: 'revenue', label: '매출' },
+            { key: 'productCogs', label: '제품원가' },
+            { key: 'commissionCogs', label: '수수료' },
+            { key: 'cogs', label: '매출원가' },
             { key: 'grossProfit', label: '매출이익' }, { key: 'grossMargin', label: '매출이익률(%)' },
             ...this.EXPENSE_TYPES.map(t => ({ key: t, label: t })),
             { key: 'totalExpenses', label: '판관비합계' },

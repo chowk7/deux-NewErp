@@ -502,6 +502,7 @@
                         <div class="button-group">
                             <button id="adminRefreshBtn" class="btn btn-outline">🔄 새로고침</button>
                             <button id="addAdminExpenseBtn" class="btn btn-primary">+ 새 항목 추가</button>
+                            <button id="bulkDeleteAdminExpenseBtn" class="btn btn-danger" style="display:none;">🗑️ 선택 삭제</button>
                             <button id="csvUploadAdminBtn" class="btn btn-secondary">📤 CSV 업로드</button>
                             <div id="adminDownloadBtns" style="display:none;margin-left:8px;">
                                 <button id="downloadAdminTemplateBtn" class="btn btn-secondary">📥 양식 다운로드</button>
@@ -555,7 +556,7 @@
                         <div style="overflow-x:auto;">
                         <table id="adminExpensesTable" class="data-table">
                             <thead><tr>
-                                <th data-column="date">날짜</th><th data-column="accountType">계정과목</th><th data-column="description">거래내용</th><th data-column="vendor">거래처</th>
+                                <th style="text-align:center;width:40px;"><input type="checkbox" id="adminExpenseHeaderCheckbox"></th><th data-column="date">날짜</th><th data-column="accountType">계정과목</th><th data-column="description">거래내용</th><th data-column="vendor">거래처</th>
                                 <th data-column="amount">금액</th><th>결제방식</th><th>비용처리</th><th>관리</th>
                             </tr></thead>
                             <tbody></tbody>
@@ -580,7 +581,7 @@
                         <div style="overflow-x:auto; margin-top:16px;">
                         <table id="profitLossTable" class="data-table">
                             <thead><tr>
-                                <th>월</th><th>매출</th><th>매출원가</th><th>매출이익</th><th>매출이익률</th>
+                                <th>월</th><th>매출</th><th>제품원가</th><th>수수료</th><th>매출원가</th><th>매출이익</th><th>매출이익률</th>
                                 <th>R&D비용</th><th>광고선전비</th><th>재료매입</th><th>판관비</th>
                                 <th>운송비</th><th>지급수수료</th><th>포장비</th><th>임대료</th><th>기타</th>
                                 <th>판관비합계</th><th>영업이익</th><th>영업이익률</th>
