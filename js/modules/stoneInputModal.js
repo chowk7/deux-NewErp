@@ -9,15 +9,18 @@ window.StoneInputModalModule = {
     maxStones: 15,
     currentEditId: null,
     onSaveCallback: null,
+    vendorSuggestions: [],
 
     // 초기화
-    init(diamondRates, existingStones = [], callback) {
+    init(diamondRates, existingStones = [], callback, options = {}) {
         // diamondRates를 이름순으로 오름차순 정렬
         this.diamondRates = (diamondRates || []).sort((a, b) => {
             const aName = (a.diamondType || '').toLowerCase();
             const bName = (b.diamondType || '').toLowerCase();
             return aName.localeCompare(bName, 'ko-KR');
         });
+        this.vendorSuggestions = Array.from(new Set((options.vendorSuggestions || []).filter(Boolean)))
+            .sort((a, b) => a.localeCompare(b, 'ko-KR'));
         this.stoneInputArray = (existingStones || [])
             .filter(s => s.stoneType && s.stoneQty > 0)  // 빈 항목 제외
             .map((s, i) => ({
@@ -25,6 +28,8 @@ window.StoneInputModalModule = {
                 stoneType: s.stoneType || '',
                 stoneQty: s.stoneQty || 0,
                 stoneCert: s.stoneCert || '',
+                stoneVendor: s.stoneVendor || s.vendor || '',
+                stoneOrderDate: s.stoneOrderDate || '',
                 stonePrice: s.stonePrice || 0,
                 totalPrice: (s.stonePrice || 0) * (s.stoneQty || 0),
                 warrantyFee: s.warrantyFee || 0
@@ -34,8 +39,8 @@ window.StoneInputModalModule = {
     },
 
     // 모달 열기
-    open(diamondRates, existingStones = [], callback) {
-        this.init(diamondRates, existingStones, callback);
+    open(diamondRates, existingStones = [], callback, options = {}) {
+        this.init(diamondRates, existingStones, callback, options);
 
         const bodyHtml = `
             <div style="max-width:700px;">
@@ -71,6 +76,21 @@ window.StoneInputModalModule = {
                         <div class="form-group">
                             <label style="display:block; margin-bottom:6px; font-weight:500; font-size:0.9rem;">단가 <span style="color:#9ca3af;font-size:0.75rem">(자동입력·수정가능)</span></label>
                             <input type="number" id="stonePriceDisplay" placeholder="0"
+                                style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px; font-size:0.9rem;">
+                        </div>
+
+                        <div class="form-group">
+                            <label style="display:block; margin-bottom:6px; font-weight:500; font-size:0.9rem;">주문업체</label>
+                            <input type="text" id="stoneVendorInput" list="stoneVendorList" placeholder="선택 또는 직접입력"
+                                style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px; font-size:0.9rem;">
+                            <datalist id="stoneVendorList">
+                                ${this.vendorSuggestions.map((vendor) => `<option value="${String(vendor).replace(/"/g, '&quot;')}"></option>`).join('')}
+                            </datalist>
+                        </div>
+
+                        <div class="form-group">
+                            <label style="display:block; margin-bottom:6px; font-weight:500; font-size:0.9rem;">주문일</label>
+                            <input type="date" id="stoneOrderDateInput"
                                 style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px; font-size:0.9rem;">
                         </div>
                     </div>
@@ -200,10 +220,14 @@ window.StoneInputModalModule = {
         const stoneTypeInput = wrapper.querySelector('[name="stoneType"]');
         const stoneQtyInput = wrapper.querySelector('#stoneQtyInput');
         const stoneCertSelect = wrapper.querySelector('#stoneCertSelect');
+        const stoneVendorInput = wrapper.querySelector('#stoneVendorInput');
+        const stoneOrderDateInput = wrapper.querySelector('#stoneOrderDateInput');
 
         const diamondType = stoneTypeInput?.value;
         const qty = parseInt(stoneQtyInput.value) || 0;
         const cert = stoneCertSelect.value;
+        const stoneVendor = (stoneVendorInput?.value || '').trim();
+        const stoneOrderDate = stoneOrderDateInput?.value || '';
 
         // 검증
         if (!diamondType) {
@@ -236,6 +260,8 @@ window.StoneInputModalModule = {
             stoneType: diamondType,
             stoneQty: qty,
             stoneCert: cert,
+            stoneVendor,
+            stoneOrderDate,
             stonePrice: stonePrice,
             totalPrice: totalPrice,
             warrantyFee: warrantyFee
@@ -257,6 +283,8 @@ window.StoneInputModalModule = {
         stoneTypeInput.value = '';
         stoneQtyInput.value = '';
         stoneCertSelect.value = '';
+        if (stoneVendorInput) stoneVendorInput.value = '';
+        if (stoneOrderDateInput) stoneOrderDateInput.value = '';
         if (priceDisplay) priceDisplay.value = '';
 
         // 목록 렌더링 (내부에서 attachStoneItemListeners + updateSummary 자동 호출)
@@ -290,6 +318,8 @@ window.StoneInputModalModule = {
                     <div style="font-size:0.85rem; color:#6b7280; margin-top:4px;">
                         단가: ₩${window.Utils.formatNumber(stone.stonePrice)} |
                         합계: ₩${window.Utils.formatNumber(stone.totalPrice)}
+                        ${stone.stoneVendor ? ` | 업체: ${stone.stoneVendor}` : ''}
+                        ${stone.stoneOrderDate ? ` | 주문일: ${stone.stoneOrderDate}` : ''}
                         ${stone.warrantyFee ? ` | 보증서 추가금: ₩${window.Utils.formatNumber(stone.warrantyFee)}` : ''}
                     </div>
                 </div>
@@ -342,11 +372,15 @@ window.StoneInputModalModule = {
         const stoneQtyInput = wrapper?.querySelector('#stoneQtyInput') || document.querySelector('#stoneQtyInput');
         const stoneCertSelect = wrapper?.querySelector('#stoneCertSelect') || document.querySelector('#stoneCertSelect');
         const stonePriceDisplay = wrapper?.querySelector('#stonePriceDisplay') || document.querySelector('#stonePriceDisplay');
+        const stoneVendorInput = wrapper?.querySelector('#stoneVendorInput') || document.querySelector('#stoneVendorInput');
+        const stoneOrderDateInput = wrapper?.querySelector('#stoneOrderDateInput') || document.querySelector('#stoneOrderDateInput');
 
         if (stoneTypeInput) stoneTypeInput.value = stone.stoneType;
         if (stoneQtyInput) stoneQtyInput.value = stone.stoneQty;
         if (stoneCertSelect) stoneCertSelect.value = stone.stoneCert;
         if (stonePriceDisplay) stonePriceDisplay.value = stone.stonePrice;
+        if (stoneVendorInput) stoneVendorInput.value = stone.stoneVendor || '';
+        if (stoneOrderDateInput) stoneOrderDateInput.value = stone.stoneOrderDate || '';
     },
 
     // 나석 삭제
