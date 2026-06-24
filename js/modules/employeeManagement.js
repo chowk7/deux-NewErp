@@ -52,6 +52,10 @@ class EmployeeManagementModule {
         quickActionsBtn.classList.toggle('hidden', !this.canOpenQuickActions());
     }
 
+    canManageMenuPermissions() {
+        return this.normalizeRole(this.currentProfile?.role) === 'admin';
+    }
+
     openQuickActions() {
         if (!this.canOpenQuickActions()) {
             window.Utils.showNotification('빠른작업 권한이 없습니다.', 'error');
@@ -144,6 +148,106 @@ class EmployeeManagementModule {
             throw new Error(payload.error || '직원 목록을 불러오지 못했습니다.');
         }
         return Array.isArray(payload) ? payload : [];
+    }
+
+    async fetchMenuPermissions() {
+        const response = await fetch('/api/settings/menu-permissions', {
+            headers: await this.getAuthHeaders()
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(payload.error || '메뉴 권한 설정을 불러오지 못했습니다.');
+        }
+        return payload;
+    }
+
+    async saveMenuPermissions(staffMenus) {
+        const response = await fetch('/api/settings/menu-permissions', {
+            method: 'PUT',
+            headers: await this.getAuthHeaders(),
+            body: JSON.stringify({ staffMenus })
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(payload.error || '메뉴 권한을 저장하지 못했습니다.');
+        }
+        return payload;
+    }
+
+    async loadAdminMenuSection() {
+        const panel = document.getElementById('adminMenuPanel');
+        if (!panel) return;
+
+        if (!this.canManageMenuPermissions()) {
+            panel.innerHTML = '<div style="color:#ef4444;">관리자만 접근할 수 있습니다.</div>';
+            return;
+        }
+
+        panel.innerHTML = '<div style="color:#6b7280;">메뉴 권한 설정을 불러오는 중입니다...</div>';
+
+        try {
+            const payload = await this.fetchMenuPermissions();
+            const availableMenus = Array.isArray(payload.availableMenus) ? payload.availableMenus : [];
+            const selectedMenus = new Set(Array.isArray(payload.staffMenus) ? payload.staffMenus : ['dashboard']);
+            const groups = availableMenus.reduce((acc, menu) => {
+                const section = menu.section || '기타';
+                acc[section] = acc[section] || [];
+                acc[section].push(menu);
+                return acc;
+            }, {});
+
+            panel.innerHTML = `
+                <form id="staffMenuPermissionsForm">
+                    <div style="display:flex;flex-direction:column;gap:16px;">
+                        ${Object.entries(groups).map(([section, menus]) => `
+                            <div>
+                                <h3 style="margin:0 0 10px;font-size:1rem;">${section}</h3>
+                                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+                                    ${menus.map((menu) => `
+                                        <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid #e5e7eb;border-radius:8px;background:#fafafa;">
+                                            <input type="checkbox" name="staffMenu" value="${menu.id}" ${selectedMenus.has(menu.id) ? 'checked' : ''} ${menu.id === 'dashboard' ? 'disabled' : ''}>
+                                            <span>${menu.label}</span>
+                                        </label>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div class="modal-footer" style="margin-top:20px;justify-content:flex-start;">
+                        <button type="submit" class="btn btn-primary">저장</button>
+                    </div>
+                </form>
+            `;
+
+            panel.querySelector('#staffMenuPermissionsForm')?.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const submitButton = event.target.querySelector('button[type="submit"]');
+                const originalText = submitButton?.textContent || '저장';
+                const staffMenus = Array.from(panel.querySelectorAll('input[name="staffMenu"]:checked'))
+                    .map((input) => input.value);
+                if (!staffMenus.includes('dashboard')) staffMenus.unshift('dashboard');
+
+                try {
+                    if (submitButton) {
+                        submitButton.disabled = true;
+                        submitButton.textContent = '저장 중...';
+                    }
+                    await this.saveMenuPermissions(staffMenus);
+                    window.Utils.showNotification('스태프 메뉴 권한을 저장했습니다.', 'success');
+                } catch (error) {
+                    console.error('[EmployeeManagement] saveMenuPermissions error:', error);
+                    window.Utils.showNotification(error.message || '메뉴 권한을 저장하지 못했습니다.', 'error');
+                } finally {
+                    if (submitButton) {
+                        submitButton.disabled = false;
+                        submitButton.textContent = originalText;
+                    }
+                }
+            });
+        } catch (error) {
+            console.error('[EmployeeManagement] loadAdminMenuSection error:', error);
+            panel.innerHTML = `<div style="color:#ef4444;">${error.message || '메뉴 권한 설정을 불러오지 못했습니다.'}</div>`;
+        }
     }
 
     formatDate(value) {

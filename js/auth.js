@@ -7,6 +7,10 @@ class AuthModule {
     constructor() {
         this.loginForm = null;
         this.signupForm = null;
+        this.adminEmails = new Set([
+            'learbre.12@gmail.com',
+            'lub2sky@gmail.com'
+        ]);
         this.init();
     }
 
@@ -80,6 +84,9 @@ class AuthModule {
         }
 
         try {
+            const normalizedEmail = String(email || '').trim().toLowerCase();
+            const nextRole = this.adminEmails.has(normalizedEmail) ? 'admin' : 'staff';
+
             // Firebase 회원가입
             const userCredential = await window.firebaseAuth.createUserWithEmailAndPassword(email, password);
 
@@ -93,7 +100,8 @@ class AuthModule {
                 email: email,
                 displayName: userCredential.user.displayName,
                 createdAt: new Date(),
-                role: 'staff'
+                updatedAt: new Date(),
+                role: nextRole
             });
 
             // 회원가입 성공 - 앱이 auth state 변경 감지하여 대시보드로 이동

@@ -98,6 +98,34 @@ frontendJsCandidates.forEach(dir => app.use('/js', express.static(dir, noCacheSt
 const db = admin.firestore();
 const storage = admin.storage();
 
+const ADMIN_EMAILS = new Set([
+    'learbre.12@gmail.com',
+    'lub2sky@gmail.com'
+]);
+
+const MENU_DEFINITIONS = [
+    { id: 'dashboard', label: '대시보드', section: '공통' },
+    { id: 'diamond-rates', label: '나석단가표', section: '가격관리' },
+    { id: 'product-rates', label: '제품가격표', section: '가격관리' },
+    { id: 'new-product-pricing', label: '신제품가격산정', section: '가격관리' },
+    { id: 'gold-inventory', label: '금재고', section: '가격관리' },
+    { id: 'customers', label: '고객목록표', section: '가격관리' },
+    { id: 'option-charges', label: '각줄추가금액', section: '가격관리' },
+    { id: 'price-settings', label: '가격옵션', section: '가격관리' },
+    { id: 'orders', label: '매출표', section: '매출관리' },
+    { id: 'manufacturing-costs', label: '제조원가표', section: '매출관리' },
+    { id: 'admin-expenses', label: '판관비', section: '매출관리' },
+    { id: 'profit-loss', label: 'P&L표', section: '매출관리' },
+    { id: 'promotion', label: '프로모션', section: '기타' },
+    { id: 'notes', label: '노트', section: '기타' },
+    { id: 'images', label: '이미지 관리', section: '기타' },
+    { id: 'word-templates', label: '양식 관리', section: '기타' },
+    { id: 'inventory', label: '재고관리', section: '기타' },
+    { id: 'admin-menu', label: '관리자메뉴', section: '기타', adminOnly: true }
+];
+
+const STAFF_DEFAULT_MENUS = ['dashboard'];
+
 // GCP Storage (new_erp 버킷)
 const gcsClient = new Storage();
 const GCS_BUCKET = process.env.GCS_BUCKET_NAME || 'new_erp';
@@ -181,6 +209,49 @@ const normalizeRole = (role) => {
     return 'staff';
 };
 
+const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
+
+const isAdminEmail = (email) => ADMIN_EMAILS.has(normalizeEmail(email));
+
+const normalizeMenuIds = (menuIds = [], { includeAdminMenus = false } = {}) => {
+    const allowedMenuIds = MENU_DEFINITIONS
+        .filter((menu) => includeAdminMenus || !menu.adminOnly)
+        .map((menu) => menu.id);
+    const allowedSet = new Set(allowedMenuIds);
+    const normalized = Array.isArray(menuIds)
+        ? menuIds
+            .map((menuId) => String(menuId || '').trim())
+            .filter((menuId) => allowedSet.has(menuId))
+        : [];
+
+    if (!normalized.includes('dashboard')) normalized.unshift('dashboard');
+    return Array.from(new Set(normalized));
+};
+
+const getMenuPermissionsDoc = async () => {
+    const doc = await db.collection('adminSettings').doc('menuPermissions').get();
+    const data = doc.exists ? (doc.data() || {}) : {};
+    return {
+        staffMenus: normalizeMenuIds(data.staffMenus, { includeAdminMenus: false })
+    };
+};
+
+const getAllowedMenusForRole = async (role) => {
+    const normalizedRole = normalizeRole(role);
+    if (normalizedRole === 'admin') {
+        return MENU_DEFINITIONS.map((menu) => menu.id);
+    }
+    if (normalizedRole === 'manager') {
+        return MENU_DEFINITIONS.filter((menu) => !menu.adminOnly).map((menu) => menu.id);
+    }
+
+    const config = await getMenuPermissionsDoc();
+    return normalizeMenuIds(
+        config.staffMenus?.length ? config.staffMenus : STAFF_DEFAULT_MENUS,
+        { includeAdminMenus: false }
+    );
+};
+
 const getRoleFromClaims = (claims = {}) => {
     if (!claims || typeof claims !== 'object') return null;
     if (claims.role) return normalizeRole(claims.role);
@@ -202,13 +273,17 @@ const getAuthUserSafe = async (uid) => {
 const buildUserProfile = ({ uid, firestoreData = {}, authUser = null }) => {
     const claimsRole = getRoleFromClaims(authUser?.customClaims);
     const firestoreRole = firestoreData?.role;
+    const resolvedEmail = firestoreData?.email || authUser?.email || '';
+    const resolvedRole = isAdminEmail(resolvedEmail)
+        ? 'admin'
+        : normalizeRole(firestoreRole || claimsRole || 'staff');
     return {
         uid,
-        email: firestoreData?.email || authUser?.email || '',
+        email: resolvedEmail,
         displayName: firestoreData?.displayName || authUser?.displayName || '',
         createdAt: firestoreData?.createdAt || null,
         updatedAt: firestoreData?.updatedAt || null,
-        role: normalizeRole(firestoreRole || claimsRole || 'staff')
+        role: resolvedRole
     };
 };
 
@@ -240,10 +315,47 @@ const requireRole = (roles) => async (req, res, next) => {
 app.get('/api/users/me', verifyToken, async (req, res) => {
     try {
         const profile = await getUserProfile(req.userId);
-        res.status(200).json(profile);
+        const allowedMenus = await getAllowedMenusForRole(profile.role);
+        res.status(200).json({
+            ...profile,
+            allowedMenus
+        });
     } catch (error) {
         console.error('Error fetching my profile:', error);
         res.status(500).json({ error: '사용자 정보를 불러오지 못했습니다.' });
+    }
+});
+
+app.get('/api/settings/menu-permissions', verifyToken, requireRole(['admin']), async (req, res) => {
+    try {
+        const config = await getMenuPermissionsDoc();
+        res.status(200).json({
+            staffMenus: normalizeMenuIds(config.staffMenus, { includeAdminMenus: false }),
+            availableMenus: MENU_DEFINITIONS.filter((menu) => !menu.adminOnly)
+        });
+    } catch (error) {
+        console.error('Error fetching menu permissions:', error);
+        res.status(500).json({ error: '메뉴 권한 설정을 불러오지 못했습니다.' });
+    }
+});
+
+app.put('/api/settings/menu-permissions', verifyToken, requireRole(['admin']), async (req, res) => {
+    try {
+        const staffMenus = normalizeMenuIds(req.body?.staffMenus, { includeAdminMenus: false });
+
+        await db.collection('adminSettings').doc('menuPermissions').set({
+            staffMenus,
+            updatedAt: admin.firestore.Timestamp.now(),
+            updatedBy: req.userId
+        }, { merge: true });
+
+        res.status(200).json({
+            message: '스태프 메뉴 권한을 저장했습니다.',
+            staffMenus
+        });
+    } catch (error) {
+        console.error('Error updating menu permissions:', error);
+        res.status(500).json({ error: '메뉴 권한을 저장하지 못했습니다.' });
     }
 });
 

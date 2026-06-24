@@ -600,11 +600,11 @@ window.Utils = {
             </div>
         `;
 
-        this.openModal('표시 항목 설정', bodyHtml, async (formData) => {
-            const selectedKeys = Array.from(document.querySelectorAll('input[name="displayField"]:checked'))
+        this.openModal('표시 항목 설정', bodyHtml, async (formData, wrapper) => {
+            const selectedKeys = Array.from(wrapper.querySelectorAll('input[name="displayField"]:checked'))
                 .map(el => el.value);
             this._saveDisplayFields(tableKey, selectedKeys);
-            if (onSave) onSave(selectedKeys);
+            if (onSave) await onSave(selectedKeys);
         }, '저장');
     },
 

@@ -10,6 +10,26 @@ class DiamonJewelryApp {
         this.currentPage = null;
         this.currentMenu = 'dashboard';
         this.isApplyingHistory = false;
+        this.menuDefinitions = [
+            { id: 'dashboard', label: '대시보드', section: '공통' },
+            { id: 'diamond-rates', label: '나석단가표', section: '가격관리' },
+            { id: 'product-rates', label: '제품가격표', section: '가격관리' },
+            { id: 'new-product-pricing', label: '신제품가격산정', section: '가격관리' },
+            { id: 'gold-inventory', label: '금재고', section: '가격관리' },
+            { id: 'customers', label: '고객목록표', section: '가격관리' },
+            { id: 'option-charges', label: '각줄추가금액', section: '가격관리' },
+            { id: 'price-settings', label: '가격옵션', section: '가격관리' },
+            { id: 'orders', label: '매출표', section: '매출관리' },
+            { id: 'manufacturing-costs', label: '제조원가표', section: '매출관리' },
+            { id: 'admin-expenses', label: '판관비', section: '매출관리' },
+            { id: 'profit-loss', label: 'P&L표', section: '매출관리' },
+            { id: 'promotion', label: '프로모션', section: '기타' },
+            { id: 'notes', label: '노트', section: '기타' },
+            { id: 'images', label: '이미지 관리', section: '기타' },
+            { id: 'word-templates', label: '양식 관리', section: '기타' },
+            { id: 'inventory', label: '재고관리', section: '기타' },
+            { id: 'admin-menu', label: '관리자메뉴', section: '기타', adminOnly: true }
+        ];
         this.init();
     }
 
@@ -133,6 +153,13 @@ class DiamonJewelryApp {
     async handleMenuClick(menuId, options = {}) {
         const { updateHistory = true, historyMode = 'push' } = options;
 
+        if (!this.canAccessMenu(menuId)) {
+            if (menuId !== 'dashboard') {
+                window.Utils.showNotification('해당 메뉴 접근 권한이 없습니다.', 'error');
+            }
+            menuId = 'dashboard';
+        }
+
         // 모든 콘텐츠 섹션 숨기기
         document.querySelectorAll('.content-section').forEach(section => {
             section.classList.add('hidden');
@@ -169,7 +196,8 @@ class DiamonJewelryApp {
             'notes': 'notesContent',
             'images': 'imagesContent',
             'word-templates': 'wordTemplatesContent',
-            'inventory': 'inventoryContent'
+            'inventory': 'inventoryContent',
+            'admin-menu': 'adminMenuContent'
         };
 
         const sectionId = sectionMap[menuId];
@@ -212,6 +240,8 @@ class DiamonJewelryApp {
                     } else if (window.InventoryManagementModule && menuId === 'inventory') {
                         window.InventoryManagementModule.allItems = [];
                         await window.InventoryManagementModule.load();
+                    } else if (window.EmployeeManagementModule && menuId === 'admin-menu') {
+                        await window.EmployeeManagementModule.loadAdminMenuSection();
                     }
                 } catch (error) {
                     console.error(`[App] 메뉴 로드 실패 (${menuId}):`, error);
@@ -273,7 +303,8 @@ class DiamonJewelryApp {
                 uid: user.uid,
                 email: profile.email || user.email || '',
                 displayName: profile.displayName || user.displayName || '',
-                role: this.normalizeRole(profile.role)
+                role: this.normalizeRole(profile.role),
+                allowedMenus: this.normalizeAllowedMenus(profile.allowedMenus, profile.role)
             };
         } catch (error) {
             console.error('[App] 사용자 프로필 로드 실패:', error);
@@ -284,7 +315,8 @@ class DiamonJewelryApp {
                     uid: user.uid,
                     email: profile.email || user.email || '',
                     displayName: profile.displayName || user.displayName || '',
-                    role: this.normalizeRole(profile.role)
+                    role: this.normalizeRole(profile.role),
+                    allowedMenus: this.normalizeAllowedMenus(profile.allowedMenus, profile.role)
                 };
             } catch (fallbackError) {
                 console.error('[App] 사용자 프로필 fallback 로드 실패:', fallbackError);
@@ -292,10 +324,67 @@ class DiamonJewelryApp {
                     uid: user.uid,
                     email: user.email || '',
                     displayName: user.displayName || '',
-                    role: 'staff'
+                    role: 'staff',
+                    allowedMenus: ['dashboard']
                 };
             }
         }
+    }
+
+    normalizeAllowedMenus(menuIds, role = null) {
+        const normalizedRole = this.normalizeRole(role || this.currentUserProfile?.role);
+        if (normalizedRole === 'admin') {
+            return this.menuDefinitions.map((menu) => menu.id);
+        }
+        if (normalizedRole === 'manager') {
+            return this.menuDefinitions.filter((menu) => !menu.adminOnly).map((menu) => menu.id);
+        }
+
+        const knownMenus = new Set(this.menuDefinitions.map((menu) => menu.id));
+        const normalized = Array.isArray(menuIds)
+            ? menuIds
+                .map((menuId) => String(menuId || '').trim())
+                .filter((menuId) => knownMenus.has(menuId))
+            : [];
+        const output = new Set(normalized.length > 0 ? normalized : ['dashboard']);
+        output.add('dashboard');
+        output.delete('admin-menu');
+        return Array.from(output);
+    }
+
+    canAccessMenu(menuId) {
+        if (!menuId) return false;
+        const allowedMenus = this.normalizeAllowedMenus(this.currentUserProfile?.allowedMenus, this.currentUserProfile?.role);
+        return allowedMenus.includes(menuId);
+    }
+
+    applyMenuPermissions() {
+        const allowedMenus = new Set(this.normalizeAllowedMenus(this.currentUserProfile?.allowedMenus, this.currentUserProfile?.role));
+        const navItems = Array.from(document.querySelectorAll('.nav-menu li'));
+
+        navItems.forEach((item) => {
+            const link = item.querySelector('[data-menu]');
+            if (link) {
+                const visible = allowedMenus.has(link.getAttribute('data-menu'));
+                item.style.display = visible ? '' : 'none';
+            } else if (item.classList.contains('nav-section')) {
+                item.style.display = 'none';
+            }
+        });
+
+        navItems.forEach((item) => {
+            const link = item.querySelector('[data-menu]');
+            if (!link || item.style.display === 'none') return;
+
+            let previous = item.previousElementSibling;
+            while (previous) {
+                if (previous.classList.contains('nav-section')) {
+                    previous.style.display = '';
+                    break;
+                }
+                previous = previous.previousElementSibling;
+            }
+        });
     }
 
     /**
@@ -331,6 +420,8 @@ class DiamonJewelryApp {
         if (roleBadgeElement) {
             roleBadgeElement.textContent = this.getRoleLabel(this.currentUserProfile?.role);
         }
+
+        this.applyMenuPermissions();
 
         if (window.EmployeeManagementModule) {
             window.EmployeeManagementModule.setCurrentUserContext(this.currentUser, this.currentUserProfile);
