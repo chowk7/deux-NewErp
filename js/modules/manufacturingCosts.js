@@ -49,6 +49,7 @@ window.ManufacturingCostsModule = {
     currentPage: 1,
     selectedYear: 'all',
     searchQuery: '',
+    columnFilters: {},
     mfgSortState: { column: 'orderDate', direction: 'desc' },
 
     async init() {
@@ -177,6 +178,14 @@ window.ManufacturingCostsModule = {
                 (o.productName || '').toLowerCase().includes(q)
             );
         }
+        const activeColumnFilters = Object.entries(this.columnFilters || {})
+            .filter(([, value]) => String(value || '').trim() !== '');
+        if (activeColumnFilters.length > 0) {
+            data = data.filter((cost) => activeColumnFilters.every(([key, query]) => {
+                const value = this.getMfgFilterValue(cost, key).toLowerCase();
+                return value.includes(String(query).trim().toLowerCase());
+            }));
+        }
         // 현재 정렬 상태 적용
         const { column, direction } = this.mfgSortState;
         if (column) {
@@ -195,6 +204,26 @@ window.ManufacturingCostsModule = {
         this.filteredCosts = data;
     },
 
+    getMfgFilterValue(cost, key) {
+        const field = this.getAllFields().find((item) => item.key === key);
+        let value = cost?.[key];
+
+        if (key === 'inputCompleted') {
+            return value ? 'y' : 'n';
+        }
+        if (field?.type === 'date' && value) {
+            const date = value.toDate ? value.toDate() : new Date(value);
+            return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('ko-KR');
+        }
+        if (key === 'stoneCostManual' && (!value || value === 0)) {
+            value = cost?.stoneCostRef || 0;
+        }
+        if (key === 'salesProfitRate' && value !== undefined && value !== null && value !== '') {
+            return String(Math.round(value));
+        }
+        return String(value ?? '');
+    },
+
     renderMfgFilterBar() {
         const container = document.getElementById('mfgFilterBar');
         if (!container) return;
@@ -204,7 +233,8 @@ window.ManufacturingCostsModule = {
             `<button class="btn btn-sm mfg-year-btn ${this.selectedYear === y ? 'btn-primary' : 'btn-outline'}" data-year="${y}">${y === 'all' ? '전체' : y + '년'}</button>`
         ).join('');
 
-        const hasFilter = this.searchQuery || this.selectedYear !== 'all';
+        const hasColumnFilter = Object.values(this.columnFilters || {}).some(value => String(value || '').trim() !== '');
+        const hasFilter = this.searchQuery || this.selectedYear !== 'all' || hasColumnFilter;
         container.innerHTML = `
             <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:10px 0 12px;">
                 <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
@@ -249,6 +279,7 @@ window.ManufacturingCostsModule = {
         document.getElementById('mfgClearBtn')?.addEventListener('click', () => {
             this.selectedYear = 'all';
             this.searchQuery = '';
+            this.columnFilters = {};
             this.currentPage = 1;
             this.applyMfgFilters();
             this.costs = this.filteredCosts.slice(0, this.pageSize);
@@ -401,24 +432,69 @@ window.ManufacturingCostsModule = {
             }).join('');
 
             // 테이블 헤더 업데이트
-            const thead = mfgTable.querySelector('thead tr');
-            if (thead) {
+            const thead = mfgTable.querySelector('thead');
+            const headerRow = thead?.querySelector('tr');
+            if (headerRow) {
                 const checkboxTh = document.createElement('th');
                 checkboxTh.style.textAlign = 'center';
                 checkboxTh.className = 'header-checkbox-th';
                 checkboxTh.innerHTML = '<input type="checkbox" class="header-checkbox">';
 
-                thead.innerHTML = displayFieldKeys.map(key => {
+                headerRow.innerHTML = displayFieldKeys.map(key => {
                     const field = fieldMap[key];
                     const label = field ? field.label : key;
                     const isSorted = this.mfgSortState.column === key;
                     const indicator = isSorted ? (this.mfgSortState.direction === 'asc' ? ' ▲' : ' ▼') : '';
                     return `<th data-column="${key}" style="cursor:pointer;user-select:none;">${label}${indicator}</th>`;
                 }).join('') + '<th>관리</th>';
-                thead.insertBefore(checkboxTh, thead.firstChild);
+                headerRow.insertBefore(checkboxTh, headerRow.firstChild);
 
-                thead.querySelectorAll('th[data-column]').forEach(th => {
+                headerRow.querySelectorAll('th[data-column]').forEach(th => {
                     th.addEventListener('click', () => this.sortMfgCosts(th.dataset.column));
+                });
+
+                let filterRow = thead.querySelector('.mfg-filter-row');
+                if (!filterRow) {
+                    filterRow = document.createElement('tr');
+                    filterRow.className = 'mfg-filter-row';
+                    thead.appendChild(filterRow);
+                }
+                const filterCells = ['<th></th>'];
+                displayFieldKeys.forEach((key) => {
+                    const field = fieldMap[key];
+                    if (key === 'inputCompleted') {
+                        const currentValue = this.columnFilters[key] || '';
+                        filterCells.push(`
+                            <th>
+                                <select data-filter-column="${key}" style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;">
+                                    <option value="">전체</option>
+                                    <option value="y" ${currentValue === 'y' ? 'selected' : ''}>Y</option>
+                                    <option value="n" ${currentValue === 'n' ? 'selected' : ''}>N</option>
+                                </select>
+                            </th>
+                        `);
+                    } else {
+                        filterCells.push(`
+                            <th>
+                                <input data-filter-column="${key}" type="text" value="${String(this.columnFilters[key] || '').replace(/"/g, '&quot;')}"
+                                    placeholder="필터" style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;">
+                            </th>
+                        `);
+                    }
+                });
+                filterCells.push('<th></th>');
+                filterRow.innerHTML = filterCells.join('');
+                filterRow.querySelectorAll('[data-filter-column]').forEach((input) => {
+                    const eventName = input.tagName === 'SELECT' ? 'change' : 'input';
+                    input.addEventListener(eventName, (e) => {
+                        this.columnFilters[e.target.dataset.filterColumn] = e.target.value || '';
+                        this.currentPage = 1;
+                        this.applyMfgFilters();
+                        this.costs = this.filteredCosts.slice(0, this.pageSize);
+                        this.renderTable();
+                        this.renderPagination();
+                        this.renderMfgFilterBar();
+                    });
                 });
             }
 

@@ -60,6 +60,7 @@ window.SalesManagementModule = {
     currentPage: 1,
     selectedYear: 'all',
     searchQuery: '',
+    columnFilters: {},
     showUndeliveredOnly: false,
     orderSortState: { column: 'orderDate', direction: 'desc' },
     PURCHASE_PATH_DETAIL_OPTIONS: {
@@ -676,7 +677,32 @@ window.SalesManagementModule = {
                 (o.productName || '').toLowerCase().includes(q)
             );
         }
+        const activeColumnFilters = Object.entries(this.columnFilters || {})
+            .filter(([, value]) => String(value || '').trim() !== '');
+        if (activeColumnFilters.length > 0) {
+            data = data.filter((order) => activeColumnFilters.every(([key, query]) => {
+                const value = this.getOrderFilterValue(order, key).toLowerCase();
+                return value.includes(String(query).trim().toLowerCase());
+            }));
+        }
         this.filteredOrders = data;
+    },
+
+    getOrderFilterValue(order, key) {
+        const field = this.ORDER_FIELDS.find((item) => item.key === key);
+        let value = order?.[key];
+
+        if (field?.type === 'date' && value) {
+            const date = value.toDate ? value.toDate() : new Date(value);
+            return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('ko-KR');
+        }
+        if (field?.type === 'status') {
+            return value ? 'y' : 'n';
+        }
+        if ((field?.type === 'number' || field?.type === 'computed') && value !== undefined && value !== null && value !== '') {
+            return String(value);
+        }
+        return String(value ?? '');
     },
 
     renderOrderFilterBar() {
@@ -688,7 +714,8 @@ window.SalesManagementModule = {
             `<button class="btn btn-sm orders-year-btn ${this.selectedYear === y ? 'btn-primary' : 'btn-outline'}" data-year="${y}">${y === 'all' ? '전체' : y + '년'}</button>`
         ).join('');
 
-        const hasFilter = this.searchQuery || this.selectedYear !== 'all' || this.showUndeliveredOnly;
+        const hasColumnFilter = Object.values(this.columnFilters || {}).some(value => String(value || '').trim() !== '');
+        const hasFilter = this.searchQuery || this.selectedYear !== 'all' || this.showUndeliveredOnly || hasColumnFilter;
         container.innerHTML = `
             <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:10px 0 12px;">
                 <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
@@ -783,6 +810,7 @@ window.SalesManagementModule = {
         document.getElementById('ordersClearBtn')?.addEventListener('click', () => {
             this.selectedYear = 'all';
             this.searchQuery = '';
+            this.columnFilters = {};
             this.showUndeliveredOnly = false;
             this.currentPage = 1;
             this.applyOrderFilters();
@@ -1040,17 +1068,18 @@ window.SalesManagementModule = {
         }).join('');
 
         // 테이블 헤더 업데이트
-        const thead = table?.querySelector('thead tr');
-        if (thead) {
+        const thead = table?.querySelector('thead');
+        const headerRow = thead?.querySelector('tr');
+        if (headerRow) {
             // 기존 모든 th 제거
-            Array.from(thead.querySelectorAll('th')).forEach(th => th.remove());
+            Array.from(headerRow.querySelectorAll('th')).forEach(th => th.remove());
 
             // 체크박스 헤더 생성
             const checkboxTh = document.createElement('th');
             checkboxTh.style.textAlign = 'center';
             checkboxTh.className = 'header-checkbox-th';
             checkboxTh.innerHTML = '<input type="checkbox" class="header-checkbox">';
-            thead.appendChild(checkboxTh);
+            headerRow.appendChild(checkboxTh);
 
             // 필드 헤더 생성
             displayFieldKeys.forEach(key => {
@@ -1067,18 +1096,18 @@ window.SalesManagementModule = {
                     const column = e.target.dataset.column;
                     this.sortOrders(column);
                 });
-                thead.appendChild(th);
+                headerRow.appendChild(th);
             });
 
             // 첨부이미지 헤더
             const imageTh = document.createElement('th');
             imageTh.textContent = '첨부이미지';
-            thead.appendChild(imageTh);
+            headerRow.appendChild(imageTh);
 
             // 관리 헤더 생성
             const manageTh = document.createElement('th');
             manageTh.textContent = '관리';
-            thead.appendChild(manageTh);
+            headerRow.appendChild(manageTh);
 
             // 헤더 체크박스 이벤트
             const headerCheckbox = checkboxTh.querySelector('.header-checkbox');
@@ -1088,6 +1117,51 @@ window.SalesManagementModule = {
                     allCheckboxes.forEach(cb => cb.checked = e.target.checked);
                 });
             }
+
+            let filterRow = thead.querySelector('.orders-filter-row');
+            if (!filterRow) {
+                filterRow = document.createElement('tr');
+                filterRow.className = 'orders-filter-row';
+                thead.appendChild(filterRow);
+            }
+            const filterCells = ['<th></th>'];
+            displayFieldKeys.forEach((key) => {
+                const field = fieldMap[key];
+                if (field?.type === 'status') {
+                    const currentValue = this.columnFilters[key] || '';
+                    filterCells.push(`
+                        <th>
+                            <select data-filter-column="${key}" style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;">
+                                <option value="">전체</option>
+                                <option value="y" ${currentValue === 'y' ? 'selected' : ''}>Y</option>
+                                <option value="n" ${currentValue === 'n' ? 'selected' : ''}>N</option>
+                            </select>
+                        </th>
+                    `);
+                } else {
+                    filterCells.push(`
+                        <th>
+                            <input data-filter-column="${key}" type="text" value="${String(this.columnFilters[key] || '').replace(/"/g, '&quot;')}"
+                                placeholder="필터" style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;">
+                        </th>
+                    `);
+                }
+            });
+            filterCells.push('<th></th><th></th>');
+            filterRow.innerHTML = filterCells.join('');
+            filterRow.querySelectorAll('[data-filter-column]').forEach((input) => {
+                const eventName = input.tagName === 'SELECT' ? 'change' : 'input';
+                input.addEventListener(eventName, (e) => {
+                    this.columnFilters[e.target.dataset.filterColumn] = e.target.value || '';
+                    this.currentPage = 1;
+                    this.applyOrderFilters();
+                    this.filteredOrders = this.getSortedOrders(this.filteredOrders);
+                    this.orders = this.filteredOrders.slice(0, this.pageSize);
+                    this.renderOrdersTable();
+                    this.renderPagination();
+                    this.renderOrderFilterBar();
+                });
+            });
         }
 
         // Event delegation for action buttons

@@ -530,12 +530,33 @@
                                 </select>
                             </label>
                         </div>
+                        <div id="adminExpenseFilterBar" style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:12px;">
+                            <label>날짜 검색
+                                <input id="expenseDateSearch" class="form-control" type="text" placeholder="2026-06 또는 2026. 6." style="min-width:160px;">
+                            </label>
+                            <label>계정과목
+                                <select id="expenseAccountTypeFilter" class="form-control" style="min-width:140px;">
+                                    <option value="">전체</option>
+                                </select>
+                            </label>
+                            <label>거래내용
+                                <input id="expenseDescriptionSearch" class="form-control" type="text" placeholder="거래내용 검색" style="min-width:180px;">
+                            </label>
+                            <label>거래처
+                                <input id="expenseVendorSearch" class="form-control" type="text" placeholder="거래처 검색" style="min-width:160px;">
+                            </label>
+                            <label>금액
+                                <input id="expenseAmountSearch" class="form-control" type="text" placeholder="금액 검색" style="min-width:140px;">
+                            </label>
+                            <button id="expenseFilterResetBtn" class="btn btn-outline" type="button">초기화</button>
+                            <div id="expenseResultCount" style="margin-left:auto;color:#6b7280;font-size:0.9rem;"></div>
+                        </div>
                         <div id="expenseSummary" style="margin-bottom:16px;"></div>
                         <div style="overflow-x:auto;">
                         <table id="adminExpensesTable" class="data-table">
                             <thead><tr>
-                                <th>날짜</th><th>계정과목</th><th>거래내용</th><th>거래처</th>
-                                <th>금액</th><th>결제방식</th><th>비용처리</th><th>관리</th>
+                                <th data-column="date">날짜</th><th data-column="accountType">계정과목</th><th data-column="description">거래내용</th><th data-column="vendor">거래처</th>
+                                <th data-column="amount">금액</th><th>결제방식</th><th>비용처리</th><th>관리</th>
                             </tr></thead>
                             <tbody></tbody>
                         </table>
