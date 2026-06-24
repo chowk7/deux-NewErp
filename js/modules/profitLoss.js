@@ -9,11 +9,24 @@ window.ProfitLossModule = {
     plData: [],
     productRates: [],
     selectedYear: new Date().getFullYear(),
+    selectedPurchasePath: 'all',
+    selectedPurchasePathDetail: 'all',
 
     async init() {
         document.getElementById('plYearSelect')
             ?.addEventListener('change', (e) => {
                 this.selectedYear = parseInt(e.target.value);
+                this.load();
+            });
+        document.getElementById('plPurchasePathFilter')
+            ?.addEventListener('change', (e) => {
+                this.selectedPurchasePath = e.target.value || 'all';
+                this.selectedPurchasePathDetail = 'all';
+                this.load();
+            });
+        document.getElementById('plPurchasePathDetailFilter')
+            ?.addEventListener('change', (e) => {
+                this.selectedPurchasePathDetail = e.target.value || 'all';
                 this.load();
             });
         document.getElementById('calcPlBtn')
@@ -50,6 +63,9 @@ window.ProfitLossModule = {
         const orders = ordersSnap.docs.map(d => d.data());
         this.productRates = productSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         const expenses = expSnap.docs.map(d => d.data());
+        this.renderSourceFilters(orders);
+
+        const filteredOrders = orders.filter(order => this.matchesSourceFilters(order));
 
         // 월별 데이터 구성
         this.plData = Array.from({length: 12}, (_, i) => {
@@ -57,7 +73,7 @@ window.ProfitLossModule = {
             const monthStr = String(month).padStart(2, '0');
 
             // 주문일(orderDate) 기준 해당 월 매출합계
-            const monthOrders = orders.filter(o => {
+            const monthOrders = filteredOrders.filter(o => {
                 if (!o.orderDate?.toDate) return false;
                 const d = o.orderDate.toDate();
                 return (d.getMonth() + 1) === month;
@@ -97,6 +113,65 @@ window.ProfitLossModule = {
         });
 
         this.renderTable();
+    },
+
+    renderSourceFilters(orders = []) {
+        const purchasePathSelect = document.getElementById('plPurchasePathFilter');
+        const purchasePathDetailSelect = document.getElementById('plPurchasePathDetailFilter');
+        if (!purchasePathSelect || !purchasePathDetailSelect) return;
+
+        const purchasePaths = Array.from(new Set(
+            orders.map(order => String(order.purchasePath || '').trim()).filter(Boolean)
+        )).sort((a, b) => a.localeCompare(b, 'ko'));
+
+        if (this.selectedPurchasePath !== 'all' && !purchasePaths.includes(this.selectedPurchasePath)) {
+            this.selectedPurchasePath = 'all';
+        }
+
+        purchasePathSelect.innerHTML = [
+            '<option value="all">전체</option>',
+            ...purchasePaths.map(path => `<option value="${this.escapeHtml(path)}">${this.escapeHtml(path)}</option>`)
+        ].join('');
+        purchasePathSelect.value = this.selectedPurchasePath;
+
+        const detailSourceOrders = this.selectedPurchasePath === 'all'
+            ? orders
+            : orders.filter(order => String(order.purchasePath || '').trim() === this.selectedPurchasePath);
+
+        const purchasePathDetails = Array.from(new Set(
+            detailSourceOrders.map(order => String(order.purchasePathDetail || '').trim()).filter(Boolean)
+        )).sort((a, b) => a.localeCompare(b, 'ko'));
+
+        if (this.selectedPurchasePathDetail !== 'all' && !purchasePathDetails.includes(this.selectedPurchasePathDetail)) {
+            this.selectedPurchasePathDetail = 'all';
+        }
+
+        purchasePathDetailSelect.innerHTML = [
+            '<option value="all">전체</option>',
+            ...purchasePathDetails.map(detail => `<option value="${this.escapeHtml(detail)}">${this.escapeHtml(detail)}</option>`)
+        ].join('');
+        purchasePathDetailSelect.value = this.selectedPurchasePathDetail;
+    },
+
+    matchesSourceFilters(order = {}) {
+        const purchasePath = String(order.purchasePath || '').trim();
+        const purchasePathDetail = String(order.purchasePathDetail || '').trim();
+
+        if (this.selectedPurchasePath !== 'all' && purchasePath !== this.selectedPurchasePath) {
+            return false;
+        }
+        if (this.selectedPurchasePathDetail !== 'all' && purchasePathDetail !== this.selectedPurchasePathDetail) {
+            return false;
+        }
+        return true;
+    },
+
+    escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
     },
 
     findProductRate(order = {}) {

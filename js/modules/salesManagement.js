@@ -61,6 +61,7 @@ window.SalesManagementModule = {
     selectedYear: 'all',
     searchQuery: '',
     columnFilters: {},
+    columnFilterApplyTimer: null,
     showUndeliveredOnly: false,
     orderSortState: { column: 'orderDate', direction: 'desc' },
     PURCHASE_PATH_DETAIL_OPTIONS: {
@@ -730,6 +731,24 @@ window.SalesManagementModule = {
         return Array.from(suggestions).slice(0, 100);
     },
 
+    applyOrderColumnFiltersNow() {
+        this.currentPage = 1;
+        this.applyOrderFilters();
+        this.filteredOrders = this.getSortedOrders(this.filteredOrders);
+        this.orders = this.filteredOrders.slice(0, this.pageSize);
+        this.renderOrdersTable();
+        this.renderPagination();
+        this.renderOrderFilterBar();
+    },
+
+    scheduleOrderColumnFilterApply() {
+        if (this.columnFilterApplyTimer) clearTimeout(this.columnFilterApplyTimer);
+        this.columnFilterApplyTimer = setTimeout(() => {
+            this.columnFilterApplyTimer = null;
+            this.applyOrderColumnFiltersNow();
+        }, 200);
+    },
+
     renderOrderFilterBar() {
         const container = document.getElementById('ordersFilterBar');
         if (!container) return;
@@ -833,6 +852,10 @@ window.SalesManagementModule = {
         });
 
         document.getElementById('ordersClearBtn')?.addEventListener('click', () => {
+            if (this.columnFilterApplyTimer) {
+                clearTimeout(this.columnFilterApplyTimer);
+                this.columnFilterApplyTimer = null;
+            }
             this.selectedYear = 'all';
             this.searchQuery = '';
             this.columnFilters = {};
@@ -1170,13 +1193,7 @@ window.SalesManagementModule = {
             filterRow.querySelectorAll('[data-filter-column]').forEach((input) => {
                 input.addEventListener('input', (e) => {
                     this.columnFilters[e.target.dataset.filterColumn] = e.target.value || '';
-                    this.currentPage = 1;
-                    this.applyOrderFilters();
-                    this.filteredOrders = this.getSortedOrders(this.filteredOrders);
-                    this.orders = this.filteredOrders.slice(0, this.pageSize);
-                    this.renderOrdersTable();
-                    this.renderPagination();
-                    this.renderOrderFilterBar();
+                    this.scheduleOrderColumnFilterApply();
                 });
             });
         }
