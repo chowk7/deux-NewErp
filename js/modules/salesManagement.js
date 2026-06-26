@@ -62,6 +62,7 @@ window.SalesManagementModule = {
     searchQuery: '',
     columnFilters: {},
     columnFilterApplyTimer: null,
+    isOrderFilterComposing: false,
     showUndeliveredOnly: false,
     orderSortState: { column: 'orderDate', direction: 'desc' },
     PURCHASE_PATH_DETAIL_OPTIONS: {
@@ -765,6 +766,7 @@ window.SalesManagementModule = {
         if (this.columnFilterApplyTimer) clearTimeout(this.columnFilterApplyTimer);
         this.columnFilterApplyTimer = setTimeout(() => {
             this.columnFilterApplyTimer = null;
+            if (this.isOrderFilterComposing) return;
             this.applyOrderColumnFiltersNow();
         }, 200);
     },
@@ -1212,7 +1214,16 @@ window.SalesManagementModule = {
             filterCells.push('<th></th><th></th>');
             filterRow.innerHTML = filterCells.join('');
             filterRow.querySelectorAll('[data-filter-column]').forEach((input) => {
+                input.addEventListener('compositionstart', () => {
+                    this.isOrderFilterComposing = true;
+                });
+                input.addEventListener('compositionend', (e) => {
+                    this.isOrderFilterComposing = false;
+                    this.columnFilters[e.target.dataset.filterColumn] = e.target.value || '';
+                    this.scheduleOrderColumnFilterApply();
+                });
                 input.addEventListener('input', (e) => {
+                    if (this.isOrderFilterComposing) return;
                     this.columnFilters[e.target.dataset.filterColumn] = e.target.value || '';
                     this.scheduleOrderColumnFilterApply();
                 });

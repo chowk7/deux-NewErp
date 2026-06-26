@@ -50,6 +50,8 @@ window.ManufacturingCostsModule = {
     selectedYear: 'all',
     searchQuery: '',
     columnFilters: {},
+    mfgColumnFilterApplyTimer: null,
+    isMfgFilterComposing: false,
     mfgSortState: { column: 'orderDate', direction: 'desc' },
 
     async init() {
@@ -202,6 +204,24 @@ window.ManufacturingCostsModule = {
             });
         }
         this.filteredCosts = data;
+    },
+
+    applyMfgColumnFiltersNow() {
+        this.currentPage = 1;
+        this.applyMfgFilters();
+        this.costs = this.filteredCosts.slice(0, this.pageSize);
+        this.renderTable();
+        this.renderPagination();
+        this.renderMfgFilterBar();
+    },
+
+    scheduleMfgColumnFilterApply() {
+        if (this.mfgColumnFilterApplyTimer) clearTimeout(this.mfgColumnFilterApplyTimer);
+        this.mfgColumnFilterApplyTimer = setTimeout(() => {
+            this.mfgColumnFilterApplyTimer = null;
+            if (this.isMfgFilterComposing) return;
+            this.applyMfgColumnFiltersNow();
+        }, 200);
     },
 
     getMfgFilterValue(cost, key) {
@@ -486,14 +506,22 @@ window.ManufacturingCostsModule = {
                 filterRow.innerHTML = filterCells.join('');
                 filterRow.querySelectorAll('[data-filter-column]').forEach((input) => {
                     const eventName = input.tagName === 'SELECT' ? 'change' : 'input';
-                    input.addEventListener(eventName, (e) => {
+                    input.addEventListener('compositionstart', () => {
+                        this.isMfgFilterComposing = true;
+                    });
+                    input.addEventListener('compositionend', (e) => {
+                        this.isMfgFilterComposing = false;
                         this.columnFilters[e.target.dataset.filterColumn] = e.target.value || '';
-                        this.currentPage = 1;
-                        this.applyMfgFilters();
-                        this.costs = this.filteredCosts.slice(0, this.pageSize);
-                        this.renderTable();
-                        this.renderPagination();
-                        this.renderMfgFilterBar();
+                        this.scheduleMfgColumnFilterApply();
+                    });
+                    input.addEventListener(eventName, (e) => {
+                        if (eventName === 'input' && this.isMfgFilterComposing) return;
+                        this.columnFilters[e.target.dataset.filterColumn] = e.target.value || '';
+                        if (eventName === 'change') {
+                            this.applyMfgColumnFiltersNow();
+                            return;
+                        }
+                        this.scheduleMfgColumnFilterApply();
                     });
                 });
             }
