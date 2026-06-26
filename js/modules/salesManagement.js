@@ -233,10 +233,22 @@ window.SalesManagementModule = {
         // Modal callback will filter selected orders
         window.Utils.openModal('🏪 매장관리 싱크', html, async () => {
             // Get selected orders only
-            const selectedOrders = orders.filter((_, i) => {
-                const checkbox = document.querySelector(`.order-checkbox[data-idx="${i}"]`);
-                return checkbox?.checked;
-            });
+            const selectedOrders = orders
+                .map((order, i) => {
+                    const checkbox = document.querySelector(`.order-checkbox[data-idx="${i}"]`);
+                    if (!checkbox?.checked) return null;
+
+                    const updated = { ...order };
+                    fields.forEach((field) => {
+                        const input = document.getElementById(`sync_${i}_${field.key}`);
+                        if (!input) return;
+                        updated[field.key] = field.key === 'orderAmount' || field.key === 'salesAmount'
+                            ? (parseFloat(input.value) || 0)
+                            : input.value;
+                    });
+                    return updated;
+                })
+                .filter(Boolean);
             if (selectedOrders.length === 0) {
                 window.Utils.showNotification('선택된 주문이 없습니다.', 'warning');
                 return;
@@ -410,7 +422,15 @@ window.SalesManagementModule = {
                 self.ORDER_FIELDS.filter(f => f.type !== 'status' && f.type !== 'computed').forEach(f => {
                     const input = document.querySelector(`[name="order_${idx}_${f.key}"]`);
                     if (input) {
-                        updated[f.key] = f.type === 'number' ? (parseFloat(input.value) || 0) : input.value;
+                        if (f.type === 'number') {
+                            updated[f.key] = parseFloat(input.value) || 0;
+                        } else if (f.type === 'date') {
+                            updated[f.key] = input.value
+                                ? firebase.firestore.Timestamp.fromDate(new Date(input.value))
+                                : null;
+                        } else {
+                            updated[f.key] = input.value;
+                        }
                     }
                 });
                 
@@ -1079,7 +1099,8 @@ window.SalesManagementModule = {
 
                 // 날짜 포맷
                 if (field.type === 'date' && val) {
-                    val = val.toDate ? new Date(val.toDate()).toLocaleDateString('ko-KR') : '-';
+                    const parsedDate = val.toDate ? new Date(val.toDate()) : new Date(val);
+                    val = Number.isNaN(parsedDate.getTime()) ? '-' : parsedDate.toLocaleDateString('ko-KR');
                 } else if ((field.type === 'number' || field.type === 'computed') && val !== undefined && val !== null && val !== '') {
                     val = window.Utils.formatNumber(val);
                 } else if (val === undefined || val === null || val === '') {
