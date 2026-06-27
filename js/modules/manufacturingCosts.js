@@ -27,6 +27,7 @@ window.ManufacturingCostsModule = {
         { key: 'stoneCostRef',    label: '나석가격(참고)',  type: 'number', calc: true },
         { key: 'otherCost',       label: '기타비용',       type: 'number' },
         { key: 'manufacturingCost',label: '제조가격',      type: 'number', calc: true },
+        { key: 'delivered',       label: '배송완료',       type: 'checkbox' },
         { key: 'inputCompleted',  label: '입력 완료',      type: 'checkbox' },
         { key: 'salesProfit',     label: '매출이익',       type: 'number', calc: true },
         { key: 'salesProfitRate', label: '매출이익률(%)',   type: 'number', calc: true },
@@ -123,7 +124,7 @@ window.ManufacturingCostsModule = {
     },
 
     getDefaultDisplayFieldKeys() {
-        return ['orderDate', 'customerName', 'productName', 'optionName', 'goldValue_auto', 'goldValue', 'stoneCostManual', 'manufacturingCost', 'inputCompleted', 'salesProfit', 'salesProfitRate'];
+        return ['orderDate', 'customerName', 'productName', 'optionName', 'goldValue_auto', 'goldValue', 'stoneCostManual', 'manufacturingCost', 'delivered', 'inputCompleted', 'salesProfit', 'salesProfitRate'];
     },
 
     getAllFields() {
@@ -228,7 +229,7 @@ window.ManufacturingCostsModule = {
         const field = this.getAllFields().find((item) => item.key === key);
         let value = cost?.[key];
 
-        if (key === 'inputCompleted') {
+        if (key === 'inputCompleted' || key === 'delivered') {
             return value ? 'y' : 'n';
         }
         if (field?.type === 'date' && value) {
@@ -412,9 +413,9 @@ window.ManufacturingCostsModule = {
                     const field = fieldMap[key];
                     let val = c[key];
 
-                    if (key === 'inputCompleted') {
-                        const checked = c.inputCompleted ? 'checked' : '';
-                        return `<td style="text-align:center;"><input type="checkbox" class="input-completed-checkbox" data-id="${c.id}" ${checked}></td>`;
+                    if (field?.type === 'checkbox') {
+                        const checked = c[key] ? 'checked' : '';
+                        return `<td style="text-align:center;"><input type="checkbox" class="mfg-boolean-checkbox" data-id="${c.id}" data-field="${key}" ${checked}></td>`;
                     }
 
                     if (!c.inputCompleted && (key === 'salesProfit' || key === 'salesProfitRate')) {
@@ -482,7 +483,7 @@ window.ManufacturingCostsModule = {
                 const filterCells = ['<th></th>'];
                 displayFieldKeys.forEach((key) => {
                     const field = fieldMap[key];
-                    if (key === 'inputCompleted') {
+                    if (field?.type === 'checkbox') {
                         const currentValue = this.columnFilters[key] || '';
                         filterCells.push(`
                             <th>
@@ -546,34 +547,46 @@ window.ManufacturingCostsModule = {
                 });
             }
 
-            // 입력완료 체크박스 이벤트
-            mfgTable.querySelectorAll('tbody .input-completed-checkbox').forEach(checkbox => {
+            // boolean 체크박스 이벤트
+            mfgTable.querySelectorAll('tbody .mfg-boolean-checkbox').forEach(checkbox => {
                 checkbox.addEventListener('change', async (e) => {
                     const costId = e.target.dataset.id;
+                    const fieldKey = e.target.dataset.field;
                     const cost = this.costs.find(c => c.id === costId);
-                    if (!cost) return;
-                    cost.inputCompleted = e.target.checked;
-                    if (!e.target.checked) {
-                        cost.salesProfit = 0;
-                        cost.salesProfitRate = 0;
-                    } else {
-                        const calc = this.calculate(cost);
-                        cost.salesProfit = calc.salesProfit;
-                        cost.salesProfitRate = calc.salesProfitRate;
+                    if (!cost || !fieldKey) return;
+
+                    const checked = e.target.checked;
+                    const updateData = { [fieldKey]: checked, updatedAt: new Date() };
+                    cost[fieldKey] = checked;
+
+                    if (fieldKey === 'inputCompleted') {
+                        if (!checked) {
+                            cost.salesProfit = 0;
+                            cost.salesProfitRate = 0;
+                        } else {
+                            const calc = this.calculate(cost);
+                            cost.salesProfit = calc.salesProfit;
+                            cost.salesProfitRate = calc.salesProfitRate;
+                        }
+                        updateData.salesProfit = cost.salesProfit;
+                        updateData.salesProfitRate = cost.salesProfitRate;
                     }
+
                     try {
                         await window.firebaseDb.collection('sales').doc('orders')
                             .collection('items').doc(costId)
-                            .update({ inputCompleted: cost.inputCompleted, salesProfit: cost.salesProfit, salesProfitRate: cost.salesProfitRate, updatedAt: new Date() });
+                            .update(updateData);
                         const allCostItem = this.allCosts.find(c => c.id === costId);
                         if (allCostItem) {
-                            allCostItem.inputCompleted = cost.inputCompleted;
-                            allCostItem.salesProfit = cost.salesProfit;
-                            allCostItem.salesProfitRate = cost.salesProfitRate;
+                            allCostItem[fieldKey] = checked;
+                            if (fieldKey === 'inputCompleted') {
+                                allCostItem.salesProfit = cost.salesProfit;
+                                allCostItem.salesProfitRate = cost.salesProfitRate;
+                            }
                         }
                         this.renderTable();
                     } catch (err) {
-                        console.error('Failed to update inputCompleted:', err);
+                        console.error(`Failed to update ${fieldKey}:`, err);
                         window.Utils.showNotification('저장 실패', 'error');
                     }
                 });
@@ -1083,8 +1096,12 @@ window.ManufacturingCostsModule = {
             displayFields.forEach(field => {
                 let value = cost[field.key];
 
-                if (field.key === 'inputCompleted') {
-                    value = cost.inputCompleted ? '완료' : '미완료';
+                if (field.type === 'checkbox') {
+                    if (field.key === 'delivered') {
+                        value = cost.delivered ? '배송완료' : '미완료';
+                    } else {
+                        value = cost[field.key] ? '완료' : '미완료';
+                    }
                 } else if (!cost.inputCompleted && (field.key === 'salesProfit' || field.key === 'salesProfitRate')) {
                     value = '미입력';
                 } else if (field.key === 'stoneCostManual' && (!value || value === 0)) {
