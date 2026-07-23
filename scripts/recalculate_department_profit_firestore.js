@@ -121,7 +121,7 @@ function findDepartmentStonePrice(stone, category, settings, diamondRateMap) {
   return parseInt(row.prices?.[sizeKey], 10) || basePrice;
 }
 
-function calculateDepartmentPricing({ stones, category, finalPrice, salesCost, deptFee, stoneWarrantyFee, stoneW, settings, diamondRateMap }) {
+function calculateDepartmentPricing({ stones, category, finalPrice, salesCost, deptFee, stoneWarrantyFee, stoneW, deptPriceManual, settings, diamondRateMap }) {
   const stoneDeptMargin = n(settings?.departmentStoneMargin) || 15;
   const normalizedStones = Array.isArray(stones) ? stones : [];
 
@@ -137,13 +137,15 @@ function calculateDepartmentPricing({ stones, category, finalPrice, salesCost, d
   });
 
   const deptPrice = n(finalPrice) + n(stoneW);
-  const nonStoneDeptPrice = Math.max(deptPrice - stoneRetailTotal, 0);
+  const manualPrice = n(deptPriceManual);
+  const deptPriceBasis = manualPrice > 0 ? manualPrice : deptPrice;
+  const nonStoneDeptPrice = Math.max(deptPriceBasis - stoneRetailTotal, 0);
   const stoneRevenue = stoneRetailTotal * (1 - stoneDeptMargin / 100);
   const baseRevenue = nonStoneDeptPrice * (1 - deptFee / 100);
   const deptProfit = stoneRevenue + baseRevenue - n(salesCost) - (n(stoneW) * 0.8);
-  const deptProfitRate = deptPrice > 0 ? (deptProfit / deptPrice) * 100 : 0;
+  const deptProfitRate = deptPriceBasis > 0 ? (deptProfit / deptPriceBasis) * 100 : 0;
 
-  return { deptPrice, deptProfit, deptProfitRate };
+  return { deptPrice, deptPriceManual: deptPriceBasis, deptProfit, deptProfitRate };
 }
 
 function calculateProduct(docData, settings, diamondRateMap) {
@@ -215,6 +217,7 @@ function calculateProduct(docData, settings, diamondRateMap) {
     deptFee,
     stoneWarrantyFee,
     stoneW,
+    deptPriceManual: docData.deptPriceManual,
     settings,
     diamondRateMap
   });
@@ -227,15 +230,18 @@ function calculateProduct(docData, settings, diamondRateMap) {
     deptFee,
     stoneWarrantyFee,
     stoneW,
+    deptPriceManual: docData.deptPriceManual18k,
     settings,
     diamondRateMap
   });
 
   return {
     deptPrice: Math.round(deptCalc14k.deptPrice),
+    deptPriceManual: Math.round(deptCalc14k.deptPriceManual),
     deptProfit: Math.round(deptCalc14k.deptProfit),
     deptProfitRate: deptCalc14k.deptProfitRate,
     deptPrice18k: Math.round(deptCalc18k.deptPrice),
+    deptPriceManual18k: Math.round(deptCalc18k.deptPriceManual),
     deptProfit18k: Math.round(deptCalc18k.deptProfit),
     deptProfitRate18k: deptCalc18k.deptProfitRate18k ?? deptCalc18k.deptProfitRate,
     ownMallProfit: Math.round(ownMallProfit),
@@ -289,9 +295,11 @@ async function buildUpdates(collectionKey, settings, diamondRateMap) {
     const calc = calculateProduct(data, settings, diamondRateMap);
     const patch = {
       deptPrice: calc.deptPrice,
+      deptPriceManual: calc.deptPriceManual,
       deptProfit: calc.deptProfit,
       deptProfitRate: calc.deptProfitRate,
       deptPrice18k: calc.deptPrice18k,
+      deptPriceManual18k: calc.deptPriceManual18k,
       deptProfit18k: calc.deptProfit18k,
       deptProfitRate18k: calc.deptProfitRate18k,
       ownMallProfit: calc.ownMallProfit,

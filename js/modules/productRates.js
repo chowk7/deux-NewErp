@@ -35,7 +35,8 @@ window.ProductRatesModule = {
         { key: 'discountPrice',   label: '할인가',          type: 'number', calc: true },
         { key: 'ownMallProfit',   label: '자사몰이익',      type: 'number', calc: true },
         { key: 'ownMallProfitRate',label: '자사몰이익률(%)', type: 'number', calc: true },
-        { key: 'deptPrice',       label: '백화점가',        type: 'number', calc: true },
+        { key: 'deptPrice',       label: '백화점가(자동)',  type: 'number', calc: true },
+        { key: 'deptPriceManual', label: '백화점가(수동)',  type: 'number', calc: false },
         { key: 'deptProfit',      label: '백화점이익',      type: 'number', calc: true },
         { key: 'deptProfitRate',  label: '백화점이익률(%)', type: 'number', calc: true },
         { key: 'goldValue18k',    label: '18K금값',         type: 'number', calc: true },
@@ -44,7 +45,8 @@ window.ProductRatesModule = {
         { key: 'discountPrice18k',label: '18K할인가',       type: 'number', calc: true },
         { key: 'ownMallProfit18k',label: '18K자사몰이익',   type: 'number', calc: true },
         { key: 'ownMallProfitRate18k', label: '18K자사몰이익률(%)', type: 'number', calc: true },
-        { key: 'deptPrice18k',    label: '18K백화점가',     type: 'number', calc: true },
+        { key: 'deptPrice18k',    label: '18K백화점가(자동)', type: 'number', calc: true },
+        { key: 'deptPriceManual18k', label: '18K백화점가(수동)', type: 'number', calc: false },
         { key: 'deptProfit18k',   label: '18K백화점이익',   type: 'number', calc: true },
         { key: 'deptProfitRate18k',label: '18K백화점이익률(%)', type: 'number', calc: true },
     ],
@@ -101,7 +103,11 @@ window.ProductRatesModule = {
             'category',
             'productCost',
             'finalPrice',
+            'deptPrice',
+            'deptPriceManual',
             'deptProfit',
+            'deptPrice18k',
+            'deptPriceManual18k',
             'deptProfit18k',
             'ownMallProfitRate'
         ];
@@ -234,7 +240,7 @@ window.ProductRatesModule = {
         return parseFloat(row.prices?.[sizeKey]) || 0;
     },
 
-    _calculateDepartmentPricing({ stones, category, finalPrice, salesCost, deptFee, stoneWarrantyFee, stoneW }) {
+    _calculateDepartmentPricing({ stones, category, finalPrice, salesCost, deptFee, stoneWarrantyFee, stoneW, deptPriceManual }) {
         const stoneDeptMargin = parseFloat(this.settings?.departmentStoneMargin) || 15;
         const normalizedStones = Array.isArray(stones) ? stones : [];
 
@@ -251,14 +257,23 @@ window.ProductRatesModule = {
         });
 
         const deptPrice = (parseFloat(finalPrice) || 0) + (parseFloat(stoneW) || 0);
-        const nonStoneDeptPrice = Math.max(deptPrice - stoneRetailTotal, 0);
+        // 백화점이익/이익률은 백화점가(수동) 기준으로 계산한다. 수동값이 아직
+        // 없으면(신규 등록 등) 자동 계산값을 기본값으로 사용한다.
+        const manualPrice = parseFloat(deptPriceManual);
+        // 0 또는 빈 값은 아직 수동가를 지정하지 않은 상태로 보고 자동가로 초기화한다.
+        // 실제 판매가가 0원인 경우는 없으므로, 신규 등록 시 빈 number input이 0으로
+        // 변환되는 경로에서도 이익이 0원을 기준으로 계산되지 않게 한다.
+        const deptPriceBasis = Number.isFinite(manualPrice) && manualPrice > 0
+            ? manualPrice
+            : deptPrice;
+        const nonStoneDeptPrice = Math.max(deptPriceBasis - stoneRetailTotal, 0);
         const stoneRevenue = stoneRetailTotal * (1 - stoneDeptMargin / 100);
         const baseRevenue = nonStoneDeptPrice * (1 - deptFee / 100);
         const deptRevenue = baseRevenue + stoneRevenue;
         const deptProfit = deptRevenue - (parseFloat(salesCost) || 0) - ((parseFloat(stoneW) || 0) * 0.8);
-        const deptProfitRate = deptPrice > 0 ? (deptProfit / deptPrice) * 100 : 0;
+        const deptProfitRate = deptPriceBasis > 0 ? (deptProfit / deptPriceBasis) * 100 : 0;
 
-        return { deptPrice, deptProfit, deptProfitRate, stoneRetailTotal };
+        return { deptPrice, deptPriceManual: deptPriceBasis, deptProfit, deptProfitRate, stoneRetailTotal };
     },
 
     async load() {
@@ -658,6 +673,7 @@ window.ProductRatesModule = {
         const ownMallProfit18k = discountPrice18k * (1 - ownMallFee / 100) - salesCost18k;
         const ownMallProfitRate18k = discountPrice18k > 0 ? (ownMallProfit18k / discountPrice18k) * 100 : 0;
         // deptPrice = finalPrice + stoneW (사이즈추가금 미포함)
+        // 백화점이익/이익률은 백화점가(수동)을 기준으로 계산한다 (deptPriceManual 없으면 자동값 사용)
         const deptCalc14k = this._calculateDepartmentPricing({
             stones,
             category: data.category,
@@ -665,7 +681,8 @@ window.ProductRatesModule = {
             salesCost,
             deptFee,
             stoneWarrantyFee,
-            stoneW
+            stoneW,
+            deptPriceManual: data.deptPriceManual
         });
         const deptCalc18k = this._calculateDepartmentPricing({
             stones,
@@ -674,26 +691,41 @@ window.ProductRatesModule = {
             salesCost: salesCost18k,
             deptFee,
             stoneWarrantyFee,
-            stoneW
+            stoneW,
+            deptPriceManual: data.deptPriceManual18k
         });
         const deptPrice = deptCalc14k.deptPrice;
+        const deptPriceManual = deptCalc14k.deptPriceManual;
         const deptProfit = deptCalc14k.deptProfit;
-        const deptProfitRate = deptPrice > 0 ? (deptProfit / deptPrice) * 100 : 0;
+        const deptProfitRate = deptCalc14k.deptProfitRate;
         const deptPrice18k = deptCalc18k.deptPrice;
+        const deptPriceManual18k = deptCalc18k.deptPriceManual;
         const deptProfit18k = deptCalc18k.deptProfit;
-        const deptProfitRate18k = deptPrice18k > 0 ? (deptProfit18k / deptPrice18k) * 100 : 0;
+        const deptProfitRate18k = deptCalc18k.deptProfitRate;
 
         return { ...data, goldValue, productCost, vatCost, salesCost, marginPrice, expectedPrice,
             stoneCost, stoneWarrantyFee,
-            finalPrice, discountPrice, ownMallProfit, ownMallProfitRate, deptPrice, deptProfit, deptProfitRate,
+            finalPrice, discountPrice, ownMallProfit, ownMallProfitRate,
+            deptPrice, deptPriceManual, deptProfit, deptProfitRate,
             goldValue18k, marginPrice18k, finalPrice18k, discountPrice18k,
-            ownMallProfit18k, ownMallProfitRate18k, deptPrice18k, deptProfit18k, deptProfitRate18k };
+            ownMallProfit18k, ownMallProfitRate18k,
+            deptPrice18k, deptPriceManual18k, deptProfit18k, deptProfitRate18k };
     },
 
     async showForm(productId = null) {
         const required = await window.Utils.getRequiredFields('productRates');
         const product = productId ? this.products.find(p => p.id === productId) : null;
         const stones = product?.stones || [];
+        // 기존 제품은 수동가 필드가 없던 시점에 저장됐을 수 있다. 이 경우 현재의
+        // 자동 백화점가를 첫 수동가로 보여줘 저장 시 그대로 초기화되게 한다.
+        const initialManualPrices = {
+            deptPriceManual: this._toNumber(product?.deptPriceManual) > 0
+                ? product.deptPriceManual
+                : (product?.deptPrice ?? ''),
+            deptPriceManual18k: this._toNumber(product?.deptPriceManual18k) > 0
+                ? product.deptPriceManual18k
+                : (product?.deptPrice18k ?? '')
+        };
 
         // 입력 필드 (calc=false) + 계산 필드는 읽기 전용으로
         const stoneSizeOptions = this.DEPARTMENT_STONE_SIZES
@@ -736,7 +768,8 @@ window.ProductRatesModule = {
                                 </div>
                             </div>`;
                     }
-                    const val = product?.[f.key]
+                    const val = initialManualPrices[f.key]
+                        ?? product?.[f.key]
                         ?? ((f.key === 'sizeAddFee14k' || f.key === 'sizeAddFee18k') ? product?.sizeAddFee : '')
                         ?? '';
                     const isRequired = !f.calc && required.includes(f.key);
@@ -1107,6 +1140,13 @@ window.ProductRatesModule = {
                 const el = wrapper.querySelector(`[name="${f.key}"]`);
                 if (!el) return;
                 el.value = Math.round(calc[f.key] || 0);
+            });
+
+            // 신규 항목의 수동 백화점가는 자동 계산가를 최초값으로 넣되, 사용자가
+            // 직접 입력한 값은 이후 자동계산으로 덮어쓰지 않는다.
+            ['deptPriceManual', 'deptPriceManual18k'].forEach(key => {
+                const el = wrapper.querySelector(`[name="${key}"]`);
+                if (el && el.value === '') el.value = Math.round(calc[key] || 0);
             });
         };
 

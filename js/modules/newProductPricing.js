@@ -436,7 +436,19 @@ window.NewProductPricingModule = {
             const item = this.products.find(p => p.id === id);
             if (!item) continue;
             const { id: _id, ...docData } = item;
-            await col.add({ ...docData, createdAt: new Date(), updatedAt: new Date() });
+            await col.add({
+                ...docData,
+                // 제품가격표로 처음 복사할 때는 자동 백화점가를 수동가의 초기값으로
+                // 저장한다. 참조 제품에 수동가가 있으면 그 값은 보존한다.
+                deptPriceManual: parseFloat(docData.deptPriceManual) > 0
+                    ? docData.deptPriceManual
+                    : (docData.deptPrice || 0),
+                deptPriceManual18k: parseFloat(docData.deptPriceManual18k) > 0
+                    ? docData.deptPriceManual18k
+                    : (docData.deptPrice18k || 0),
+                createdAt: new Date(),
+                updatedAt: new Date()
+            });
         }
         window.Utils.showNotification(`${checkedIds.length}개 항목이 제품가격표에 추가되었습니다.`, 'success');
         if (window.ProductRatesModule?.products !== undefined) {
@@ -987,7 +999,17 @@ window.NewProductPricingModule = {
             const calculated = this.calculate(data);
             const { id, ...docData } = calculated;
             await window.firebaseDb.collection('prices').doc('productRates')
-                .collection('items').add({ ...docData, createdAt: new Date(), updatedAt: new Date() });
+                .collection('items').add({
+                    ...docData,
+                    deptPriceManual: parseFloat(docData.deptPriceManual) > 0
+                        ? docData.deptPriceManual
+                        : (docData.deptPrice || 0),
+                    deptPriceManual18k: parseFloat(docData.deptPriceManual18k) > 0
+                        ? docData.deptPriceManual18k
+                        : (docData.deptPrice18k || 0),
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                });
             window.Utils.showNotification('제품가격표에 추가되었습니다.', 'success');
             // ProductRatesModule이 열려 있다면 갱신
             if (window.ProductRatesModule?.products !== undefined) {
