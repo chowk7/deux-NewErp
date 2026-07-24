@@ -429,7 +429,7 @@ window.NewProductPricingModule = {
             document.querySelectorAll('#newProductPricingTbody .row-checkbox:checked')
         ).map(cb => cb.dataset.id);
         if (checkedIds.length === 0) return;
-        if (!(await window.Utils.confirm(`선택한 ${checkedIds.length}개 항목을 제품가격표에 추가하시겠습니까?`))) return;
+        if (!(await window.Utils.confirm(`선택한 ${checkedIds.length}개 항목을 제품가격표에 추가하시겠습니까?`, '추가'))) return;
 
         const col = window.firebaseDb.collection('prices').doc('productRates').collection('items');
         for (const id of checkedIds) {
