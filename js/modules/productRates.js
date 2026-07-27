@@ -210,6 +210,36 @@ window.ProductRatesModule = {
         return { updatedCount, matchedCount: matchedProducts.length };
     },
 
+    async recalculateAllProducts() {
+        await Promise.all([this.loadDiamondRates(), this.load()]);
+
+        if (this.products.length === 0) {
+            return { updatedCount: 0 };
+        }
+
+        const collection = window.firebaseDb.collection('prices').doc('productRates').collection('items');
+        let updatedCount = 0;
+
+        for (let start = 0; start < this.products.length; start += 500) {
+            const batch = window.firebaseDb.batch();
+            const chunk = this.products.slice(start, start + 500);
+
+            chunk.forEach(product => {
+                const calculated = this.calculate(this._buildRecalculationInput(product));
+                batch.update(collection.doc(product.id), {
+                    ...calculated,
+                    updatedAt: new Date()
+                });
+                updatedCount += 1;
+            });
+
+            await batch.commit();
+        }
+
+        await this.load();
+        return { updatedCount };
+    },
+
     _normalizeStoneSize(value) {
         const size = String(value || '').trim();
         return this.DEPARTMENT_STONE_SIZES.includes(size) ? size : '';

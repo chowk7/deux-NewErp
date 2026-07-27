@@ -540,7 +540,27 @@ window.PriceManagementModule = {
                     updatedAt: new Date()
                 }, { merge: true })
         ]);
+
+        await this._syncProductRatesForPriceSettings();
+
         alert('가격 설정이 저장되었습니다.');
+    },
+
+    async _syncProductRatesForPriceSettings() {
+        if (!window.ProductRatesModule?.recalculateAllProducts) return;
+
+        try {
+            const result = await window.ProductRatesModule.recalculateAllProducts();
+            if (result?.updatedCount > 0) {
+                window.Utils.showNotification(
+                    `제품가격표 ${result.updatedCount}개 항목의 판매원가·이익을 다시 계산했습니다.`,
+                    'success'
+                );
+            }
+        } catch (error) {
+            console.error('Failed to sync product rates from price settings:', error);
+            window.Utils.showNotification('제품가격표 재계산 중 오류가 발생했습니다.', 'error');
+        }
     },
 
     _legacyStonePricesFromMatrix(rows) {
