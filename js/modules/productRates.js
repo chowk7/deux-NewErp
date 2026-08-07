@@ -39,6 +39,7 @@ window.ProductRatesModule = {
         { key: 'deptPriceManual', label: '백화점가(수동)',  type: 'number', calc: false },
         { key: 'deptProfit',      label: '백화점이익',      type: 'number', calc: true },
         { key: 'deptProfitRate',  label: '백화점이익률(%)', type: 'number', calc: true },
+        { key: 'deptDiscountRate',label: '백화점 할인율(%)', type: 'number', calc: false },
         { key: 'goldValue18k',    label: '18K금값',         type: 'number', calc: true },
         { key: 'marginPrice18k',  label: '18K마진포함가',   type: 'number', calc: true },
         { key: 'finalPrice18k',   label: '18K최종소비자가', type: 'number', calc: false },
@@ -106,6 +107,7 @@ window.ProductRatesModule = {
             'deptPrice',
             'deptPriceManual',
             'deptProfit',
+            'deptDiscountRate',
             'deptPrice18k',
             'deptPriceManual18k',
             'deptProfit18k',
@@ -323,10 +325,24 @@ window.ProductRatesModule = {
             departmentStonePriceMatrix: window.Utils.normalizeDeptStoneRowsFromPrices(stonePrices)
         };
 
-        const snap = await window.firebaseDb
-            .collection('prices').doc('productRates').collection('items')
-            .orderBy('createdAt', 'desc').get();
-        this.products = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const [snap, discountsSnap] = await Promise.all([
+            window.firebaseDb
+                .collection('prices').doc('productRates').collection('items')
+                .orderBy('createdAt', 'desc').get(),
+            // DI store management의 백화점가 메뉴가 같은 컬렉션을 읽어 할인가를
+            // 계산한다 — 여기서도 그대로 읽어와 병합하면 두 화면이 항상 같은
+            // 값을 보게 된다 (별도 동기화 로직 불필요, 같은 Firestore 프로젝트).
+            window.firebaseDb
+                .collection('adminSettings').doc('productDiscounts').collection('items').get()
+                .catch(() => ({ docs: [] }))
+        ]);
+        const discountRates = {};
+        discountsSnap.docs.forEach(d => { discountRates[d.id] = d.data().discountRate || 0; });
+        this.products = snap.docs.map(d => ({
+            id: d.id,
+            ...d.data(),
+            deptDiscountRate: discountRates[d.id] ?? d.data().deptDiscountRate ?? 0
+        }));
         this.sortState = { column: null, direction: 'asc' };
         this.activeCategory = '전체';
         this.searchQuery = '';
@@ -853,14 +869,21 @@ window.ProductRatesModule = {
                 // finalPrice는 Firestore에 sizeAddFee 포함값으로 저장되어 있으므로
                 // calculate() 재호출 전 sizeAddFee를 빼서 정규화 (double-add 방지)
                 const calculated = this.calculate(this._buildRecalculationInput(data));
+                let savedId = productId;
                 if (productId) {
                     await window.firebaseDb.collection('prices').doc('productRates')
                         .collection('items').doc(productId)
                         .update({ ...calculated, updatedAt: new Date() });
                 } else {
-                    await window.firebaseDb.collection('prices').doc('productRates')
+                    const ref = await window.firebaseDb.collection('prices').doc('productRates')
                         .collection('items').add({ ...calculated, createdAt: new Date(), updatedAt: new Date() });
+                    savedId = ref.id;
                 }
+                // DI store management의 백화점가 메뉴가 읽는 것과 동일한 문서에
+                // 써서 두 화면의 할인율이 항상 같은 값을 가리키게 한다.
+                await window.firebaseDb.collection('adminSettings').doc('productDiscounts')
+                    .collection('items').doc(savedId)
+                    .set({ discountRate: calculated.deptDiscountRate || 0, updatedAt: new Date() }, { merge: true });
                 w.remove();
                 await this.load();
             }
