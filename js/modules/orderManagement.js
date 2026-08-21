@@ -368,7 +368,7 @@ window.OrderManagementModule = {
                 const previousPrice = Number(row.querySelector('[data-stone-price]')?.value || baseStone.stonePrice || 0) || 0;
                 const previousWarrantyFee = Number(row.querySelector('[data-stone-warranty-fee]')?.value || baseStone.warrantyFee || 0) || 0;
                 const diamond = this._getDiamondRateByType(stoneType);
-                const stonePrice = diamond ? (Number(diamond.costWithVat || 0) || 0) : previousPrice;
+                const stonePrice = diamond ? (Number(diamond.costWithoutVat || 0) || 0) : previousPrice;
                 const warrantyFee = diamond ? this._getWarrantyFee(diamond, stoneCert) * stoneQty : previousWarrantyFee;
 
                 return this._normalizeStoneItem({

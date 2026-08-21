@@ -19,14 +19,14 @@ window.ManufacturingCostsModule = {
         { key: 'goldWeightPure',  label: '금중량순금해리(g)',type: 'number' },
         { key: 'goldMarketPrice', label: '금시세(순금1g)',  type: 'number' },
         { key: 'goldValue_auto',  label: '금값(자동)',      type: 'number', calc: true },
-        { key: 'goldValue',       label: '금값(입력)',      type: 'number' },
-        { key: 'settingCost',     label: '물림비',         type: 'number' },
-        { key: 'laborCost',       label: '공임',           type: 'number' },
-        { key: 'platingCost',     label: '도금/각인',      type: 'number' },
-        { key: 'stoneCostManual', label: '나석가격(수동입력)',type: 'number' },
-        { key: 'stoneCostRef',    label: '나석가격(참고)',  type: 'number', calc: true },
-        { key: 'otherCost',       label: '기타비용',       type: 'number' },
-        { key: 'manufacturingCost',label: '제조가격',      type: 'number', calc: true },
+        { key: 'goldValue',       label: '금값(입력, VAT별도)',      type: 'number' },
+        { key: 'settingCost',     label: '물림비(VAT별도)',         type: 'number' },
+        { key: 'laborCost',       label: '공임(VAT별도)',           type: 'number' },
+        { key: 'platingCost',     label: '도금/각인(VAT별도)',      type: 'number' },
+        { key: 'stoneCostManual', label: '나석가격(수동입력, VAT별도)',type: 'number' },
+        { key: 'stoneCostRef',    label: '나석가격(참고, VAT별도)',  type: 'number', calc: true },
+        { key: 'otherCost',       label: '기타비용(VAT별도)',       type: 'number' },
+        { key: 'manufacturingCost',label: '제조가격(VAT포함)', type: 'number', calc: true },
         { key: 'delivered',       label: '배송완료',       type: 'checkbox' },
         { key: 'inputCompleted',  label: '입력 완료',      type: 'checkbox' },
         { key: 'salesProfit',     label: '매출이익',       type: 'number', calc: true },
@@ -808,12 +808,16 @@ window.ManufacturingCostsModule = {
         // 수동입력이 있으면 수동, 없으면 참고값 사용
         const stoneUsed = n('stoneCostManual') > 0 ? n('stoneCostManual') : stoneCostRef;
 
-        // 제조가격 = 금값 + 물림비 + 공임 + 나석가격 + 기타비용
-        const manufacturingCost = appliedGoldValue + n('settingCost') + n('laborCost') +
+        // 제조가격 = (금값 + 물림비 + 공임 + 나석가격 + 기타비용, VAT미포함 입력) × 1.1
+        // 입력 항목은 전부 부가세 포함 전 금액으로 입력하고, 여기서 VAT를 얹어
+        // 제조가격을 VAT포함 기준으로 만든다. productRates.js의 salesCost(자재원가
+        // ×1.1 + 배송비)와 같은 원리이며, 이 표에는 배송비처럼 이미 VAT가 포함된
+        // 항목이 없어 전체 합산액에 그대로 1.1을 곱한다.
+        const manufacturingCostExVat = appliedGoldValue + n('settingCost') + n('laborCost') +
             n('platingCost') + stoneUsed + n('otherCost');
+        const manufacturingCost = manufacturingCostExVat * 1.1;
 
-        // 3️⃣ 매출이익 = 매출 × (1 - 수수료율(%)/100) - 제조가격
-        // commissionRate는 판매표에서 오는 필드
+        // 3️⃣ 매출이익 = 매출 × (1 - 수수료율(%)/100) - 제조가격(VAT포함)
         const commissionRate = n('commissionRate') || 0;
         const netSalesAmount = n('salesAmount') * (1 - commissionRate / 100);
         const salesProfit = netSalesAmount - manufacturingCost;
@@ -1019,7 +1023,7 @@ window.ManufacturingCostsModule = {
                         existingStones = product.stones.map(s => {
                             const stoneTypeKey = s.stoneType || s.type || '';
                             const diamond = this.diamondRates.find(d => d.diamondType === stoneTypeKey);
-                            const stonePrice = diamond?.costWithVat || 0;
+                            const stonePrice = diamond?.costWithoutVat || 0;
                             const qty = s.stoneQty || s.qty || 0;
                             const warrantyFee = (productWarranty === 'VS' ? (diamond?.vsWarrantyFee || 0)
                                              : productWarranty === 'VVS' ? (diamond?.vvsWarrantyFee || 0) : 0) * qty;
@@ -1064,7 +1068,7 @@ window.ManufacturingCostsModule = {
                         // 나석 가격 자동 입력
                         const priceInput = wrapper.querySelector(`[name="stonePrice${i}"]`);
                         if (priceInput) {
-                            priceInput.value = selectedStone.costWithVat || '';
+                            priceInput.value = selectedStone.costWithoutVat || '';
                         }
 
                         // 보증서 기본값 제안 (증명서 필드에 미리 값 설정)
@@ -1204,7 +1208,7 @@ window.ManufacturingCostsModule = {
                 .filter(s => s.type && s.qty > 0)
                 .map(s => {
                     const diamond = diamondRates.find(d => d.diamondType === s.type);
-                    const stonePrice = diamond?.costWithVat || 0;
+                    const stonePrice = diamond?.costWithoutVat || 0;
                     const totalPrice = stonePrice * s.qty;
                     const warrantyFee = warranty === 'VS'  ? (diamond?.vsWarrantyFee  || 0)
                                       : warranty === 'VVS' ? (diamond?.vvsWarrantyFee || 0) : 0;
@@ -1300,7 +1304,7 @@ window.ManufacturingCostsModule = {
                         const typeKey = s.type || s.stoneType || '';
                         const qty = s.qty || s.stoneQty || 0;
                         const diamond = diamondRates.find(d => d.diamondType === typeKey);
-                        const stonePrice = diamond?.costWithVat || 0;
+                        const stonePrice = diamond?.costWithoutVat || 0;
                         const warrantyFee = (warranty === 'VS'  ? (diamond?.vsWarrantyFee  || 0)
                                           : warranty === 'VVS' ? (diamond?.vvsWarrantyFee || 0) : 0) * qty;
                         return { stoneType: typeKey, stoneQty: qty, stonePrice, totalPrice: stonePrice * qty, warrantyFee };

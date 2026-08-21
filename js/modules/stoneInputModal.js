@@ -197,7 +197,7 @@ window.StoneInputModalModule = {
         const diamond = this.diamondRates.find(d => d.diamondType === diamondType);
 
         if (diamond) {
-            const price = diamond.costWithVat || 0;
+            const price = diamond.costWithoutVat || 0;
             const display = wrapper.querySelector('#stonePriceDisplay');
             if (display) {
                 display.value = price;
@@ -251,7 +251,7 @@ window.StoneInputModalModule = {
 
         // 단가: 사용자가 수동 입력한 값 우선 사용
         const priceDisplay = wrapper.querySelector('#stonePriceDisplay');
-        const stonePrice = parseFloat(priceDisplay?.value) || diamond.costWithVat || 0;
+        const stonePrice = parseFloat(priceDisplay?.value) || diamond.costWithoutVat || 0;
         const totalPrice = stonePrice * qty;
         const warrantyFee = this.getWarrantyFee(diamond, cert) * qty;
 
