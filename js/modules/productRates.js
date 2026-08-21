@@ -272,7 +272,7 @@ window.ProductRatesModule = {
         return parseFloat(row.prices?.[sizeKey]) || 0;
     },
 
-    _calculateDepartmentPricing({ stones, category, finalPrice, salesCost, deptFee, stoneWarrantyFee, stoneW, deptPriceManual }) {
+    _calculateDepartmentPricing({ stones, category, finalPrice, salesCost, deptFee, stoneWarrantyFee, stoneW, deptPriceManual, deptDiscountRate }) {
         const stoneDeptMargin = parseFloat(this.settings?.departmentStoneMargin) || 15;
         const normalizedStones = Array.isArray(stones) ? stones : [];
 
@@ -301,9 +301,14 @@ window.ProductRatesModule = {
         const nonStoneDeptPrice = Math.max(deptPriceBasis - stoneRetailTotal, 0);
         const stoneRevenue = stoneRetailTotal * (1 - stoneDeptMargin / 100);
         const baseRevenue = nonStoneDeptPrice * (1 - deptFee / 100);
-        const deptRevenue = baseRevenue + stoneRevenue;
+        // 백화점 할인율(deptDiscountRate)은 나석 포함 전체 판매가에 동일하게
+        // 적용된다(DI_store_mangement의 discountPrice 계산과 동일 기준). 매출을
+        // 할인 후 실제 수령액으로 낮춘 뒤 이익/이익률을 계산한다.
+        const discountFactor = 1 - ((parseFloat(deptDiscountRate) || 0) / 100);
+        const deptRevenue = (baseRevenue + stoneRevenue) * discountFactor;
+        const deptSellPrice = deptPriceBasis * discountFactor;
         const deptProfit = deptRevenue - (parseFloat(salesCost) || 0) - ((parseFloat(stoneW) || 0) * 0.8);
-        const deptProfitRate = deptPriceBasis > 0 ? (deptProfit / deptPriceBasis) * 100 : 0;
+        const deptProfitRate = deptSellPrice > 0 ? (deptProfit / deptSellPrice) * 100 : 0;
 
         return { deptPrice, deptPriceManual: deptPriceBasis, deptProfit, deptProfitRate, stoneRetailTotal };
     },
@@ -728,7 +733,8 @@ window.ProductRatesModule = {
             deptFee,
             stoneWarrantyFee,
             stoneW,
-            deptPriceManual: data.deptPriceManual
+            deptPriceManual: data.deptPriceManual,
+            deptDiscountRate: data.deptDiscountRate
         });
         const deptCalc18k = this._calculateDepartmentPricing({
             stones,
@@ -738,7 +744,8 @@ window.ProductRatesModule = {
             deptFee,
             stoneWarrantyFee,
             stoneW,
-            deptPriceManual: data.deptPriceManual18k
+            deptPriceManual: data.deptPriceManual18k,
+            deptDiscountRate: data.deptDiscountRate
         });
         const deptPrice = deptCalc14k.deptPrice;
         const deptPriceManual = deptCalc14k.deptPriceManual;
