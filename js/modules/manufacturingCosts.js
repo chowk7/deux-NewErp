@@ -756,10 +756,12 @@ window.ManufacturingCostsModule = {
         //
         // 1️⃣ 금값 = 금중량순금해리(g) × 금시세(순금1g)
         const goldValue_auto = n('goldWeightPure') * n('goldMarketPrice');
-        const rawGoldValue = data.goldValue;
-        const hasManualGoldValue = rawGoldValue !== undefined &&
-            rawGoldValue !== null &&
-            String(rawGoldValue).trim() !== '';
+        // 0은 "수동으로 0원 입력"이 아니라 "수동입력 안 함"으로 간주한다
+        // (나석가격(수동입력)의 stoneCostManual과 동일한 규칙). 값이 비어있지
+        // 않기만 하면 override로 보던 이전 로직은, 과거 데이터에 저장된 숫자
+        // 0이 그대로 폼에 표시되면서 금값(자동)을 항상 0으로 덮어써버리는
+        // 문제가 있었다.
+        const hasManualGoldValue = n('goldValue') > 0;
         const goldValue = hasManualGoldValue ? n('goldValue') : '';
         const appliedGoldValue = hasManualGoldValue ? goldValue : goldValue_auto;
 
