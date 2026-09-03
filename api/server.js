@@ -98,6 +98,34 @@ frontendJsCandidates.forEach(dir => app.use('/js', express.static(dir, noCacheSt
 const db = admin.firestore();
 const storage = admin.storage();
 
+const ADMIN_EMAILS = new Set([
+    'learbre.12@gmail.com',
+    'lub2sky@gmail.com'
+]);
+
+const MENU_DEFINITIONS = [
+    { id: 'dashboard', label: '대시보드', section: '공통' },
+    { id: 'diamond-rates', label: '나석단가표', section: '가격관리' },
+    { id: 'product-rates', label: '제품가격표', section: '가격관리' },
+    { id: 'new-product-pricing', label: '신제품가격산정', section: '가격관리' },
+    { id: 'gold-inventory', label: '금재고', section: '가격관리' },
+    { id: 'customers', label: '고객목록표', section: '가격관리' },
+    { id: 'option-charges', label: '각줄추가금액', section: '가격관리' },
+    { id: 'price-settings', label: '가격옵션', section: '가격관리' },
+    { id: 'orders', label: '매출표', section: '매출관리' },
+    { id: 'manufacturing-costs', label: '제조원가표', section: '매출관리' },
+    { id: 'admin-expenses', label: '판관비', section: '매출관리' },
+    { id: 'profit-loss', label: 'P&L표', section: '매출관리' },
+    { id: 'promotion', label: '프로모션', section: '기타' },
+    { id: 'notes', label: '노트', section: '기타' },
+    { id: 'images', label: '이미지 관리', section: '기타' },
+    { id: 'word-templates', label: '양식 관리', section: '기타' },
+    { id: 'inventory', label: '재고관리', section: '기타' },
+    { id: 'admin-menu', label: '관리자메뉴', section: '기타', adminOnly: true }
+];
+
+const STAFF_DEFAULT_MENUS = ['dashboard'];
+
 // GCP Storage (new_erp 버킷)
 const gcsClient = new Storage();
 const GCS_BUCKET = process.env.GCS_BUCKET_NAME || 'new_erp';
@@ -165,12 +193,292 @@ const verifyToken = async (req, res, next) => {
         const token = authHeader.substring(7);
         const decodedToken = await admin.auth().verifyIdToken(token);
         req.userId = decodedToken.uid;
+        req.userToken = decodedToken;
         next();
     } catch (error) {
         console.error('Token verification error:', error);
         res.status(401).json({ error: 'Invalid token' });
     }
 };
+
+const normalizeRole = (role) => {
+    const normalized = String(role || '').trim().toLowerCase();
+    if (normalized === 'admin' || normalized === 'manager' || normalized === 'staff') {
+        return normalized;
+    }
+    if (normalized === 'user') return 'staff';
+    return 'staff';
+};
+
+const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
+
+const isAdminEmail = (email) => ADMIN_EMAILS.has(normalizeEmail(email));
+
+const normalizeMenuIds = (menuIds = [], { includeAdminMenus = false } = {}) => {
+    const allowedMenuIds = MENU_DEFINITIONS
+        .filter((menu) => includeAdminMenus || !menu.adminOnly)
+        .map((menu) => menu.id);
+    const allowedSet = new Set(allowedMenuIds);
+    const normalized = Array.isArray(menuIds)
+        ? menuIds
+            .map((menuId) => String(menuId || '').trim())
+            .filter((menuId) => allowedSet.has(menuId))
+        : [];
+
+    if (!normalized.includes('dashboard')) normalized.unshift('dashboard');
+    return Array.from(new Set(normalized));
+};
+
+const getMenuPermissionsDoc = async () => {
+    const doc = await db.collection('adminSettings').doc('menuPermissions').get();
+    const data = doc.exists ? (doc.data() || {}) : {};
+    return {
+        staffMenus: normalizeMenuIds(data.staffMenus, { includeAdminMenus: false })
+    };
+};
+
+const getAllowedMenusForRole = async (role) => {
+    const normalizedRole = normalizeRole(role);
+    if (normalizedRole === 'admin') {
+        return MENU_DEFINITIONS.map((menu) => menu.id);
+    }
+    if (normalizedRole === 'manager') {
+        return MENU_DEFINITIONS.filter((menu) => !menu.adminOnly).map((menu) => menu.id);
+    }
+
+    const config = await getMenuPermissionsDoc();
+    return normalizeMenuIds(
+        config.staffMenus?.length ? config.staffMenus : STAFF_DEFAULT_MENUS,
+        { includeAdminMenus: false }
+    );
+};
+
+const getRoleFromClaims = (claims = {}) => {
+    if (!claims || typeof claims !== 'object') return null;
+    if (claims.role) return normalizeRole(claims.role);
+    if (claims.admin === true) return 'admin';
+    if (claims.manager === true) return 'manager';
+    if (claims.staff === true) return 'staff';
+    return null;
+};
+
+const getAuthUserSafe = async (uid) => {
+    try {
+        return await admin.auth().getUser(uid);
+    } catch (error) {
+        if (error?.code === 'auth/user-not-found') return null;
+        throw error;
+    }
+};
+
+const buildUserProfile = ({ uid, firestoreData = {}, authUser = null, tokenData = null }) => {
+    const claimsRole = getRoleFromClaims(authUser?.customClaims || tokenData);
+    const firestoreRole = firestoreData?.role;
+    const resolvedEmail = firestoreData?.email || authUser?.email || tokenData?.email || '';
+    const resolvedRole = isAdminEmail(resolvedEmail)
+        ? 'admin'
+        : normalizeRole(firestoreRole || claimsRole || 'staff');
+    return {
+        uid,
+        email: resolvedEmail,
+        displayName: firestoreData?.displayName || authUser?.displayName || tokenData?.name || '',
+        createdAt: firestoreData?.createdAt || null,
+        updatedAt: firestoreData?.updatedAt || null,
+        role: resolvedRole
+    };
+};
+
+const getUserProfile = async (uid, tokenData = null) => {
+    const doc = await db.collection('users').doc(uid).get();
+    const data = doc.exists ? (doc.data() || {}) : {};
+    let authUser = null;
+
+    try {
+        authUser = await getAuthUserSafe(uid);
+    } catch (error) {
+        console.warn('Auth profile lookup fallback:', error?.message || error);
+    }
+
+    return buildUserProfile({ uid, firestoreData: data, authUser, tokenData });
+};
+
+const requireRole = (roles) => async (req, res, next) => {
+    try {
+        const profile = await getUserProfile(req.userId, req.userToken);
+        req.userProfile = profile;
+
+        if (!roles.includes(profile.role)) {
+            return res.status(403).json({ error: '권한이 없습니다.' });
+        }
+
+        next();
+    } catch (error) {
+        console.error('Role verification error:', error);
+        res.status(500).json({ error: '권한 확인 중 오류가 발생했습니다.' });
+    }
+};
+
+// ===== 사용자/권한 API =====
+
+app.get('/api/users/me', verifyToken, async (req, res) => {
+    try {
+        const profile = await getUserProfile(req.userId, req.userToken);
+        const allowedMenus = await getAllowedMenusForRole(profile.role);
+        res.status(200).json({
+            ...profile,
+            allowedMenus
+        });
+    } catch (error) {
+        console.error('Error fetching my profile:', error);
+        res.status(500).json({ error: '사용자 정보를 불러오지 못했습니다.' });
+    }
+});
+
+app.get('/api/settings/menu-permissions', verifyToken, requireRole(['admin']), async (req, res) => {
+    try {
+        const config = await getMenuPermissionsDoc();
+        res.status(200).json({
+            staffMenus: normalizeMenuIds(config.staffMenus, { includeAdminMenus: false }),
+            availableMenus: MENU_DEFINITIONS.filter((menu) => !menu.adminOnly)
+        });
+    } catch (error) {
+        console.error('Error fetching menu permissions:', error);
+        res.status(500).json({ error: '메뉴 권한 설정을 불러오지 못했습니다.' });
+    }
+});
+
+app.put('/api/settings/menu-permissions', verifyToken, requireRole(['admin']), async (req, res) => {
+    try {
+        const staffMenus = normalizeMenuIds(req.body?.staffMenus, { includeAdminMenus: false });
+
+        await db.collection('adminSettings').doc('menuPermissions').set({
+            staffMenus,
+            updatedAt: admin.firestore.Timestamp.now(),
+            updatedBy: req.userId
+        }, { merge: true });
+
+        res.status(200).json({
+            message: '스태프 메뉴 권한을 저장했습니다.',
+            staffMenus
+        });
+    } catch (error) {
+        console.error('Error updating menu permissions:', error);
+        res.status(500).json({ error: '메뉴 권한을 저장하지 못했습니다.' });
+    }
+});
+
+app.get('/api/users', verifyToken, requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+        const snapshot = await db.collection('users').get();
+        const firestoreMap = new Map();
+        snapshot.forEach((doc) => firestoreMap.set(doc.id, doc.data() || {}));
+
+        const authUsers = [];
+        let nextPageToken;
+        do {
+            const result = await admin.auth().listUsers(1000, nextPageToken);
+            authUsers.push(...result.users);
+            nextPageToken = result.pageToken;
+        } while (nextPageToken);
+
+        const merged = new Map();
+
+        authUsers.forEach((authUser) => {
+            merged.set(authUser.uid, buildUserProfile({
+                uid: authUser.uid,
+                firestoreData: firestoreMap.get(authUser.uid) || {},
+                authUser
+            }));
+        });
+
+        firestoreMap.forEach((data, uid) => {
+            if (!merged.has(uid)) {
+                merged.set(uid, buildUserProfile({ uid, firestoreData: data, authUser: null }));
+            }
+        });
+
+        const users = Array.from(merged.values())
+            .sort((a, b) => String(a.email || '').localeCompare(String(b.email || ''), 'ko'));
+
+        res.status(200).json(users);
+    } catch (error) {
+        console.error('Error fetching users:', error);
+        res.status(500).json({ error: '직원 목록을 불러오지 못했습니다.' });
+    }
+});
+
+app.put('/api/users/:uid/role', verifyToken, requireRole(['admin']), async (req, res) => {
+    try {
+        const { uid } = req.params;
+        const nextRole = normalizeRole(req.body?.role);
+
+        if (!['staff', 'manager'].includes(nextRole)) {
+            return res.status(400).json({ error: '권한은 staff 또는 manager만 설정할 수 있습니다.' });
+        }
+
+        if (uid === req.userId) {
+            return res.status(400).json({ error: '자기 자신의 권한은 변경할 수 없습니다.' });
+        }
+
+        const targetProfile = await getUserProfile(uid);
+        if (targetProfile.role === 'admin') {
+            return res.status(400).json({ error: '관리자 계정 권한은 여기서 변경할 수 없습니다.' });
+        }
+
+        const authUser = await getAuthUserSafe(uid);
+
+        if (authUser) {
+            const currentClaims = authUser.customClaims || {};
+            await admin.auth().setCustomUserClaims(uid, {
+                ...currentClaims,
+                role: nextRole,
+                admin: nextRole === 'admin',
+                manager: nextRole === 'manager',
+                staff: nextRole === 'staff'
+            });
+        }
+
+        await db.collection('users').doc(uid).set({
+            email: targetProfile.email || authUser?.email || '',
+            displayName: targetProfile.displayName || authUser?.displayName || '',
+            role: nextRole,
+            updatedAt: admin.firestore.Timestamp.now(),
+            updatedBy: req.userId
+        }, { merge: true });
+
+        res.status(200).json({ message: '직원 권한이 수정되었습니다.' });
+    } catch (error) {
+        console.error('Error updating user role:', error);
+        res.status(500).json({ error: '직원 권한을 수정하지 못했습니다.' });
+    }
+});
+
+app.delete('/api/users/:uid', verifyToken, requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+        const { uid } = req.params;
+
+        if (uid === req.userId) {
+            return res.status(400).json({ error: '자기 자신의 계정은 삭제할 수 없습니다.' });
+        }
+
+        const targetProfile = await getUserProfile(uid);
+        if (targetProfile.role === 'admin') {
+            return res.status(400).json({ error: '관리자 계정은 삭제할 수 없습니다.' });
+        }
+
+        try {
+            await admin.auth().deleteUser(uid);
+        } catch (error) {
+            if (error?.code !== 'auth/user-not-found') throw error;
+        }
+        await db.collection('users').doc(uid).delete().catch(() => {});
+
+        res.status(200).json({ message: '직원 계정을 삭제했습니다.' });
+    } catch (error) {
+        console.error('Error deleting user:', error);
+        res.status(500).json({ error: '직원 계정을 삭제하지 못했습니다.' });
+    }
+});
 
 // ===== 가격관리 API =====
 

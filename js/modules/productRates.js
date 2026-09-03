@@ -12,19 +12,20 @@ window.ProductRatesModule = {
           options: ['R(반지)','N(목걸이)','B(팔찌)','E(귀걸이)','기타'] },
         { key: 'productName',     label: '상품명',          type: 'text',   calc: false },
         { key: 'size',            label: '사이즈',          type: 'text',   calc: false },
-        { key: 'sizeAddFee',      label: '사이즈추가금',    type: 'number', calc: false },
+        { key: 'sizeAddFee14k',   label: '14K사이즈추가금', type: 'number', calc: false },
+        { key: 'sizeAddFee18k',   label: '18K사이즈추가금', type: 'number', calc: false },
         { key: 'stones',          label: '나석 정보',       type: 'custom', calc: false },
-        { key: 'stoneCost',       label: '나석원가',        type: 'number', calc: true },
+        { key: 'stoneCost',       label: '나석원가(VAT별도)', type: 'number', calc: true },
         { key: 'stoneWarranty',   label: '보증서',         type: 'select', calc: false, options: ['없음', 'VS', 'VVS'] },
         { key: 'stoneWarrantyFee',label: '보증서추가금',    type: 'number', calc: true },
         { key: 'workshop',        label: '공방',            type: 'text',   calc: false },
-        { key: 'laborCost',       label: '공임비',          type: 'number', calc: false },
+        { key: 'laborCost',       label: '공임비(VAT별도)', type: 'number', calc: false },
         { key: 'goldWeight14k',   label: '금중량(14K기준g)', type: 'number', calc: false },
-        { key: 'goldValue',       label: '금값',            type: 'number', calc: true },
-        { key: 'otherMaterial',   label: '기타재료',        type: 'number', calc: false },
-        { key: 'productCost',     label: '제품원가',        type: 'number', calc: true },
+        { key: 'goldValue',       label: '금값(VAT별도)',   type: 'number', calc: true },
+        { key: 'otherMaterial',   label: '기타재료(VAT별도)', type: 'number', calc: false },
+        { key: 'productCost',     label: '제품원가(VAT별도)', type: 'number', calc: true },
         { key: 'vatCost',         label: 'VAT포함원가',     type: 'number', calc: true },
-        { key: 'shipping',        label: '배송및패키지',    type: 'number', calc: false },
+        { key: 'shipping',        label: '배송및패키지(VAT포함)', type: 'number', calc: false },
         { key: 'salesCost',       label: '판매원가',        type: 'number', calc: true },
         { key: 'marginPrice',     label: '마진포함가',      type: 'number', calc: true },
         { key: 'priceAdj',        label: '가격조정',        type: 'number', calc: false },
@@ -34,16 +35,19 @@ window.ProductRatesModule = {
         { key: 'discountPrice',   label: '할인가',          type: 'number', calc: true },
         { key: 'ownMallProfit',   label: '자사몰이익',      type: 'number', calc: true },
         { key: 'ownMallProfitRate',label: '자사몰이익률(%)', type: 'number', calc: true },
-        { key: 'deptPrice',       label: '백화점가',        type: 'number', calc: true },
+        { key: 'deptPrice',       label: '백화점가(자동)',  type: 'number', calc: true },
+        { key: 'deptPriceManual', label: '백화점가(수동)',  type: 'number', calc: false },
         { key: 'deptProfit',      label: '백화점이익',      type: 'number', calc: true },
         { key: 'deptProfitRate',  label: '백화점이익률(%)', type: 'number', calc: true },
-        { key: 'goldValue18k',    label: '18K금값',         type: 'number', calc: true },
+        { key: 'deptDiscountRate',label: '백화점 할인율(%)', type: 'number', calc: false },
+        { key: 'goldValue18k',    label: '18K금값(VAT별도)', type: 'number', calc: true },
         { key: 'marginPrice18k',  label: '18K마진포함가',   type: 'number', calc: true },
         { key: 'finalPrice18k',   label: '18K최종소비자가', type: 'number', calc: false },
         { key: 'discountPrice18k',label: '18K할인가',       type: 'number', calc: true },
         { key: 'ownMallProfit18k',label: '18K자사몰이익',   type: 'number', calc: true },
         { key: 'ownMallProfitRate18k', label: '18K자사몰이익률(%)', type: 'number', calc: true },
-        { key: 'deptPrice18k',    label: '18K백화점가',     type: 'number', calc: true },
+        { key: 'deptPrice18k',    label: '18K백화점가(자동)', type: 'number', calc: true },
+        { key: 'deptPriceManual18k', label: '18K백화점가(수동)', type: 'number', calc: false },
         { key: 'deptProfit18k',   label: '18K백화점이익',   type: 'number', calc: true },
         { key: 'deptProfitRate18k',label: '18K백화점이익률(%)', type: 'number', calc: true },
     ],
@@ -100,7 +104,12 @@ window.ProductRatesModule = {
             'category',
             'productCost',
             'finalPrice',
+            'deptPrice',
+            'deptPriceManual',
             'deptProfit',
+            'deptDiscountRate',
+            'deptPrice18k',
+            'deptPriceManual18k',
             'deptProfit18k',
             'ownMallProfitRate'
         ];
@@ -137,6 +146,102 @@ window.ProductRatesModule = {
         }
     },
 
+    _toNumber(value) {
+        const num = parseFloat(value);
+        return Number.isFinite(num) ? num : 0;
+    },
+
+    _buildRecalculationInput(product = {}) {
+        const clonedStones = Array.isArray(product.stones)
+            ? product.stones.map(stone => ({ ...stone }))
+            : [];
+        return {
+            ...product,
+            stones: clonedStones
+        };
+    },
+
+    async recalculateProductsForDiamondTypes(diamondTypes = [], renameMap = {}) {
+        const targetTypes = Array.from(new Set(
+            (Array.isArray(diamondTypes) ? diamondTypes : [])
+                .map(type => String(type || '').trim())
+                .filter(Boolean)
+        ));
+
+        if (targetTypes.length === 0) {
+            return { updatedCount: 0, matchedCount: 0 };
+        }
+
+        await Promise.all([this.loadDiamondRates(), this.load()]);
+
+        const matchedProducts = this.products.filter(product =>
+            Array.isArray(product.stones) &&
+            product.stones.some(stone => targetTypes.includes(String(stone?.type || '').trim()))
+        );
+
+        if (matchedProducts.length === 0) {
+            return { updatedCount: 0, matchedCount: 0 };
+        }
+
+        const hasRename = Object.keys(renameMap).length > 0;
+        const collection = window.firebaseDb.collection('prices').doc('productRates').collection('items');
+        let updatedCount = 0;
+
+        for (let start = 0; start < matchedProducts.length; start += 500) {
+            const batch = window.firebaseDb.batch();
+            const chunk = matchedProducts.slice(start, start + 500);
+
+            chunk.forEach(product => {
+                // 이름 변경 시 stones 배열의 type 필드도 갱신
+                const renamedProduct = hasRename && Array.isArray(product.stones)
+                    ? { ...product, stones: product.stones.map(s => ({ ...s, type: renameMap[s.type] || s.type })) }
+                    : product;
+                const calculated = this.calculate(this._buildRecalculationInput(renamedProduct));
+                batch.update(collection.doc(product.id), {
+                    ...calculated,
+                    ...(hasRename ? { stones: renamedProduct.stones } : {}),
+                    updatedAt: new Date()
+                });
+                updatedCount += 1;
+            });
+
+            await batch.commit();
+        }
+
+        await this.load();
+        return { updatedCount, matchedCount: matchedProducts.length };
+    },
+
+    async recalculateAllProducts() {
+        await Promise.all([this.loadDiamondRates(), this.load()]);
+
+        if (this.products.length === 0) {
+            return { updatedCount: 0 };
+        }
+
+        const collection = window.firebaseDb.collection('prices').doc('productRates').collection('items');
+        let updatedCount = 0;
+
+        for (let start = 0; start < this.products.length; start += 500) {
+            const batch = window.firebaseDb.batch();
+            const chunk = this.products.slice(start, start + 500);
+
+            chunk.forEach(product => {
+                const calculated = this.calculate(this._buildRecalculationInput(product));
+                batch.update(collection.doc(product.id), {
+                    ...calculated,
+                    updatedAt: new Date()
+                });
+                updatedCount += 1;
+            });
+
+            await batch.commit();
+        }
+
+        await this.load();
+        return { updatedCount };
+    },
+
     _normalizeStoneSize(value) {
         const size = String(value || '').trim();
         return this.DEPARTMENT_STONE_SIZES.includes(size) ? size : '';
@@ -167,7 +272,7 @@ window.ProductRatesModule = {
         return parseFloat(row.prices?.[sizeKey]) || 0;
     },
 
-    _calculateDepartmentPricing({ stones, category, finalPrice, salesCost, deptFee, stoneWarrantyFee, stoneW }) {
+    _calculateDepartmentPricing({ stones, category, finalPrice, salesCost, deptFee, stoneWarrantyFee, stoneW, deptPriceManual, deptDiscountRate }) {
         const stoneDeptMargin = parseFloat(this.settings?.departmentStoneMargin) || 15;
         const normalizedStones = Array.isArray(stones) ? stones : [];
 
@@ -184,14 +289,28 @@ window.ProductRatesModule = {
         });
 
         const deptPrice = (parseFloat(finalPrice) || 0) + (parseFloat(stoneW) || 0);
-        const nonStoneDeptPrice = Math.max(deptPrice - stoneRetailTotal, 0);
+        // 백화점이익/이익률은 백화점가(수동) 기준으로 계산한다. 수동값이 아직
+        // 없으면(신규 등록 등) 자동 계산값을 기본값으로 사용한다.
+        const manualPrice = parseFloat(deptPriceManual);
+        // 0 또는 빈 값은 아직 수동가를 지정하지 않은 상태로 보고 자동가로 초기화한다.
+        // 실제 판매가가 0원인 경우는 없으므로, 신규 등록 시 빈 number input이 0으로
+        // 변환되는 경로에서도 이익이 0원을 기준으로 계산되지 않게 한다.
+        const deptPriceBasis = Number.isFinite(manualPrice) && manualPrice > 0
+            ? manualPrice
+            : deptPrice;
+        const nonStoneDeptPrice = Math.max(deptPriceBasis - stoneRetailTotal, 0);
         const stoneRevenue = stoneRetailTotal * (1 - stoneDeptMargin / 100);
         const baseRevenue = nonStoneDeptPrice * (1 - deptFee / 100);
-        const deptRevenue = baseRevenue + stoneRevenue;
+        // 백화점 할인율(deptDiscountRate)은 나석 포함 전체 판매가에 동일하게
+        // 적용된다(DI_store_mangement의 discountPrice 계산과 동일 기준). 매출을
+        // 할인 후 실제 수령액으로 낮춘 뒤 이익/이익률을 계산한다.
+        const discountFactor = 1 - ((parseFloat(deptDiscountRate) || 0) / 100);
+        const deptRevenue = (baseRevenue + stoneRevenue) * discountFactor;
+        const deptSellPrice = deptPriceBasis * discountFactor;
         const deptProfit = deptRevenue - (parseFloat(salesCost) || 0) - ((parseFloat(stoneW) || 0) * 0.8);
-        const deptProfitRate = deptPrice > 0 ? (deptProfit / deptPrice) * 100 : 0;
+        const deptProfitRate = deptSellPrice > 0 ? (deptProfit / deptSellPrice) * 100 : 0;
 
-        return { deptPrice, deptProfit, deptProfitRate, stoneRetailTotal };
+        return { deptPrice, deptPriceManual: deptPriceBasis, deptProfit, deptProfitRate, stoneRetailTotal };
     },
 
     async load() {
@@ -211,10 +330,18 @@ window.ProductRatesModule = {
             departmentStonePriceMatrix: window.Utils.normalizeDeptStoneRowsFromPrices(stonePrices)
         };
 
+        // deptDiscountRate(백화점 할인율)는 이 문서 자체의 필드가 단일 소스다.
+        // DI store management는 이 값을 읽기 전용으로만 가져다 쓰고, 여기 제품
+        // 가격표에서만 입력/수정한다 (구 adminSettings/productDiscounts 동기화는
+        // 제거함 - 두 값이 어긋나면 옛 컬렉션 값이 새 값을 덮어쓰는 문제가 있었음).
         const snap = await window.firebaseDb
             .collection('prices').doc('productRates').collection('items')
             .orderBy('createdAt', 'desc').get();
-        this.products = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        this.products = snap.docs.map(d => ({
+            id: d.id,
+            ...d.data(),
+            deptDiscountRate: d.data().deptDiscountRate ?? 0
+        }));
         this.sortState = { column: null, direction: 'asc' };
         this.activeCategory = '전체';
         this.searchQuery = '';
@@ -571,7 +698,9 @@ window.ProductRatesModule = {
         const salesCost   = vatCost + n('shipping');
         const marginPrice = ownMargin > 0 ? salesCost / (1 - ownMargin / 100) : salesCost;
         const expectedPrice = Math.round((marginPrice + n('priceAdj')) / 1000) * 1000;
-        const finalPrice  = (n('finalPrice') || expectedPrice) + n('sizeAddFee');
+        const sizeAddFee14k = n('sizeAddFee14k') || n('sizeAddFee');
+        const sizeAddFee18k = n('sizeAddFee18k') || n('sizeAddFee');
+        const finalPrice = (n('finalPrice') || expectedPrice);
         const discountPrice = finalPrice * (1 - n('discountRate') / 100);
         const ownMallProfit = discountPrice * (1 - ownMallFee / 100) - salesCost;
         const ownMallProfitRate = discountPrice > 0 ? (ownMallProfit / discountPrice) * 100 : 0;
@@ -584,18 +713,22 @@ window.ProductRatesModule = {
         const salesCost18k  = vatCost18k + n('shipping');
         const marginPrice18k= ownMargin > 0 ? salesCost18k / (1 - ownMargin / 100) : salesCost18k;
         const expectedPrice18k = Math.round(marginPrice18k / 1000) * 1000;
-        const finalPrice18k = (n('finalPrice18k') || expectedPrice18k) + n('sizeAddFee');
+        const finalPrice18k = (n('finalPrice18k') || expectedPrice18k);
         const discountPrice18k = finalPrice18k * (1 - n('discountRate') / 100);
         const ownMallProfit18k = discountPrice18k * (1 - ownMallFee / 100) - salesCost18k;
         const ownMallProfitRate18k = discountPrice18k > 0 ? (ownMallProfit18k / discountPrice18k) * 100 : 0;
+        // deptPrice = finalPrice + stoneW (사이즈추가금 미포함)
+        // 백화점이익/이익률은 백화점가(수동)을 기준으로 계산한다 (deptPriceManual 없으면 자동값 사용)
         const deptCalc14k = this._calculateDepartmentPricing({
             stones,
             category: data.category,
-            finalPrice,
+            finalPrice: finalPrice,
             salesCost,
             deptFee,
             stoneWarrantyFee,
-            stoneW
+            stoneW,
+            deptPriceManual: data.deptPriceManual,
+            deptDiscountRate: data.deptDiscountRate
         });
         const deptCalc18k = this._calculateDepartmentPricing({
             stones,
@@ -604,26 +737,42 @@ window.ProductRatesModule = {
             salesCost: salesCost18k,
             deptFee,
             stoneWarrantyFee,
-            stoneW
+            stoneW,
+            deptPriceManual: data.deptPriceManual18k,
+            deptDiscountRate: data.deptDiscountRate
         });
         const deptPrice = deptCalc14k.deptPrice;
+        const deptPriceManual = deptCalc14k.deptPriceManual;
         const deptProfit = deptCalc14k.deptProfit;
-        const deptProfitRate = deptPrice > 0 ? (deptProfit / deptPrice) * 100 : 0;
+        const deptProfitRate = deptCalc14k.deptProfitRate;
         const deptPrice18k = deptCalc18k.deptPrice;
+        const deptPriceManual18k = deptCalc18k.deptPriceManual;
         const deptProfit18k = deptCalc18k.deptProfit;
-        const deptProfitRate18k = deptPrice18k > 0 ? (deptProfit18k / deptPrice18k) * 100 : 0;
+        const deptProfitRate18k = deptCalc18k.deptProfitRate;
 
         return { ...data, goldValue, productCost, vatCost, salesCost, marginPrice, expectedPrice,
             stoneCost, stoneWarrantyFee,
-            finalPrice, discountPrice, ownMallProfit, ownMallProfitRate, deptPrice, deptProfit, deptProfitRate,
+            finalPrice, discountPrice, ownMallProfit, ownMallProfitRate,
+            deptPrice, deptPriceManual, deptProfit, deptProfitRate,
             goldValue18k, marginPrice18k, finalPrice18k, discountPrice18k,
-            ownMallProfit18k, ownMallProfitRate18k, deptPrice18k, deptProfit18k, deptProfitRate18k };
+            ownMallProfit18k, ownMallProfitRate18k,
+            deptPrice18k, deptPriceManual18k, deptProfit18k, deptProfitRate18k };
     },
 
     async showForm(productId = null) {
         const required = await window.Utils.getRequiredFields('productRates');
         const product = productId ? this.products.find(p => p.id === productId) : null;
         const stones = product?.stones || [];
+        // 기존 제품은 수동가 필드가 없던 시점에 저장됐을 수 있다. 이 경우 현재의
+        // 자동 백화점가를 첫 수동가로 보여줘 저장 시 그대로 초기화되게 한다.
+        const initialManualPrices = {
+            deptPriceManual: this._toNumber(product?.deptPriceManual) > 0
+                ? product.deptPriceManual
+                : (product?.deptPrice ?? ''),
+            deptPriceManual18k: this._toNumber(product?.deptPriceManual18k) > 0
+                ? product.deptPriceManual18k
+                : (product?.deptPrice18k ?? '')
+        };
 
         // 입력 필드 (calc=false) + 계산 필드는 읽기 전용으로
         const stoneSizeOptions = this.DEPARTMENT_STONE_SIZES
@@ -666,7 +815,10 @@ window.ProductRatesModule = {
                                 </div>
                             </div>`;
                     }
-                    const val = product?.[f.key] ?? '';
+                    const val = initialManualPrices[f.key]
+                        ?? product?.[f.key]
+                        ?? ((f.key === 'sizeAddFee14k' || f.key === 'sizeAddFee18k') ? product?.sizeAddFee : '')
+                        ?? '';
                     const isRequired = !f.calc && required.includes(f.key);
                     let input;
                     if (f.type === 'select') {
@@ -715,7 +867,9 @@ window.ProductRatesModule = {
                     const f = this.FIELDS.find(f => f.key === k);
                     if (f?.type === 'number') data[k] = parseFloat(data[k]) || 0;
                 });
-                const calculated = this.calculate(data);
+                // finalPrice는 Firestore에 sizeAddFee 포함값으로 저장되어 있으므로
+                // calculate() 재호출 전 sizeAddFee를 빼서 정규화 (double-add 방지)
+                const calculated = this.calculate(this._buildRecalculationInput(data));
                 if (productId) {
                     await window.firebaseDb.collection('prices').doc('productRates')
                         .collection('items').doc(productId)
@@ -761,9 +915,9 @@ window.ProductRatesModule = {
                 );
 
                 // 나석 종류 컨테이너를 wrapper로 감싸고 "+" 버튼 추가
-                const wrapper = document.createElement('div');
-                wrapper.style.cssText = 'display: flex; gap: 4px; align-items: flex-start;';
-                wrapper.appendChild(searchableSelect);
+                const stoneTypeWrapper = document.createElement('div');
+                stoneTypeWrapper.style.cssText = 'display: flex; gap: 4px; align-items: flex-start;';
+                stoneTypeWrapper.appendChild(searchableSelect);
 
                 // "새로등록" 버튼
                 const addBtn = document.createElement('button');
@@ -830,7 +984,7 @@ window.ProductRatesModule = {
                                 modal.remove();
 
                                 // 새로 추가된 나석을 searchable select에 설정
-                                const stoneInput = wrapper.querySelector('.searchable-select-input[name="stoneType"]');
+                                const stoneInput = stoneTypeWrapper.querySelector('.searchable-select-input[name="stoneType"]');
                                 if (stoneInput) stoneInput.value = data.newStoneName;
 
                                 window.Utils.showNotification('신규 나석 종류가 추가되었습니다.', 'success');
@@ -842,8 +996,8 @@ window.ProductRatesModule = {
                     );
                 });
 
-                wrapper.appendChild(addBtn);
-                el.replaceWith(wrapper);
+                stoneTypeWrapper.appendChild(addBtn);
+                el.replaceWith(stoneTypeWrapper);
             });
         };
 
@@ -908,9 +1062,9 @@ window.ProductRatesModule = {
                 );
 
                 // 나석 종류 컨테이너를 wrapper로 감싸고 "+" 버튼 추가
-                const wrapper = document.createElement('div');
-                wrapper.style.cssText = 'display: flex; gap: 4px; align-items: flex-start;';
-                wrapper.appendChild(searchableSelect);
+                const stoneTypeWrapper = document.createElement('div');
+                stoneTypeWrapper.style.cssText = 'display: flex; gap: 4px; align-items: flex-start;';
+                stoneTypeWrapper.appendChild(searchableSelect);
 
                 // "새로등록" 버튼
                 const addBtn = document.createElement('button');
@@ -977,7 +1131,7 @@ window.ProductRatesModule = {
                                 modal.remove();
 
                                 // 새로 추가된 나석을 searchable select에 설정
-                                const stoneInput = wrapper.querySelector('.searchable-select-input[name="stoneType"]');
+                                const stoneInput = stoneTypeWrapper.querySelector('.searchable-select-input[name="stoneType"]');
                                 if (stoneInput) stoneInput.value = data.newStoneName;
 
                                 window.Utils.showNotification('신규 나석 종류가 추가되었습니다.', 'success');
@@ -989,8 +1143,8 @@ window.ProductRatesModule = {
                     );
                 });
 
-                wrapper.appendChild(addBtn);
-                stoneTypeContainer.replaceWith(wrapper);
+                stoneTypeWrapper.appendChild(addBtn);
+                stoneTypeContainer.replaceWith(stoneTypeWrapper);
 
                 // 삭제 버튼 이벤트
                 removeBtn.addEventListener('click', (e) => {
@@ -1033,6 +1187,13 @@ window.ProductRatesModule = {
                 const el = wrapper.querySelector(`[name="${f.key}"]`);
                 if (!el) return;
                 el.value = Math.round(calc[f.key] || 0);
+            });
+
+            // 신규 항목의 수동 백화점가는 자동 계산가를 최초값으로 넣되, 사용자가
+            // 직접 입력한 값은 이후 자동계산으로 덮어쓰지 않는다.
+            ['deptPriceManual', 'deptPriceManual18k'].forEach(key => {
+                const el = wrapper.querySelector(`[name="${key}"]`);
+                if (el && el.value === '') el.value = Math.round(calc[key] || 0);
             });
         };
 

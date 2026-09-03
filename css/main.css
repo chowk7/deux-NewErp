@@ -366,6 +366,7 @@ th.resizable .col-resize-handle.dragging {
     align-items: center;
     gap: var(--spacing-md);
     font-size: 0.875rem;
+    flex-wrap: wrap;
 }
 
 .sidebar {
@@ -549,6 +550,16 @@ th.resizable .col-resize-handle.dragging {
         align-items: flex-start;
     }
 
+    .employee-modal-toolbar {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .employee-role-edit {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
     .login-container {
         padding: var(--spacing-md);
     }
@@ -603,6 +614,67 @@ th.resizable .col-resize-handle.dragging {
     border-radius: 9999px;
     background: #f5e6dc;
     color: #3730a3;
+}
+
+.quick-actions-modal {
+    max-width: 420px;
+}
+
+.quick-actions-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.quick-actions-subtitle {
+    color: var(--text-light);
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+.employee-modal {
+    max-width: 980px;
+}
+
+.employee-modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.employee-modal-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+}
+
+.employee-modal-status {
+    color: var(--text-light);
+    font-size: 0.9rem;
+}
+
+.employee-table-wrap {
+    overflow-x: auto;
+}
+
+.employee-table th,
+.employee-table td {
+    vertical-align: middle;
+}
+
+.employee-role-edit {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.employee-role-select {
+    min-width: 120px;
+}
+
+.employee-role-badge {
+    white-space: nowrap;
 }
 
 /* ===== 이미지 링크 ===== */

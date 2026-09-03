@@ -17,16 +17,17 @@ window.ManufacturingCostsModule = {
         { key: 'stoneWeight',     label: '나석중량(참고ct)',type: 'number' },
         { key: 'goldWeight14k',   label: '금중량14K(g)',    type: 'number' },
         { key: 'goldWeightPure',  label: '금중량순금해리(g)',type: 'number' },
-        { key: 'goldMarketPrice', label: '금시세(순금1g)',  type: 'number' },
-        { key: 'goldValue_auto',  label: '금값(자동)',      type: 'number', calc: true },
-        { key: 'goldValue',       label: '금값(입력)',      type: 'number' },
-        { key: 'settingCost',     label: '물림비',         type: 'number' },
-        { key: 'laborCost',       label: '공임',           type: 'number' },
-        { key: 'platingCost',     label: '도금/각인',      type: 'number' },
-        { key: 'stoneCostManual', label: '나석가격(수동입력)',type: 'number' },
-        { key: 'stoneCostRef',    label: '나석가격(참고)',  type: 'number', calc: true },
-        { key: 'otherCost',       label: '기타비용',       type: 'number' },
-        { key: 'manufacturingCost',label: '제조가격',      type: 'number', calc: true },
+        { key: 'goldMarketPrice', label: '금시세(순금1g, VAT별도)',  type: 'number' },
+        { key: 'goldValue_auto',  label: '금값(자동, VAT별도)',      type: 'number', calc: true },
+        { key: 'goldValue',       label: '금값(입력, VAT별도)',      type: 'number' },
+        { key: 'settingCost',     label: '물림비(VAT별도)',         type: 'number' },
+        { key: 'laborCost',       label: '공임(VAT별도)',           type: 'number' },
+        { key: 'platingCost',     label: '도금/각인(VAT별도)',      type: 'number' },
+        { key: 'stoneCostManual', label: '나석가격(수동입력, VAT별도)',type: 'number' },
+        { key: 'stoneCostRef',    label: '나석가격(참고, VAT별도)',  type: 'number', calc: true },
+        { key: 'otherCost',       label: '기타비용(VAT별도)',       type: 'number' },
+        { key: 'manufacturingCost',label: '제조가격(VAT포함)', type: 'number', calc: true },
+        { key: 'delivered',       label: '배송완료',       type: 'checkbox' },
         { key: 'inputCompleted',  label: '입력 완료',      type: 'checkbox' },
         { key: 'salesProfit',     label: '매출이익',       type: 'number', calc: true },
         { key: 'salesProfitRate', label: '매출이익률(%)',   type: 'number', calc: true },
@@ -49,7 +50,10 @@ window.ManufacturingCostsModule = {
     currentPage: 1,
     selectedYear: 'all',
     searchQuery: '',
-    mfgSortState: { column: null, direction: 'asc' },
+    columnFilters: {},
+    mfgColumnFilterApplyTimer: null,
+    isMfgFilterComposing: false,
+    mfgSortState: { column: 'orderDate', direction: 'desc' },
 
     async init() {
         // 나석단가표 로드
@@ -100,8 +104,27 @@ window.ManufacturingCostsModule = {
         }
     },
 
+    findProductRate(productRates = [], { productCode = '', productName = '' } = {}) {
+        const normalizedCode = String(productCode || '').trim();
+        const normalizedName = String(productName || '').trim();
+        const items = Array.isArray(productRates) ? productRates : [];
+
+        // 제품명 우선 매칭
+        if (normalizedName) {
+            const byName = items.find(item => String(item?.productName || '').trim() === normalizedName);
+            if (byName) return byName;
+        }
+
+        // 제품명 없을 때만 코드로 폴백
+        if (normalizedCode) {
+            return items.find(item => String(item?.productCode || '').trim() === normalizedCode) || null;
+        }
+
+        return null;
+    },
+
     getDefaultDisplayFieldKeys() {
-        return ['orderDate', 'customerName', 'productName', 'optionName', 'goldValue_auto', 'goldValue', 'stoneCostManual', 'manufacturingCost', 'inputCompleted', 'salesProfit', 'salesProfitRate'];
+        return ['orderDate', 'customerName', 'productName', 'optionName', 'goldValue_auto', 'goldValue', 'stoneCostManual', 'manufacturingCost', 'delivered', 'inputCompleted', 'salesProfit', 'salesProfitRate'];
     },
 
     getAllFields() {
@@ -158,7 +181,68 @@ window.ManufacturingCostsModule = {
                 (o.productName || '').toLowerCase().includes(q)
             );
         }
+        const activeColumnFilters = Object.entries(this.columnFilters || {})
+            .filter(([, value]) => String(value || '').trim() !== '');
+        if (activeColumnFilters.length > 0) {
+            data = data.filter((cost) => activeColumnFilters.every(([key, query]) => {
+                const value = this.getMfgFilterValue(cost, key).toLowerCase();
+                return value.includes(String(query).trim().toLowerCase());
+            }));
+        }
+        // 현재 정렬 상태 적용
+        const { column, direction } = this.mfgSortState;
+        if (column) {
+            const dir = direction === 'asc' ? 1 : -1;
+            data = [...data].sort((a, b) => {
+                let av = a[column], bv = b[column];
+                if (av && av.toDate) av = av.toDate();
+                if (bv && bv.toDate) bv = bv.toDate();
+                if (av instanceof Date && bv instanceof Date) return (av - bv) * dir;
+                if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
+                av = av == null ? '' : String(av);
+                bv = bv == null ? '' : String(bv);
+                return av.localeCompare(bv, 'ko') * dir;
+            });
+        }
         this.filteredCosts = data;
+    },
+
+    applyMfgColumnFiltersNow() {
+        this.currentPage = 1;
+        this.applyMfgFilters();
+        this.costs = this.filteredCosts.slice(0, this.pageSize);
+        this.renderTable();
+        this.renderPagination();
+        this.renderMfgFilterBar();
+    },
+
+    scheduleMfgColumnFilterApply() {
+        if (this.mfgColumnFilterApplyTimer) clearTimeout(this.mfgColumnFilterApplyTimer);
+        this.mfgColumnFilterApplyTimer = setTimeout(() => {
+            this.mfgColumnFilterApplyTimer = null;
+            if (this.isMfgFilterComposing) return;
+            this.applyMfgColumnFiltersNow();
+        }, 200);
+    },
+
+    getMfgFilterValue(cost, key) {
+        const field = this.getAllFields().find((item) => item.key === key);
+        let value = cost?.[key];
+
+        if (key === 'inputCompleted' || key === 'delivered') {
+            return value ? 'y' : 'n';
+        }
+        if (field?.type === 'date' && value) {
+            const date = value.toDate ? value.toDate() : new Date(value);
+            return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('ko-KR');
+        }
+        if (key === 'stoneCostManual' && (!value || value === 0)) {
+            value = cost?.stoneCostRef || 0;
+        }
+        if (key === 'salesProfitRate' && value !== undefined && value !== null && value !== '') {
+            return String(Math.round(value));
+        }
+        return String(value ?? '');
     },
 
     renderMfgFilterBar() {
@@ -170,7 +254,8 @@ window.ManufacturingCostsModule = {
             `<button class="btn btn-sm mfg-year-btn ${this.selectedYear === y ? 'btn-primary' : 'btn-outline'}" data-year="${y}">${y === 'all' ? '전체' : y + '년'}</button>`
         ).join('');
 
-        const hasFilter = this.searchQuery || this.selectedYear !== 'all';
+        const hasColumnFilter = Object.values(this.columnFilters || {}).some(value => String(value || '').trim() !== '');
+        const hasFilter = this.searchQuery || this.selectedYear !== 'all' || hasColumnFilter;
         container.innerHTML = `
             <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:10px 0 12px;">
                 <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
@@ -215,6 +300,7 @@ window.ManufacturingCostsModule = {
         document.getElementById('mfgClearBtn')?.addEventListener('click', () => {
             this.selectedYear = 'all';
             this.searchQuery = '';
+            this.columnFilters = {};
             this.currentPage = 1;
             this.applyMfgFilters();
             this.costs = this.filteredCosts.slice(0, this.pageSize);
@@ -282,12 +368,14 @@ window.ManufacturingCostsModule = {
                 try {
                     await batch.commit();
                     console.log(`[ManufacturingCosts] 자동 계산 업데이트: ${needsUpdate.length}개 항목`);
+                    this.costs = allItems;
                 } catch (error) {
                     console.error('Failed to update calculated fields:', error);
+                    this.costs = [];
                 }
+            } else {
+                this.costs = allItems;
             }
-
-            this.costs = allItems;
 
             this.renderTable();
             this.renderPagination();
@@ -325,9 +413,9 @@ window.ManufacturingCostsModule = {
                     const field = fieldMap[key];
                     let val = c[key];
 
-                    if (key === 'inputCompleted') {
-                        const checked = c.inputCompleted ? 'checked' : '';
-                        return `<td style="text-align:center;"><input type="checkbox" class="input-completed-checkbox" data-id="${c.id}" ${checked}></td>`;
+                    if (field?.type === 'checkbox') {
+                        const checked = c[key] ? 'checked' : '';
+                        return `<td style="text-align:center;"><input type="checkbox" class="mfg-boolean-checkbox" data-id="${c.id}" data-field="${key}" ${checked}></td>`;
                     }
 
                     if (!c.inputCompleted && (key === 'salesProfit' || key === 'salesProfitRate')) {
@@ -365,24 +453,77 @@ window.ManufacturingCostsModule = {
             }).join('');
 
             // 테이블 헤더 업데이트
-            const thead = mfgTable.querySelector('thead tr');
-            if (thead) {
+            const thead = mfgTable.querySelector('thead');
+            const headerRow = thead?.querySelector('tr');
+            if (headerRow) {
                 const checkboxTh = document.createElement('th');
                 checkboxTh.style.textAlign = 'center';
                 checkboxTh.className = 'header-checkbox-th';
                 checkboxTh.innerHTML = '<input type="checkbox" class="header-checkbox">';
 
-                thead.innerHTML = displayFieldKeys.map(key => {
+                headerRow.innerHTML = displayFieldKeys.map(key => {
                     const field = fieldMap[key];
                     const label = field ? field.label : key;
                     const isSorted = this.mfgSortState.column === key;
                     const indicator = isSorted ? (this.mfgSortState.direction === 'asc' ? ' ▲' : ' ▼') : '';
                     return `<th data-column="${key}" style="cursor:pointer;user-select:none;">${label}${indicator}</th>`;
                 }).join('') + '<th>관리</th>';
-                thead.insertBefore(checkboxTh, thead.firstChild);
+                headerRow.insertBefore(checkboxTh, headerRow.firstChild);
 
-                thead.querySelectorAll('th[data-column]').forEach(th => {
+                headerRow.querySelectorAll('th[data-column]').forEach(th => {
                     th.addEventListener('click', () => this.sortMfgCosts(th.dataset.column));
+                });
+
+                let filterRow = thead.querySelector('.mfg-filter-row');
+                if (!filterRow) {
+                    filterRow = document.createElement('tr');
+                    filterRow.className = 'mfg-filter-row';
+                    thead.appendChild(filterRow);
+                }
+                const filterCells = ['<th></th>'];
+                displayFieldKeys.forEach((key) => {
+                    const field = fieldMap[key];
+                    if (field?.type === 'checkbox') {
+                        const currentValue = this.columnFilters[key] || '';
+                        filterCells.push(`
+                            <th>
+                                <select data-filter-column="${key}" style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;">
+                                    <option value="">전체</option>
+                                    <option value="y" ${currentValue === 'y' ? 'selected' : ''}>Y</option>
+                                    <option value="n" ${currentValue === 'n' ? 'selected' : ''}>N</option>
+                                </select>
+                            </th>
+                        `);
+                    } else {
+                        filterCells.push(`
+                            <th>
+                                <input data-filter-column="${key}" type="text" value="${String(this.columnFilters[key] || '').replace(/"/g, '&quot;')}"
+                                    placeholder="필터" style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;">
+                            </th>
+                        `);
+                    }
+                });
+                filterCells.push('<th></th>');
+                filterRow.innerHTML = filterCells.join('');
+                filterRow.querySelectorAll('[data-filter-column]').forEach((input) => {
+                    const eventName = input.tagName === 'SELECT' ? 'change' : 'input';
+                    input.addEventListener('compositionstart', () => {
+                        this.isMfgFilterComposing = true;
+                    });
+                    input.addEventListener('compositionend', (e) => {
+                        this.isMfgFilterComposing = false;
+                        this.columnFilters[e.target.dataset.filterColumn] = e.target.value || '';
+                        this.scheduleMfgColumnFilterApply();
+                    });
+                    input.addEventListener(eventName, (e) => {
+                        if (eventName === 'input' && this.isMfgFilterComposing) return;
+                        this.columnFilters[e.target.dataset.filterColumn] = e.target.value || '';
+                        if (eventName === 'change') {
+                            this.applyMfgColumnFiltersNow();
+                            return;
+                        }
+                        this.scheduleMfgColumnFilterApply();
+                    });
                 });
             }
 
@@ -406,34 +547,46 @@ window.ManufacturingCostsModule = {
                 });
             }
 
-            // 입력완료 체크박스 이벤트
-            mfgTable.querySelectorAll('tbody .input-completed-checkbox').forEach(checkbox => {
+            // boolean 체크박스 이벤트
+            mfgTable.querySelectorAll('tbody .mfg-boolean-checkbox').forEach(checkbox => {
                 checkbox.addEventListener('change', async (e) => {
                     const costId = e.target.dataset.id;
+                    const fieldKey = e.target.dataset.field;
                     const cost = this.costs.find(c => c.id === costId);
-                    if (!cost) return;
-                    cost.inputCompleted = e.target.checked;
-                    if (!e.target.checked) {
-                        cost.salesProfit = 0;
-                        cost.salesProfitRate = 0;
-                    } else {
-                        const calc = this.calculate(cost);
-                        cost.salesProfit = calc.salesProfit;
-                        cost.salesProfitRate = calc.salesProfitRate;
+                    if (!cost || !fieldKey) return;
+
+                    const checked = e.target.checked;
+                    const updateData = { [fieldKey]: checked, updatedAt: new Date() };
+                    cost[fieldKey] = checked;
+
+                    if (fieldKey === 'inputCompleted') {
+                        if (!checked) {
+                            cost.salesProfit = 0;
+                            cost.salesProfitRate = 0;
+                        } else {
+                            const calc = this.calculate(cost);
+                            cost.salesProfit = calc.salesProfit;
+                            cost.salesProfitRate = calc.salesProfitRate;
+                        }
+                        updateData.salesProfit = cost.salesProfit;
+                        updateData.salesProfitRate = cost.salesProfitRate;
                     }
+
                     try {
                         await window.firebaseDb.collection('sales').doc('orders')
                             .collection('items').doc(costId)
-                            .update({ inputCompleted: cost.inputCompleted, salesProfit: cost.salesProfit, salesProfitRate: cost.salesProfitRate, updatedAt: new Date() });
+                            .update(updateData);
                         const allCostItem = this.allCosts.find(c => c.id === costId);
                         if (allCostItem) {
-                            allCostItem.inputCompleted = cost.inputCompleted;
-                            allCostItem.salesProfit = cost.salesProfit;
-                            allCostItem.salesProfitRate = cost.salesProfitRate;
+                            allCostItem[fieldKey] = checked;
+                            if (fieldKey === 'inputCompleted') {
+                                allCostItem.salesProfit = cost.salesProfit;
+                                allCostItem.salesProfitRate = cost.salesProfitRate;
+                            }
                         }
                         this.renderTable();
                     } catch (err) {
-                        console.error('Failed to update inputCompleted:', err);
+                        console.error(`Failed to update ${fieldKey}:`, err);
                         window.Utils.showNotification('저장 실패', 'error');
                     }
                 });
@@ -555,9 +708,6 @@ window.ManufacturingCostsModule = {
             .map(s => `${s.stoneQty} × ${s.stoneType}`)
             .join(', ');
 
-        // 나석 가격 합계 계산
-        const totalStonePrice = stoneArray.reduce((sum, s) => sum + (s.totalPrice || 0), 0);
-
         // 폼 필드 업데이트
         const stoneQtyDisplay = wrapper.querySelector('#stoneQtyDisplay');
         const stoneQtyInput = wrapper.querySelector('#stoneQtyInput');
@@ -582,8 +732,6 @@ window.ManufacturingCostsModule = {
         const fd = new FormData(wrapper.querySelector('#modalForm'));
         const data = Object.fromEntries(fd);
 
-        // 나석 정보를 수동 입력 필드로 설정 (계산에서 사용하도록)
-        data.stoneCostManual = totalStonePrice;
         data.stoneArray = JSON.stringify(stoneArray);
 
         const calc = this.calculate(data);
@@ -608,10 +756,12 @@ window.ManufacturingCostsModule = {
         //
         // 1️⃣ 금값 = 금중량순금해리(g) × 금시세(순금1g)
         const goldValue_auto = n('goldWeightPure') * n('goldMarketPrice');
-        const rawGoldValue = data.goldValue;
-        const hasManualGoldValue = rawGoldValue !== undefined &&
-            rawGoldValue !== null &&
-            String(rawGoldValue).trim() !== '';
+        // 0은 "수동으로 0원 입력"이 아니라 "수동입력 안 함"으로 간주한다
+        // (나석가격(수동입력)의 stoneCostManual과 동일한 규칙). 값이 비어있지
+        // 않기만 하면 override로 보던 이전 로직은, 과거 데이터에 저장된 숫자
+        // 0이 그대로 폼에 표시되면서 금값(자동)을 항상 0으로 덮어써버리는
+        // 문제가 있었다.
+        const hasManualGoldValue = n('goldValue') > 0;
         const goldValue = hasManualGoldValue ? n('goldValue') : '';
         const appliedGoldValue = hasManualGoldValue ? goldValue : goldValue_auto;
 
@@ -653,18 +803,23 @@ window.ManufacturingCostsModule = {
             }
         }
 
-        // 제조원가에 포함될 보증서 추가금 (80% 적용)
+        // 나석가격(참고)은 보증서 원가 80%까지 포함한 기준값으로 저장한다.
         const stoneWarrantyCost = stoneWarrantyFeeTotal * stoneWarrantyCostRate;
+        stoneCostRef += stoneWarrantyCost;
 
         // 수동입력이 있으면 수동, 없으면 참고값 사용
-        const stoneUsed = n('stoneCostManual') > 0 ? n('stoneCostManual') : (stoneCostRef + stoneWarrantyCost);
+        const stoneUsed = n('stoneCostManual') > 0 ? n('stoneCostManual') : stoneCostRef;
 
-        // 제조가격 = 금값 + 물림비 + 공임 + 나석가격 + 기타비용
-        const manufacturingCost = appliedGoldValue + n('settingCost') + n('laborCost') +
+        // 제조가격 = (금값 + 물림비 + 공임 + 나석가격 + 기타비용, VAT미포함 입력) × 1.1
+        // 입력 항목은 전부 부가세 포함 전 금액으로 입력하고, 여기서 VAT를 얹어
+        // 제조가격을 VAT포함 기준으로 만든다. productRates.js의 salesCost(자재원가
+        // ×1.1 + 배송비)와 같은 원리이며, 이 표에는 배송비처럼 이미 VAT가 포함된
+        // 항목이 없어 전체 합산액에 그대로 1.1을 곱한다.
+        const manufacturingCostExVat = appliedGoldValue + n('settingCost') + n('laborCost') +
             n('platingCost') + stoneUsed + n('otherCost');
+        const manufacturingCost = manufacturingCostExVat * 1.1;
 
-        // 3️⃣ 매출이익 = 매출 × (1 - 수수료율(%)/100) - 제조가격
-        // commissionRate는 판매표에서 오는 필드
+        // 3️⃣ 매출이익 = 매출 × (1 - 수수료율(%)/100) - 제조가격(VAT포함)
         const commissionRate = n('commissionRate') || 0;
         const netSalesAmount = n('salesAmount') * (1 - commissionRate / 100);
         const salesProfit = netSalesAmount - manufacturingCost;
@@ -701,12 +856,16 @@ window.ManufacturingCostsModule = {
         const salesField = { key: 'salesAmount', label: '매출금액(이익계산용)', type: 'number', calc: false };
         // 주문번호 필드 추가
         const orderField = { key: 'orderId', label: '주문번호(연결)', type: 'text', calc: false };
+        // 수수료율 참고 필드 추가 (매출표에서 가져옴, 이익 계산에 사용)
+        const commissionField = { key: 'commissionRate', label: '수수료율(%)(참고)', type: 'number', calc: false };
         
-        // 금시세 기본값: 금재고에서 미리 조회
-        const defaultGoldPrice = (() => {
-            if (cost && cost.goldMarketPrice && cost.goldMarketPrice !== 0) return cost.goldMarketPrice;
-            return window.GoldInventoryModule?.getLatestAvgPrice?.() || null;
-        })();
+        // 금시세 기본값: 기존 저장값 우선, 없으면 금재고 최신 평단가 (async 함수이므로 await 필요)
+        let defaultGoldPrice = null;
+        if (cost && cost.goldMarketPrice && cost.goldMarketPrice !== 0) {
+            defaultGoldPrice = cost.goldMarketPrice;
+        } else if (window.GoldInventoryModule?.getLatestAvgPrice) {
+            defaultGoldPrice = await window.GoldInventoryModule.getLatestAvgPrice();
+        }
 
         const makeInput = (f) => {
             // 금시세: 기존값이 있으면 사용, 없으면 defaultGoldPrice(금재고 최신 평단가) 사용
@@ -714,8 +873,8 @@ window.ManufacturingCostsModule = {
             if (f.key === 'goldMarketPrice' && (!val || val === 0)) {
                 if (defaultGoldPrice) val = Math.round(defaultGoldPrice);
             }
-            // 주문번호(orderId)와 매출금액(salesAmount)은 수정 불가
-            const isReadOnly = f.key === 'orderId' || f.key === 'salesAmount' || f.calc;
+            // 주문번호(orderId), 매출금액(salesAmount), 수수료율(commissionRate)은 수정 불가 (매출표에서 관리)
+            const isReadOnly = f.key === 'orderId' || f.key === 'salesAmount' || f.key === 'commissionRate' || f.calc;
             const isRequired = !isReadOnly && f.type !== 'checkbox' && required.includes(f.key);
 
             // "입력 완료" 체크박스 특별 처리
@@ -782,6 +941,7 @@ window.ManufacturingCostsModule = {
             <div class="form-grid">
                 ${makeInput(orderField)}
                 ${makeInput(salesField)}
+                ${makeInput(commissionField)}
                 ${allFields.map(makeInput).join('')}
                 ${stoneSection}
             </div>`;
@@ -806,8 +966,9 @@ window.ManufacturingCostsModule = {
                     .collection('items').doc(costId)
                     .update({ ...calculated, updatedAt: new Date() });
                 w.remove();
+                const savedPage = this.currentPage;
                 this.allCosts = [];  // 캐시 비우기
-                this.load();
+                this.load(savedPage);
             }
         );
 
@@ -855,55 +1016,27 @@ window.ManufacturingCostsModule = {
                         this.diamondRates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                     }
                     console.log('[나석정보] diamondRates diamondTypes:', this.diamondRates.map(d => d.diamondType));
-                    console.log('[나석정보] product stones:', product?.stones);
-                    
-                    // 제품의 warranty 정보 가져오기
-                    let productWarranty = '없음';
-                    
-                    // 상품명으로 먼저 검색
-                    if (cost?.productName) {
-                        const product = this.productRates.find(p => p.productName === cost.productName);
-                        if (product && product.stones && product.stones.length > 0) {
-                            productWarranty = product.stoneWarranty || '없음';
-                            existingStones = product.stones.map(s => {
-                                const stoneTypeKey = s.stoneType || s.type || '';
-                                const diamond = this.diamondRates.find(d => d.diamondType === stoneTypeKey);
-                                const stonePrice = diamond?.costWithVat || 0;
-                                const qty = s.stoneQty || s.qty || 0;
-                                const warrantyFee = (productWarranty === 'VS' ? (diamond?.vsWarrantyFee || 0)
-                                                 : productWarranty === 'VVS' ? (diamond?.vvsWarrantyFee || 0) : 0) * qty;
-                                return {
-                                    stoneType: stoneTypeKey,
-                                    stoneQty: qty,
-                                    stonePrice: stonePrice,
-                                    totalPrice: stonePrice * qty,
-                                    warrantyFee: warrantyFee
-                                };
-                            });
-                        }
-                    }
-
-                    // 상품명으로 못 찾으면 productCode로 검색
-                    if (existingStones.length === 0 && cost?.productCode) {
-                        const product = this.productRates.find(p => p.productCode === cost.productCode);
-                        if (product && product.stones && product.stones.length > 0) {
-                            productWarranty = product.stoneWarranty || '없음';
-                            existingStones = product.stones.map(s => {
-                                const stoneTypeKey = s.stoneType || s.type || '';
-                                const diamond = this.diamondRates.find(d => d.diamondType === stoneTypeKey);
-                                const stonePrice = diamond?.costWithVat || 0;
-                                const qty = s.stoneQty || s.qty || 0;
-                                const warrantyFee = (productWarranty === 'VS' ? (diamond?.vsWarrantyFee || 0)
-                                                 : productWarranty === 'VVS' ? (diamond?.vvsWarrantyFee || 0) : 0) * qty;
-                                return {
-                                    stoneType: stoneTypeKey,
-                                    stoneQty: qty,
-                                    stonePrice: stonePrice,
-                                    totalPrice: stonePrice * qty,
-                                    warrantyFee: warrantyFee
-                                };
-                            });
-                        }
+                    const product = this.findProductRate(this.productRates, {
+                        productCode: cost?.productCode,
+                        productName: cost?.productName
+                    });
+                    if (product && product.stones && product.stones.length > 0) {
+                        const productWarranty = product.stoneWarranty || '없음';
+                        existingStones = product.stones.map(s => {
+                            const stoneTypeKey = s.stoneType || s.type || '';
+                            const diamond = this.diamondRates.find(d => d.diamondType === stoneTypeKey);
+                            const stonePrice = diamond?.costWithoutVat || 0;
+                            const qty = s.stoneQty || s.qty || 0;
+                            const warrantyFee = (productWarranty === 'VS' ? (diamond?.vsWarrantyFee || 0)
+                                             : productWarranty === 'VVS' ? (diamond?.vvsWarrantyFee || 0) : 0) * qty;
+                            return {
+                                stoneType: stoneTypeKey,
+                                stoneQty: qty,
+                                stonePrice: stonePrice,
+                                totalPrice: stonePrice * qty,
+                                warrantyFee: warrantyFee
+                            };
+                        });
                     }
                 }
 
@@ -937,7 +1070,7 @@ window.ManufacturingCostsModule = {
                         // 나석 가격 자동 입력
                         const priceInput = wrapper.querySelector(`[name="stonePrice${i}"]`);
                         if (priceInput) {
-                            priceInput.value = selectedStone.costWithVat || '';
+                            priceInput.value = selectedStone.costWithoutVat || '';
                         }
 
                         // 보증서 기본값 제안 (증명서 필드에 미리 값 설정)
@@ -969,8 +1102,12 @@ window.ManufacturingCostsModule = {
             displayFields.forEach(field => {
                 let value = cost[field.key];
 
-                if (field.key === 'inputCompleted') {
-                    value = cost.inputCompleted ? '완료' : '미완료';
+                if (field.type === 'checkbox') {
+                    if (field.key === 'delivered') {
+                        value = cost.delivered ? '배송완료' : '미완료';
+                    } else {
+                        value = cost[field.key] ? '완료' : '미완료';
+                    }
                 } else if (!cost.inputCompleted && (field.key === 'salesProfit' || field.key === 'salesProfitRate')) {
                     value = '미입력';
                 } else if (field.key === 'stoneCostManual' && (!value || value === 0)) {
@@ -1050,10 +1187,7 @@ window.ManufacturingCostsModule = {
                 productRates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             }
 
-            const targetProduct = productRates.find(p =>
-                (productName && p.productName === productName) ||
-                (productCode  && p.productCode  === productCode)
-            );
+            const targetProduct = this.findProductRate(productRates, { productCode, productName });
 
             if (!targetProduct || !targetProduct.stones || targetProduct.stones.length === 0) {
                 window.Utils.showNotification(
@@ -1076,7 +1210,7 @@ window.ManufacturingCostsModule = {
                 .filter(s => s.type && s.qty > 0)
                 .map(s => {
                     const diamond = diamondRates.find(d => d.diamondType === s.type);
-                    const stonePrice = diamond?.costWithVat || 0;
+                    const stonePrice = diamond?.costWithoutVat || 0;
                     const totalPrice = stonePrice * s.qty;
                     const warrantyFee = warranty === 'VS'  ? (diamond?.vsWarrantyFee  || 0)
                                       : warranty === 'VVS' ? (diamond?.vvsWarrantyFee || 0) : 0;
@@ -1124,5 +1258,83 @@ window.ManufacturingCostsModule = {
                 '나석정보 자동입력 중 오류가 발생했습니다: ' + error.message, 'error'
             );
         }
+    },
+
+    /**
+     * 전체 주문의 나석정보를 제품단가표 기준으로 일괄 재채움
+     * - productCode 우선 매칭 → 없으면 productName 정확 매칭
+     * - stoneArray/stoneQty_text/stones 필드 덮어씀
+     * - 제조원가 파생값도 재계산
+     * @param {Function} [onProgress] - (done, total, productName) 콜백
+     * @returns {{ updated: number, skipped: number, errors: string[] }}
+     */
+    async batchRefillStoneInfo(onProgress) {
+        const result = { updated: 0, skipped: 0, errors: [] };
+
+        try {
+            const [ordersSnap, ratesSnap, diamondSnap] = await Promise.all([
+                window.firebaseDb.collection('sales').doc('orders').collection('items').get(),
+                window.firebaseDb.collection('prices').doc('productRates').collection('items').get(),
+                window.firebaseDb.collection('prices').doc('diamondRates').collection('items').get(),
+            ]);
+
+            const productRates = ratesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const diamondRates = diamondSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const orders = ordersSnap.docs.map(d => ({ _docId: d.id, ...d.data() }));
+            const total = orders.length;
+
+            const col = window.firebaseDb.collection('sales').doc('orders').collection('items');
+
+            for (let i = 0; i < orders.length; i++) {
+                const order = orders[i];
+                const { _docId, productName = '', productCode = '' } = order;
+
+                if (onProgress) onProgress(i + 1, total, productName);
+
+                if (!productName && !productCode) { result.skipped++; continue; }
+
+                const targetProduct = this.findProductRate(productRates, { productCode, productName });
+                if (!targetProduct || !targetProduct.stones || targetProduct.stones.length === 0) {
+                    result.skipped++;
+                    continue;
+                }
+
+                const warranty = targetProduct.stoneWarranty || '없음';
+                const stoneArray = targetProduct.stones
+                    .filter(s => (s.type || s.stoneType) && (s.qty || s.stoneQty) > 0)
+                    .map(s => {
+                        const typeKey = s.type || s.stoneType || '';
+                        const qty = s.qty || s.stoneQty || 0;
+                        const diamond = diamondRates.find(d => d.diamondType === typeKey);
+                        const stonePrice = diamond?.costWithoutVat || 0;
+                        const warrantyFee = (warranty === 'VS'  ? (diamond?.vsWarrantyFee  || 0)
+                                          : warranty === 'VVS' ? (diamond?.vvsWarrantyFee || 0) : 0) * qty;
+                        return { stoneType: typeKey, stoneQty: qty, stonePrice, totalPrice: stonePrice * qty, warrantyFee };
+                    });
+
+                if (stoneArray.length === 0) { result.skipped++; continue; }
+
+                const stoneQtyText = stoneArray.map(s => `${s.stoneQty} × ${s.stoneType}`).join(', ');
+                const dataForCalc = { ...order, stoneArray: JSON.stringify(stoneArray), stoneQty_text: stoneQtyText };
+                const calculated = this.calculate(dataForCalc);
+
+                try {
+                    await col.doc(_docId).set({
+                        ...calculated,
+                        stoneArray:    JSON.stringify(stoneArray),
+                        stoneQty_text: stoneQtyText,
+                        stones:        targetProduct.stones,
+                        updatedAt:     new Date()
+                    }, { merge: true });
+                    result.updated++;
+                } catch (e) {
+                    result.errors.push(`${productName}(${_docId}): ${e.message}`);
+                }
+            }
+        } catch (err) {
+            result.errors.push('일괄 처리 오류: ' + err.message);
+        }
+
+        return result;
     },
 };

@@ -8,9 +8,7 @@ window.SalesManagementModule = {
         { key: 'orderDate',       label: '주문일',       type: 'date',   defaultRequired: true  },
         { key: 'orderNumber',     label: '주문번호',      type: 'text',   defaultRequired: true  },
         { key: 'customerName',    label: '고객명',        type: 'text',   defaultRequired: true  },
-        { key: 'postalCode',      label: '우편번호',      type: 'text',   defaultRequired: false },
         { key: 'productName',     label: '상품명',        type: 'text',   defaultRequired: true  },
-        { key: 'optionName',      label: '옵션명',        type: 'text',   defaultRequired: false },
         { key: 'stoneInfo',       label: '나석정보',      type: 'text',   defaultRequired: false },
         { key: 'remark',          label: '기타',          type: 'text',   defaultRequired: false },
         { key: 'category',        label: '종류',          type: 'select', defaultRequired: false,
@@ -25,10 +23,12 @@ window.SalesManagementModule = {
         { key: 'chainThickness',  label: '체인굵기',      type: 'text',   defaultRequired: false },
         { key: 'backSupport',     label: '뒷침',          type: 'select', defaultRequired: false,
           options: ['일반','프리미엄'] },
+        { key: 'optionName',      label: '옵션명',        type: 'text',   defaultRequired: false },
         { key: 'warranty',        label: '보증서',        type: 'select', defaultRequired: false,
           options: ['없음','VS','VVS'] },
         { key: 'orderAmount',     label: '최종주문금액',  type: 'number', defaultRequired: true  },
         { key: 'salesAmount',     label: '매출금액',      type: 'number', defaultRequired: true  },
+        { key: 'expectedProfit',  label: '예상 수익금',   type: 'computed', defaultRequired: false },
         { key: 'purchasePath',    label: '구매경로',      type: 'select', defaultRequired: false,
           options: ['온라인','오프라인'] },
         { key: 'purchasePathDetail', label: '구매경로상세', type: 'select', defaultRequired: false,
@@ -39,6 +39,7 @@ window.SalesManagementModule = {
         { key: 'phone',           label: '연락처',        type: 'text',   defaultRequired: false },
         { key: 'address',         label: '주소',          type: 'text',   defaultRequired: false },
         { key: 'addressDetail',   label: '주소상세',      type: 'text',   defaultRequired: false },
+        { key: 'postalCode',      label: '우편번호',      type: 'text',   defaultRequired: false },
         { key: 'stoneRequested',     label: '나석신청', type: 'status', defaultRequired: false },
         { key: 'workshopRequested',  label: '공방신청', type: 'status', defaultRequired: false },
         { key: 'productionComplete', label: '제작완료', type: 'status', defaultRequired: false },
@@ -52,15 +53,26 @@ window.SalesManagementModule = {
     orders: [],
     allOrders: [], // 필터링 전 전체 데이터
     filteredOrders: [], // 연도+검색 필터 적용 데이터
+    productRates: [],
+    customPurchasePathDetailOptions: {},
     orderRequired: [],
     pageSize: 50,
     currentPage: 1,
     selectedYear: 'all',
     searchQuery: '',
+    columnFilters: {},
+    columnFilterApplyTimer: null,
+    isOrderFilterComposing: false,
     showUndeliveredOnly: false,
-    orderSortState: { column: null, direction: 'asc' },
+    orderSortState: { column: 'orderDate', direction: 'desc' },
+    PURCHASE_PATH_DETAIL_OPTIONS: {
+        온라인: ['듀인피니스 공식몰', '신세계V', 'SSG', '더현대닷컴'],
+        오프라인: ['현대백화점 압구정본점', '현대백화점 무역점', '현대백화점 킨텍스점', '현대백화점 목동점']
+    },
 
     async init() {
+        await this.loadPurchasePathDetailSettings();
+
         // 통합 CSV 필드 초기화 (매출 + 제조원가 + 주문관리)
         this.INTEGRATED_CSV_FIELDS = [
             // 매출 필드
@@ -222,10 +234,22 @@ window.SalesManagementModule = {
         // Modal callback will filter selected orders
         window.Utils.openModal('🏪 매장관리 싱크', html, async () => {
             // Get selected orders only
-            const selectedOrders = orders.filter((_, i) => {
-                const checkbox = document.querySelector(`.order-checkbox[data-idx="${i}"]`);
-                return checkbox?.checked;
-            });
+            const selectedOrders = orders
+                .map((order, i) => {
+                    const checkbox = document.querySelector(`.order-checkbox[data-idx="${i}"]`);
+                    if (!checkbox?.checked) return null;
+
+                    const updated = { ...order };
+                    fields.forEach((field) => {
+                        const input = document.getElementById(`sync_${i}_${field.key}`);
+                        if (!input) return;
+                        updated[field.key] = field.key === 'orderAmount' || field.key === 'salesAmount'
+                            ? (parseFloat(input.value) || 0)
+                            : input.value;
+                    });
+                    return updated;
+                })
+                .filter(Boolean);
             if (selectedOrders.length === 0) {
                 window.Utils.showNotification('선택된 주문이 없습니다.', 'warning');
                 return;
@@ -262,7 +286,7 @@ window.SalesManagementModule = {
                         <div style="border: 1px solid #ddd; border-radius: 8px; padding: 16px; background: #fafafa;">
                             <div style="font-weight: bold; margin-bottom: 12px; color: #333;">주문 ${idx + 1}</div>
                             <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
-                                ${self.ORDER_FIELDS.filter(f => f.type !== 'status').map(f => {
+                                ${self.ORDER_FIELDS.filter(f => f.type !== 'status' && f.type !== 'computed').map(f => {
                                     const val = order[f.key] || '';
                                     const isRequired = f.defaultRequired;
                                     if (f.key === 'productName') {
@@ -276,6 +300,15 @@ window.SalesManagementModule = {
                                                 <datalist id="productNameList_${idx}">
                                                     ${productOptions.map(p => `<option value="${p}">`).join('')}
                                                 </datalist>
+                                            </div>
+                                        `;
+                                    } else if (f.key === 'purchasePathDetail') {
+                                        return `
+                                            <div style="display: flex; flex-direction: column; gap: 2px;">
+                                                <label style="font-size: 12px; color: #666;">${f.label}${isRequired ? ' *' : ''}</label>
+                                                <select name="order_${idx}_${f.key}" data-order-idx="${idx}" class="sync-purchase-detail-select" style="padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
+                                                    ${self.buildPurchasePathDetailOptionsHtml(order.purchasePath, val)}
+                                                </select>
                                             </div>
                                         `;
                                     } else if (f.type === 'select') {
@@ -334,9 +367,11 @@ window.SalesManagementModule = {
             </div>
         `;
 
-        window.Utils.openModal('📝 상세 수정 - 모든 필드', html, async () => {
+        const wrapper = window.Utils.openModal('📝 상세 수정 - 모든 필드', html, async () => {
             await self.saveDetailedSyncOrders(orders, productOptions);
         }, '저장');
+
+        this.initDetailedSyncPurchasePathFields(wrapper, orders);
     },
 
     async saveDetailedSyncOrders(originalOrders, productOptions = []) {
@@ -385,10 +420,18 @@ window.SalesManagementModule = {
             const updatedOrders = originalOrders.map((order, idx) => {
                 const docId = docRefs.find(d => d.orderIdx === idx)?.id;
                 const updated = { ...order };
-                self.ORDER_FIELDS.filter(f => f.type !== 'status').forEach(f => {
+                self.ORDER_FIELDS.filter(f => f.type !== 'status' && f.type !== 'computed').forEach(f => {
                     const input = document.querySelector(`[name="order_${idx}_${f.key}"]`);
                     if (input) {
-                        updated[f.key] = f.type === 'number' ? (parseFloat(input.value) || 0) : input.value;
+                        if (f.type === 'number') {
+                            updated[f.key] = parseFloat(input.value) || 0;
+                        } else if (f.type === 'date') {
+                            updated[f.key] = input.value
+                                ? firebase.firestore.Timestamp.fromDate(new Date(input.value))
+                                : null;
+                        } else {
+                            updated[f.key] = input.value;
+                        }
                     }
                 });
                 
@@ -432,6 +475,49 @@ window.SalesManagementModule = {
                 }
             }
 
+            // 신규 고객 자동 추가 (고객목록에 없는 경우)
+            try {
+                const customerSnap = await window.firebaseDb
+                    .collection('sales').doc('customers').collection('items').get();
+                const existingKeys = new Set(customerSnap.docs.map(d => {
+                    const cd = d.data();
+                    const name = (cd.customerName || '').trim();
+                    const phone = (cd.phone || '').replace(/\D/g, '');
+                    return phone ? `${name}|${phone}` : name;
+                }));
+                const newCustKeys = new Set();
+                const custCol = window.firebaseDb.collection('sales').doc('customers').collection('items');
+                const custBatch = window.firebaseDb.batch();
+                let newCustCount = 0;
+                for (const order of updatedOrders) {
+                    const name = (order.customerName || '').trim();
+                    const phone = (order.phone || '').replace(/\D/g, '');
+                    const key = phone ? `${name}|${phone}` : name;
+                    if (!name || existingKeys.has(key) || newCustKeys.has(key)) continue;
+                    newCustKeys.add(key);
+                    const ref = custCol.doc();
+                    custBatch.set(ref, {
+                        customerName: name,
+                        phone: order.phone || '',
+                        address: order.address || '',
+                        addressDetail: order.addressDetail || '',
+                        postalCode: '',
+                        email: '',
+                        ownMallSignup: false,
+                        createdAt: new Date(),
+                        updatedAt: new Date(),
+                        source: 'popup_sync'
+                    });
+                    newCustCount++;
+                }
+                if (newCustCount > 0) {
+                    await custBatch.commit();
+                    window.Utils.showNotification(`신규 고객 ${newCustCount}명 고객목록에 자동 추가됐습니다.`, 'success');
+                }
+            } catch(custErr) {
+                console.error('[SalesManagement] 신규 고객 자동추가 실패:', custErr);
+            }
+
             window.Utils.showNotification(`${updatedOrders.length}건 저장 완료`, 'success');
             self.allOrders = [];
             await self.loadOrders(1);
@@ -450,6 +536,129 @@ window.SalesManagementModule = {
             return `<input type="number" id="sync_${rowIdx}_${field.key}" value="${val}" style="width:100px;padding:4px;border:1px solid #ccc;border-radius:4px;">`;
         }
         return `<input type="text" id="sync_${rowIdx}_${field.key}" value="${val}" style="width:120px;padding:4px;border:1px solid #ccc;border-radius:4px;">`;
+    },
+
+    normalizePurchasePathDetailOptions(rawOptions = {}) {
+        const normalized = {};
+        Object.keys(this.PURCHASE_PATH_DETAIL_OPTIONS).forEach(key => {
+            const values = Array.isArray(rawOptions?.[key]) ? rawOptions[key] : [];
+            normalized[key] = [...new Set(
+                values
+                    .map(value => String(value || '').trim())
+                    .filter(Boolean)
+            )];
+        });
+        return normalized;
+    },
+
+    async loadPurchasePathDetailSettings() {
+        try {
+            const doc = await window.firebaseDb
+                .collection('settings')
+                .doc('salesManagement')
+                .get();
+            this.customPurchasePathDetailOptions = this.normalizePurchasePathDetailOptions(
+                doc.exists ? doc.data()?.purchasePathDetailOptions : {}
+            );
+        } catch (error) {
+            console.error('[SalesManagement] 구매경로상세 설정 로드 실패:', error);
+            this.customPurchasePathDetailOptions = {};
+        }
+    },
+
+    async savePurchasePathDetailSettings() {
+        const normalized = this.normalizePurchasePathDetailOptions(this.customPurchasePathDetailOptions);
+        this.customPurchasePathDetailOptions = normalized;
+        await window.firebaseDb
+            .collection('settings')
+            .doc('salesManagement')
+            .set({ purchasePathDetailOptions: normalized }, { merge: true });
+    },
+
+    async addCustomPurchasePathDetailOption(purchasePath, rawValue) {
+        const category = this.PURCHASE_PATH_DETAIL_OPTIONS[purchasePath] ? purchasePath : '온라인';
+        const value = String(rawValue || '').trim();
+        if (!value) return '';
+
+        const baseOptions = this.PURCHASE_PATH_DETAIL_OPTIONS[category] || [];
+        const customOptions = this.customPurchasePathDetailOptions[category] || [];
+        if (baseOptions.includes(value) || customOptions.includes(value)) return value;
+
+        this.customPurchasePathDetailOptions = {
+            ...this.customPurchasePathDetailOptions,
+            [category]: [...customOptions, value]
+        };
+        await this.savePurchasePathDetailSettings();
+        return value;
+    },
+
+    getPurchasePathDetailOptions(purchasePath) {
+        const category = this.PURCHASE_PATH_DETAIL_OPTIONS[purchasePath] ? purchasePath : '온라인';
+        const defaultOptions = this.PURCHASE_PATH_DETAIL_OPTIONS[category] || [];
+        const customOptions = this.customPurchasePathDetailOptions[category] || [];
+        return [...new Set([...defaultOptions, ...customOptions])];
+    },
+
+    buildPurchasePathDetailOptionsHtml(purchasePath, selectedValue = '') {
+        const options = this.getPurchasePathDetailOptions(purchasePath);
+        const customOption = selectedValue && !options.includes(selectedValue)
+            ? `<option value="${selectedValue}" selected>${selectedValue}</option>`
+            : '';
+
+        return `<option value="">선택</option>`
+            + options.map(opt => `<option value="${opt}" ${selectedValue === opt ? 'selected' : ''}>${opt}</option>`).join('')
+            + customOption
+            + `<option value="__new__">+ 신규 입력</option>`;
+    },
+
+    updatePurchasePathDetailSelect(detailSelect, purchasePath, selectedValue = '') {
+        if (!detailSelect) return;
+        detailSelect.innerHTML = this.buildPurchasePathDetailOptionsHtml(purchasePath, selectedValue);
+        detailSelect.value = selectedValue || '';
+    },
+
+    initDetailedSyncPurchasePathFields(wrapper, orders = []) {
+        orders.forEach((order, idx) => {
+            const purchaseSelect = wrapper.querySelector(`[name="order_${idx}_purchasePath"]`);
+            const detailSelect = wrapper.querySelector(`[name="order_${idx}_purchasePathDetail"]`);
+            if (!detailSelect) return;
+
+            this.updatePurchasePathDetailSelect(
+                detailSelect,
+                purchaseSelect?.value || order.purchasePath || '온라인',
+                order.purchasePathDetail || ''
+            );
+
+            if (purchaseSelect) {
+                purchaseSelect.addEventListener('change', (e) => {
+                    this.updatePurchasePathDetailSelect(detailSelect, e.target.value, '');
+                });
+            }
+
+            detailSelect.addEventListener('change', async (e) => {
+                if (e.target.value !== '__new__') return;
+                const value = prompt('새로운 구매경로상세를 입력하세요:');
+                if (value) {
+                    try {
+                        const savedValue = await this.addCustomPurchasePathDetailOption(
+                            purchaseSelect?.value || order.purchasePath || '온라인',
+                            value
+                        );
+                        this.updatePurchasePathDetailSelect(
+                            detailSelect,
+                            purchaseSelect?.value || order.purchasePath || '온라인',
+                            savedValue
+                        );
+                    } catch (error) {
+                        console.error('[SalesManagement] 구매경로상세 신규 저장 실패:', error);
+                        window.Utils.showNotification('구매경로상세 저장 실패: ' + error.message, 'error');
+                        e.target.value = '';
+                    }
+                } else {
+                    e.target.value = '';
+                }
+            });
+        });
     },
 
     openOrderDisplaySettings() {
@@ -490,7 +699,76 @@ window.SalesManagementModule = {
                 (o.productName || '').toLowerCase().includes(q)
             );
         }
+        const activeColumnFilters = Object.entries(this.columnFilters || {})
+            .filter(([, value]) => String(value || '').trim() !== '');
+        if (activeColumnFilters.length > 0) {
+            data = data.filter((order) => activeColumnFilters.every(([key, query]) => {
+                const value = this.getOrderFilterValue(order, key).toLowerCase();
+                return value.includes(String(query).trim().toLowerCase());
+            }));
+        }
         this.filteredOrders = data;
+    },
+
+    getOrderFilterValue(order, key) {
+        const field = this.ORDER_FIELDS.find((item) => item.key === key);
+        let value = order?.[key];
+
+        if (field?.type === 'date' && value) {
+            const date = value.toDate ? value.toDate() : new Date(value);
+            return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('ko-KR');
+        }
+        if (field?.type === 'status') {
+            return value ? 'y' : 'n';
+        }
+        if ((field?.type === 'number' || field?.type === 'computed') && value !== undefined && value !== null && value !== '') {
+            return String(value);
+        }
+        return String(value ?? '');
+    },
+
+    getOrderFilterSuggestions(key) {
+        const field = this.ORDER_FIELDS.find((item) => item.key === key);
+        const suggestions = new Set();
+
+        if (field?.type === 'status') {
+            suggestions.add('y');
+            suggestions.add('n');
+        }
+
+        if (Array.isArray(field?.options)) {
+            field.options.forEach((option) => {
+                if (option !== undefined && option !== null && option !== '') {
+                    suggestions.add(String(option));
+                }
+            });
+        }
+
+        this.allOrders.forEach((order) => {
+            const value = this.getOrderFilterValue(order, key).trim();
+            if (value) suggestions.add(value);
+        });
+
+        return Array.from(suggestions).slice(0, 100);
+    },
+
+    applyOrderColumnFiltersNow() {
+        this.currentPage = 1;
+        this.applyOrderFilters();
+        this.filteredOrders = this.getSortedOrders(this.filteredOrders);
+        this.orders = this.filteredOrders.slice(0, this.pageSize);
+        this.renderOrdersTable();
+        this.renderPagination();
+        this.renderOrderFilterBar();
+    },
+
+    scheduleOrderColumnFilterApply() {
+        if (this.columnFilterApplyTimer) clearTimeout(this.columnFilterApplyTimer);
+        this.columnFilterApplyTimer = setTimeout(() => {
+            this.columnFilterApplyTimer = null;
+            if (this.isOrderFilterComposing) return;
+            this.applyOrderColumnFiltersNow();
+        }, 200);
     },
 
     renderOrderFilterBar() {
@@ -502,7 +780,8 @@ window.SalesManagementModule = {
             `<button class="btn btn-sm orders-year-btn ${this.selectedYear === y ? 'btn-primary' : 'btn-outline'}" data-year="${y}">${y === 'all' ? '전체' : y + '년'}</button>`
         ).join('');
 
-        const hasFilter = this.searchQuery || this.selectedYear !== 'all' || this.showUndeliveredOnly;
+        const hasColumnFilter = Object.values(this.columnFilters || {}).some(value => String(value || '').trim() !== '');
+        const hasFilter = this.searchQuery || this.selectedYear !== 'all' || this.showUndeliveredOnly || hasColumnFilter;
         container.innerHTML = `
             <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:10px 0 12px;">
                 <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
@@ -512,6 +791,11 @@ window.SalesManagementModule = {
                 <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
                     <button class="btn btn-sm ${this.showUndeliveredOnly ? 'btn-primary' : 'btn-outline'}" id="undeliveredFilterBtn">
                         🚚 배송완료 전만 보기
+                    </button>
+                </div>
+                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                    <button class="btn btn-sm btn-outline" id="batchRefillStoneBtn" title="제품단가표 기준으로 전체 주문의 나석정보를 다시 채웁니다">
+                        💎 나석정보 일괄 재채움
                     </button>
                 </div>
                 <div style="display:flex;gap:6px;align-items:center;margin-left:auto;flex-wrap:wrap;">
@@ -528,6 +812,7 @@ window.SalesManagementModule = {
                 this.selectedYear = btn.dataset.year;
                 this.currentPage = 1;
                 this.applyOrderFilters();
+                this.filteredOrders = this.getSortedOrders(this.filteredOrders);
                 this.orders = this.filteredOrders.slice(0, this.pageSize);
                 this.renderOrdersTable();
                 this.renderPagination();
@@ -535,10 +820,38 @@ window.SalesManagementModule = {
             });
         });
 
+        document.getElementById('batchRefillStoneBtn')?.addEventListener('click', async () => {
+            if (!window.ManufacturingCostsModule) {
+                window.Utils.showNotification('ManufacturingCostsModule이 로드되지 않았습니다.', 'error');
+                return;
+            }
+            const confirmed = confirm('전체 주문의 나석정보를 제품단가표 기준으로 일괄 재채움합니다.\n잘못 매칭된 나석정보가 수정됩니다. 계속하시겠습니까?');
+            if (!confirmed) return;
+
+            const btn = document.getElementById('batchRefillStoneBtn');
+            if (btn) { btn.disabled = true; btn.textContent = '💎 처리 중...'; }
+
+            try {
+                const result = await window.ManufacturingCostsModule.batchRefillStoneInfo((done, total, name) => {
+                    if (btn) btn.textContent = `💎 처리 중 (${done}/${total})`;
+                });
+                const msg = `완료: ${result.updated}건 업데이트, ${result.skipped}건 건너뜀` +
+                    (result.errors.length ? `, ${result.errors.length}건 오류` : '');
+                window.Utils.showNotification(msg, result.errors.length ? 'warning' : 'success');
+                if (result.errors.length) console.warn('[batchRefill] errors:', result.errors);
+                await this.loadOrders(this.currentPage);
+            } catch (e) {
+                window.Utils.showNotification('일괄 재채움 오류: ' + e.message, 'error');
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = '💎 나석정보 일괄 재채움'; }
+            }
+        });
+
         document.getElementById('ordersSearchBtn')?.addEventListener('click', () => {
             this.searchQuery = document.getElementById('ordersSearchInput')?.value?.trim() || '';
             this.currentPage = 1;
             this.applyOrderFilters();
+            this.filteredOrders = this.getSortedOrders(this.filteredOrders);
             this.orders = this.filteredOrders.slice(0, this.pageSize);
             this.renderOrdersTable();
             this.renderPagination();
@@ -553,6 +866,7 @@ window.SalesManagementModule = {
             this.showUndeliveredOnly = !this.showUndeliveredOnly;
             this.currentPage = 1;
             this.applyOrderFilters();
+            this.filteredOrders = this.getSortedOrders(this.filteredOrders);
             this.orders = this.filteredOrders.slice(0, this.pageSize);
             this.renderOrdersTable();
             this.renderPagination();
@@ -560,11 +874,17 @@ window.SalesManagementModule = {
         });
 
         document.getElementById('ordersClearBtn')?.addEventListener('click', () => {
+            if (this.columnFilterApplyTimer) {
+                clearTimeout(this.columnFilterApplyTimer);
+                this.columnFilterApplyTimer = null;
+            }
             this.selectedYear = 'all';
             this.searchQuery = '';
+            this.columnFilters = {};
             this.showUndeliveredOnly = false;
             this.currentPage = 1;
             this.applyOrderFilters();
+            this.filteredOrders = this.getSortedOrders(this.filteredOrders);
             this.orders = this.filteredOrders.slice(0, this.pageSize);
             this.renderOrdersTable();
             this.renderPagination();
@@ -579,20 +899,25 @@ window.SalesManagementModule = {
 
             // 처음 로드일 때만 Firebase에서 전체 데이터 조회
             if (this.allOrders.length === 0) {
+                await this.loadProductRates();
                 const snap = await window.firebaseDb
                     .collection('sales').doc('orders').collection('items')
                     .orderBy('createdAt', 'desc')
                     .get();
-                this.allOrders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                this.allOrders = this.normalizeOrderDisplayFields(
+                    this.attachExpectedProfit(
+                        snap.docs.map(d => ({ id: d.id, ...d.data() }))
+                    )
+                );
             }
 
             this.applyOrderFilters();
+            this.filteredOrders = this.getSortedOrders(this.filteredOrders);
 
             // 페이지에 맞는 데이터만 추출
             const startIdx = (this.currentPage - 1) * this.pageSize;
             const endIdx = startIdx + this.pageSize;
             this.orders = this.filteredOrders.slice(startIdx, endIdx);
-            this.orderSortState = { column: null, direction: 'asc' };
             this.renderOrdersTable();
             this.renderPagination();
             this.renderOrderFilterBar();
@@ -600,6 +925,129 @@ window.SalesManagementModule = {
             console.error('[SalesManagement] loadOrders 실패:', error);
             window.Utils.showNotification('매출표 로드 실패', 'error');
         }
+    },
+
+    async loadProductRates() {
+        try {
+            const snap = await window.firebaseDb
+                .collection('prices').doc('productRates').collection('items')
+                .get();
+            this.productRates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        } catch (error) {
+            console.error('[SalesManagement] 제품가격표 로드 실패:', error);
+            this.productRates = [];
+        }
+    },
+
+    buildStoneInfoText(order = {}) {
+        if (order.stoneInfo) return order.stoneInfo;
+        if (order.stoneQty_text) return order.stoneQty_text;
+
+        if (order.stoneArray) {
+            try {
+                const parsed = typeof order.stoneArray === 'string'
+                    ? JSON.parse(order.stoneArray)
+                    : order.stoneArray;
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    const text = parsed
+                        .map(stone => {
+                            const qty = stone.stoneQty ?? stone.qty ?? 0;
+                            const type = stone.stoneType || stone.type || '';
+                            return qty && type ? `${qty} × ${type}` : '';
+                        })
+                        .filter(Boolean)
+                        .join(', ');
+                    if (text) return text;
+                }
+            } catch (error) {
+                console.warn('[SalesManagement] stoneArray 파싱 실패:', error);
+            }
+        }
+
+        if (Array.isArray(order.stones) && order.stones.length > 0) {
+            const text = order.stones
+                .map(stone => {
+                    const qty = stone.stoneQty ?? stone.qty ?? 0;
+                    const type = stone.stoneType || stone.type || '';
+                    return qty && type ? `${qty} × ${type}` : '';
+                })
+                .filter(Boolean)
+                .join(', ');
+            if (text) return text;
+        }
+
+        return '';
+    },
+
+    normalizeOrderDisplayFields(orders = []) {
+        return orders.map(order => ({
+            ...order,
+            stoneInfo: this.buildStoneInfoText(order)
+        }));
+    },
+
+    attachExpectedProfit(orders = []) {
+        const findProductRate = (order) => {
+            const productCode = (order.productCode || '').trim();
+            const productName = (order.productName || '').trim();
+
+            return this.productRates.find(product => {
+                const rateCode = (product.productCode || '').trim();
+                const rateName = (product.productName || '').trim();
+                if (productCode && rateCode && productCode === rateCode) return true;
+                if (productName && rateName && productName === rateName) return true;
+                return false;
+            });
+        };
+
+        return orders.map(order => {
+            const productRate = findProductRate(order);
+            const salesAmount = parseFloat(order.salesAmount) || 0;
+            const commissionRate = parseFloat(order.commissionRate) || 0;
+            const salesCost = parseFloat(productRate?.salesCost);
+            const expectedProfit = Number.isFinite(salesCost)
+                ? Math.round(salesAmount * (1 - commissionRate / 100) - salesCost)
+                : null;
+
+            return {
+                ...order,
+                expectedProfit
+            };
+        });
+    },
+
+    getComparableOrderValue(order, column) {
+        let value = order?.[column];
+        if (value?.toDate) value = value.toDate();
+        return value;
+    },
+
+    getSortedOrders(orders = []) {
+        const { column, direction } = this.orderSortState || {};
+        if (!column) return [...orders];
+
+        return [...orders].sort((a, b) => {
+            let aVal = this.getComparableOrderValue(a, column);
+            let bVal = this.getComparableOrderValue(b, column);
+
+            if (aVal == null && bVal == null) return 0;
+            if (aVal == null) return 1;
+            if (bVal == null) return -1;
+
+            if (typeof aVal === 'number' && typeof bVal === 'number') {
+                return direction === 'asc' ? aVal - bVal : bVal - aVal;
+            }
+
+            if (aVal instanceof Date && bVal instanceof Date) {
+                return direction === 'asc' ? aVal - bVal : bVal - aVal;
+            }
+
+            const aStr = String(aVal).toLowerCase();
+            const bStr = String(bVal).toLowerCase();
+            return direction === 'asc'
+                ? aStr.localeCompare(bStr, 'ko-KR')
+                : bStr.localeCompare(aStr, 'ko-KR');
+        });
     },
 
     sortOrders(column) {
@@ -611,40 +1059,10 @@ window.SalesManagementModule = {
             this.orderSortState.direction = 'asc';
         }
 
-        // 데이터 정렬
-        this.orders.sort((a, b) => {
-            let aVal = a[column];
-            let bVal = b[column];
-
-            // Firestore Timestamp 처리
-            if (aVal?.toDate) aVal = aVal.toDate();
-            if (bVal?.toDate) bVal = bVal.toDate();
-
-            // null/undefined 처리
-            if (aVal == null && bVal == null) return 0;
-            if (aVal == null) return 1;
-            if (bVal == null) return -1;
-
-            // 숫자 비교
-            if (typeof aVal === 'number' && typeof bVal === 'number') {
-                return this.orderSortState.direction === 'asc' ? aVal - bVal : bVal - aVal;
-            }
-
-            // 날짜 비교
-            if (aVal instanceof Date && bVal instanceof Date) {
-                return this.orderSortState.direction === 'asc' ? aVal - bVal : bVal - aVal;
-            }
-
-            // 문자열 비교
-            const aStr = String(aVal).toLowerCase();
-            const bStr = String(bVal).toLowerCase();
-            if (this.orderSortState.direction === 'asc') {
-                return aStr.localeCompare(bStr, 'ko-KR');
-            } else {
-                return bStr.localeCompare(aStr, 'ko-KR');
-            }
-        });
-
+        this.filteredOrders = this.getSortedOrders(this.filteredOrders);
+        const startIdx = (this.currentPage - 1) * this.pageSize;
+        const endIdx = startIdx + this.pageSize;
+        this.orders = this.filteredOrders.slice(startIdx, endIdx);
         this.renderOrdersTable();
     },
 
@@ -654,7 +1072,7 @@ window.SalesManagementModule = {
         if (!tbody) return;
 
         // 기본 표시 필드 (표시항목 설정이 없을 때)
-        const defaultDisplayFields = ['orderDate', 'orderNumber', 'customerName', 'productName', 'orderAmount', 'salesAmount'];
+        const defaultDisplayFields = ['orderDate', 'orderNumber', 'customerName', 'productName', 'orderAmount', 'salesAmount', 'expectedProfit'];
 
         // sessionStorage에서 선택된 필드 로드
         const displayFieldKeys = window.Utils.getDisplayFields('orders',
@@ -683,8 +1101,9 @@ window.SalesManagementModule = {
 
                 // 날짜 포맷
                 if (field.type === 'date' && val) {
-                    val = val.toDate ? new Date(val.toDate()).toLocaleDateString('ko-KR') : '-';
-                } else if (field.type === 'number' && val !== undefined && val !== null && val !== '') {
+                    const parsedDate = val.toDate ? new Date(val.toDate()) : new Date(val);
+                    val = Number.isNaN(parsedDate.getTime()) ? '-' : parsedDate.toLocaleDateString('ko-KR');
+                } else if ((field.type === 'number' || field.type === 'computed') && val !== undefined && val !== null && val !== '') {
                     val = window.Utils.formatNumber(val);
                 } else if (val === undefined || val === null || val === '') {
                     val = '-';
@@ -695,16 +1114,15 @@ window.SalesManagementModule = {
 
             // 이미지 링크 (주문관리 IMAGE_TYPES 참조)
             const imageTypes = window.OrderManagementModule?.IMAGE_TYPES || [];
-            const imageCell = imageTypes.length > 0
-                ? imageTypes.map(t => {
-                    const imgArr = o.images?.[t.key];
-                    const hasImages = Array.isArray(imgArr) ? imgArr.length > 0 : !!imgArr;
-                    return hasImages
-                        ? `<a href="#" style="font-size:0.75rem;margin-right:4px;"
-                            data-action="viewOrderImage" data-id="${o.id}" data-type="${t.key}">📎${t.label}${Array.isArray(imgArr) ? `(${imgArr.length})` : ''}</a>`
-                        : `<span style="color:#d1d5db;font-size:0.75rem;margin-right:4px;">${t.label}</span>`;
-                  }).join('')
-                : '';
+            const imageLinks = imageTypes.map(t => {
+                const imgArr = o.images?.[t.key];
+                const hasImages = Array.isArray(imgArr) ? imgArr.length > 0 : !!imgArr;
+                return hasImages
+                    ? `<a href="#" style="font-size:0.75rem;margin-right:4px;"
+                        data-action="viewOrderImage" data-id="${o.id}" data-type="${t.key}">📎${t.label}${Array.isArray(imgArr) ? `(${imgArr.length})` : ''}</a>`
+                    : '';
+            }).filter(Boolean);
+            const imageCell = imageLinks.length > 0 ? imageLinks.join('') : '<span style="color:#9ca3af;font-size:0.75rem;">-</span>';
 
             return `
                 <tr data-id="${o.id}">
@@ -721,17 +1139,18 @@ window.SalesManagementModule = {
         }).join('');
 
         // 테이블 헤더 업데이트
-        const thead = table?.querySelector('thead tr');
-        if (thead) {
+        const thead = table?.querySelector('thead');
+        const headerRow = thead?.querySelector('tr');
+        if (headerRow) {
             // 기존 모든 th 제거
-            Array.from(thead.querySelectorAll('th')).forEach(th => th.remove());
+            Array.from(headerRow.querySelectorAll('th')).forEach(th => th.remove());
 
             // 체크박스 헤더 생성
             const checkboxTh = document.createElement('th');
             checkboxTh.style.textAlign = 'center';
             checkboxTh.className = 'header-checkbox-th';
             checkboxTh.innerHTML = '<input type="checkbox" class="header-checkbox">';
-            thead.appendChild(checkboxTh);
+            headerRow.appendChild(checkboxTh);
 
             // 필드 헤더 생성
             displayFieldKeys.forEach(key => {
@@ -748,18 +1167,18 @@ window.SalesManagementModule = {
                     const column = e.target.dataset.column;
                     this.sortOrders(column);
                 });
-                thead.appendChild(th);
+                headerRow.appendChild(th);
             });
 
             // 첨부이미지 헤더
             const imageTh = document.createElement('th');
             imageTh.textContent = '첨부이미지';
-            thead.appendChild(imageTh);
+            headerRow.appendChild(imageTh);
 
             // 관리 헤더 생성
             const manageTh = document.createElement('th');
             manageTh.textContent = '관리';
-            thead.appendChild(manageTh);
+            headerRow.appendChild(manageTh);
 
             // 헤더 체크박스 이벤트
             const headerCheckbox = checkboxTh.querySelector('.header-checkbox');
@@ -769,6 +1188,46 @@ window.SalesManagementModule = {
                     allCheckboxes.forEach(cb => cb.checked = e.target.checked);
                 });
             }
+
+            let filterRow = thead.querySelector('.orders-filter-row');
+            if (!filterRow) {
+                filterRow = document.createElement('tr');
+                filterRow.className = 'orders-filter-row';
+                thead.appendChild(filterRow);
+            }
+            const filterCells = ['<th></th>'];
+            displayFieldKeys.forEach((key) => {
+                const field = fieldMap[key];
+                const listId = `orders-filter-list-${key}`;
+                const suggestions = this.getOrderFilterSuggestions(key);
+                filterCells.push(`
+                    <th>
+                        <input data-filter-column="${key}" type="text" list="${listId}" value="${String(this.columnFilters[key] || '').replace(/"/g, '&quot;')}"
+                            placeholder="${field?.type === 'status' ? 'Y/N 또는 직접입력' : '선택 또는 직접입력'}"
+                            style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;">
+                        <datalist id="${listId}">
+                            ${suggestions.map((option) => `<option value="${String(option).replace(/"/g, '&quot;')}"></option>`).join('')}
+                        </datalist>
+                    </th>
+                `);
+            });
+            filterCells.push('<th></th><th></th>');
+            filterRow.innerHTML = filterCells.join('');
+            filterRow.querySelectorAll('[data-filter-column]').forEach((input) => {
+                input.addEventListener('compositionstart', () => {
+                    this.isOrderFilterComposing = true;
+                });
+                input.addEventListener('compositionend', (e) => {
+                    this.isOrderFilterComposing = false;
+                    this.columnFilters[e.target.dataset.filterColumn] = e.target.value || '';
+                    this.scheduleOrderColumnFilterApply();
+                });
+                input.addEventListener('input', (e) => {
+                    if (this.isOrderFilterComposing) return;
+                    this.columnFilters[e.target.dataset.filterColumn] = e.target.value || '';
+                    this.scheduleOrderColumnFilterApply();
+                });
+            });
         }
 
         // Event delegation for action buttons
@@ -893,23 +1352,38 @@ window.SalesManagementModule = {
 
         // 고객목록 로드
         let customerOptions = [];
+        let customerRecords = [];
         try {
             const customerSnap = await window.firebaseDb.collection('sales').doc('customers').collection('items').orderBy('customerName').get();
-            const customers = customerSnap.docs.map(d => d.data().customerName);
+            const customers = customerSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-            // 중복 고객명 처리: 동명이인이 있으면 (1), (2) 등으로 표시
-            const customerMap = {};
-            customers.forEach(name => {
-                customerMap[name] = (customerMap[name] || 0) + 1;
+            // 동명이인 처리: 같은 이름이 있으면 전화번호 뒷 4자리로 구분
+            // 예) 박수진 010-2222-3456 → 박수진(3456)
+            const customerNameCount = {};
+            customers.forEach(customer => {
+                const name = customer.customerName || '';
+                customerNameCount[name] = (customerNameCount[name] || 0) + 1;
             });
-            customerOptions = customers.map(name =>
-                customerMap[name] > 1
-                    ? `${name}(${customers.filter(c => c === name).indexOf(name) + 1})`
-                    : name
-            );
+
+            customerRecords = customers.map(customer => {
+                const name = customer.customerName || '';
+                let label = name;
+                if (customerNameCount[name] > 1) {
+                    const phone4 = (customer.phone || '').replace(/\D/g, '').slice(-4);
+                    label = phone4 ? `${name}(${phone4})` : `${name}(${customer.id.slice(-4)})`;
+                }
+                return { ...customer, _displayLabel: label };
+            });
+            customerOptions = customerRecords.map(customer => customer._displayLabel);
         } catch (e) {
             // 고객목록 없음 무시
         }
+
+        // 저장 시 고객명 검증에 사용할 허용 목록 (신규 추가 시 동적으로 갱신)
+        const validCustomerNames = new Set([
+            ...customerOptions,
+            ...customerRecords.map(c => c.customerName || '')
+        ]);
 
         // 제품단가표 로드
         let products = [];
@@ -936,7 +1410,7 @@ window.SalesManagementModule = {
         }
 
         const body = `<div class="form-grid">` +
-            this.ORDER_FIELDS.filter(f => f.type !== 'status').map(f => {
+            this.ORDER_FIELDS.filter(f => f.type !== 'status' && f.type !== 'computed').map(f => {
                 const isRequired = req.includes(f.key);
                 let val = order?.[f.key] ?? '';
 
@@ -948,7 +1422,25 @@ window.SalesManagementModule = {
                 let input;
 
                 // 특별한 필드 처리
-                if (f.key === 'customerName') {
+                if (f.key === 'stoneInfo') {
+                    // 나석정보: 자동생성 readonly + 나석정보 입력 버튼
+                    let stoneDisplayText = val;
+                    try {
+                        const arr = JSON.parse(order?.stoneArray || '[]');
+                        if (arr.length > 0) {
+                            stoneDisplayText = arr.map(s => `${s.stoneQty} × ${s.stoneType}`).join(', ');
+                        }
+                    } catch(e) {}
+                    input = `<div style="display:flex;gap:6px;align-items:flex-start;">
+                                <input type="text" name="${f.key}" id="stoneInfoDisplay"
+                                    value="${stoneDisplayText}"
+                                    readonly style="background:#f3f4f6;flex:1;">
+                                <button type="button" class="btn btn-sm btn-outline" id="salesStoneInfoBtn"
+                                    style="white-space:nowrap;padding:8px 12px;margin-top:0;">나석정보 입력</button>
+                             </div>
+                             <input type="hidden" name="stoneArray" id="stoneArrayInput"
+                                value='${(order?.stoneArray || '[]').replace(/'/g, "&#39;")}'>`;
+                } else if (f.key === 'customerName') {
                     // 고객명: 검색 드롭다운 + 신규 입력
                     input = `<div id="customer-select-container" style="width:100%;"></div>
                              <button type="button" class="btn btn-sm btn-secondary" id="newCustomerBtn" style="margin-top:6px; width:100%;">+ 신규 고객 추가</button>`;
@@ -968,15 +1460,8 @@ window.SalesManagementModule = {
                                 ${opts}
                              </datalist>`;
                 } else if (f.key === 'purchasePathDetail') {
-                    // 구매경로상세: purchasePath에 따라 동적으로 변경
-                    const onlineOptions = ['듀인피니스 공식몰','신세계V','SSG','더현대닷컴'];
-                    const offlineOptions = ['현대백화점 압구정본점','현대백화점 무역점','현대백화점 킨텍스점','현대백화점 목동점'];
-                    const opts = (order?.purchasePath === '오프라인' ? offlineOptions : onlineOptions).map(opt =>
-                        `<option value="${opt}" ${val === opt ? 'selected' : ''}>${opt}</option>`
-                    ).join('');
                     input = `<select name="${f.key}" class="purchase-detail-select">
-                                <option value="">선택</option>${opts}
-                                <option value="">+ 신규 입력</option>
+                                ${this.buildPurchasePathDetailOptionsHtml(order?.purchasePath || '온라인', val)}
                              </select>`;
                 } else if (f.type === 'select') {
                     const opts = (f.options || []).map(opt =>
@@ -1060,6 +1545,20 @@ window.SalesManagementModule = {
             orderId ? '주문 수정' : '주문 추가',
             body,
             async (data, w) => {
+                // 고객명 검증: 고객목록에 없는 고객은 저장 불가
+                const enteredCustomer = (data.customerName || '').trim();
+                if (enteredCustomer && !validCustomerNames.has(enteredCustomer)) {
+                    window.Utils.showNotification(
+                        `"${enteredCustomer}"은(는) 고객목록에 없는 고객입니다. 먼저 "+ 신규 고객 추가"로 등록해주세요.`,
+                        'error'
+                    );
+                    throw new Error('고객 미등록');
+                }
+
+                // 동명이인 레이블(박수진(3456)) 대신 실제 고객명(박수진) 저장
+                const actualName = w.querySelector('#_actualCustomerName')?.value;
+                if (actualName) data.customerName = actualName;
+
                 // 날짜 변환
                 if (data.orderDate) {
                     data.orderDate = firebase.firestore.Timestamp.fromDate(new Date(data.orderDate));
@@ -1081,6 +1580,16 @@ window.SalesManagementModule = {
                             data.category = categoryMap[categoryChar] || '기타';
                         }
                     }
+                }
+
+                // stoneArray에서 stoneInfo 자동 생성 (수기 입력 불가이므로 항상 덮어씀)
+                if (data.stoneArray) {
+                    try {
+                        const arr = JSON.parse(data.stoneArray);
+                        data.stoneInfo = arr.length > 0
+                            ? arr.map(s => `${s.stoneQty} × ${s.stoneType}`).join(', ')
+                            : '';
+                    } catch(e) {}
                 }
 
                 // 옵션명 자동생성: {길이}/{색상}/{사이즈}/{잠금장치}/{체인굵기}/{뒷침}
@@ -1135,7 +1644,11 @@ window.SalesManagementModule = {
                         images[key] = order.images[key];
                     }
                 }
-                data.images = images;
+                if (Object.keys(images).length > 0) {
+                    data.images = images;
+                } else {
+                    delete data.images;
+                }
 
                 // 이미지 파일 필드 제거 (Firestore에 저장할 수 없음)
                 delete data.img_salesReceipt;
@@ -1213,21 +1726,89 @@ window.SalesManagementModule = {
                     }
                 }
                 w.remove();
+                this.allOrders = [];
                 await this.loadOrders();
             }
         );
 
+        // 나석정보 입력 버튼 이벤트
+        const salesStoneInfoBtn = wrapper.querySelector('#salesStoneInfoBtn');
+        if (salesStoneInfoBtn && window.StoneInputModalModule) {
+            salesStoneInfoBtn.addEventListener('click', async () => {
+                // diamondRates 로드 (ManufacturingCostsModule 캐시 우선)
+                let diamondRates = window.ManufacturingCostsModule?.diamondRates || [];
+                if (diamondRates.length === 0) {
+                    try {
+                        const snap = await window.firebaseDb
+                            .collection('prices').doc('diamondRates').collection('items').get();
+                        diamondRates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                        if (window.ManufacturingCostsModule) {
+                            window.ManufacturingCostsModule.diamondRates = diamondRates;
+                        }
+                    } catch(e) {}
+                }
+
+                let existingStones = [];
+                try {
+                    const stoneArrayInput = wrapper.querySelector('#stoneArrayInput');
+                    existingStones = JSON.parse(stoneArrayInput?.value || '[]');
+                } catch(e) {}
+
+                window.StoneInputModalModule.open(diamondRates, existingStones, (stoneArray) => {
+                    const stoneQtyText = stoneArray.map(s => `${s.stoneQty} × ${s.stoneType}`).join(', ');
+                    const stoneInfoDisplay = wrapper.querySelector('#stoneInfoDisplay');
+                    const stoneArrayInput = wrapper.querySelector('#stoneArrayInput');
+                    if (stoneInfoDisplay) stoneInfoDisplay.value = stoneQtyText;
+                    if (stoneArrayInput) stoneArrayInput.value = JSON.stringify(stoneArray);
+                });
+            });
+        }
+
         // 고객명 검색 드롭다운 설정
         const customerContainer = wrapper.querySelector('#customer-select-container');
         if (customerContainer) {
+            const applyCustomerInfo = (selectedLabel) => {
+                const selectedCustomer = customerRecords.find(customer => customer._displayLabel === selectedLabel);
+                if (!selectedCustomer) return;
+
+                const fieldMap = {
+                    postalCode: selectedCustomer.postalCode || '',
+                    recipient: selectedCustomer.customerName || '',
+                    phone: selectedCustomer.phone || '',
+                    address: selectedCustomer.address || '',
+                    addressDetail: selectedCustomer.addressDetail || ''
+                };
+
+                Object.entries(fieldMap).forEach(([fieldName, fieldValue]) => {
+                    const input = wrapper.querySelector(`[name="${fieldName}"]`);
+                    if (input) input.value = fieldValue;
+                });
+
+                // 저장 시 실제 고객명(레이블 아닌 원본)을 사용하기 위해 hidden input에 보관
+                let actualNameInput = wrapper.querySelector('#_actualCustomerName');
+                if (!actualNameInput) {
+                    actualNameInput = document.createElement('input');
+                    actualNameInput.type = 'hidden';
+                    actualNameInput.id = '_actualCustomerName';
+                    wrapper.querySelector('#modalForm')?.appendChild(actualNameInput);
+                }
+                actualNameInput.value = selectedCustomer.customerName || '';
+            };
+
             const searchableSelect = window.Utils.createSearchableSelect(
                 customerOptions,
                 order?.customerName || '',
-                null,
+                applyCustomerInfo,
                 '고객명 검색...',
                 'customerName'
             );
             customerContainer.replaceWith(searchableSelect);
+
+            const customerInput = wrapper.querySelector('.searchable-select-input[name="customerName"]');
+            if (customerInput) {
+                customerInput.addEventListener('change', (e) => applyCustomerInfo(e.target.value));
+                customerInput.addEventListener('blur', (e) => applyCustomerInfo(e.target.value));
+            }
 
             // 신규 고객 추가 버튼 처리
             const newCustomerBtn = wrapper.querySelector('#newCustomerBtn');
@@ -1292,15 +1873,25 @@ window.SalesManagementModule = {
 
                             modal.remove();
 
+                            // 허용 목록에 신규 고객 추가 (저장 시 검증 통과를 위해)
+                            validCustomerNames.add(data.newCustomerName);
+
                             // 원래 폼의 고객명 필드에 자동 설정
                             const customerInput = wrapper.querySelector('[name="customerName"]');
                             if (customerInput) customerInput.value = data.newCustomerName;
 
-                            // 우편번호 필드에도 자동 설정
-                            const postalCodeInput = wrapper.querySelector('[name="postalCode"]');
-                            if (postalCodeInput && data.newCustomerPostalCode) {
-                                postalCodeInput.value = data.newCustomerPostalCode;
-                            }
+                            // 신규 고객 정보도 주문 폼에 즉시 반영
+                            const fieldValues = {
+                                postalCode: data.newCustomerPostalCode || '',
+                                recipient: data.newCustomerName || '',
+                                phone: data.newCustomerPhone || '',
+                                address: data.newCustomerAddress || '',
+                                addressDetail: data.newCustomerAddressDetail || ''
+                            };
+                            Object.entries(fieldValues).forEach(([fieldName, fieldValue]) => {
+                                const input = wrapper.querySelector(`[name="${fieldName}"]`);
+                                if (input) input.value = fieldValue;
+                            });
                         },
                         '저장'
                     );
@@ -1308,13 +1899,42 @@ window.SalesManagementModule = {
             }
         }
 
+        const getBackSupportGroup = () => wrapper.querySelector('[name="backSupport"]')?.closest('.form-group');
+        const setBackSupportVisibility = (isEarring) => {
+            const backSupportGroup = getBackSupportGroup();
+            if (!backSupportGroup) return;
+            backSupportGroup.style.display = isEarring ? '' : 'none';
+        };
+
         // 상품명 검색 드롭다운 설정
         const productContainer = wrapper.querySelector('#product-select-container');
         if (productContainer) {
+            const applyProductInfo = (productName) => {
+                const product = products.find(p => p.name === productName);
+                if (!product) return;
+
+                // 제품코드 자동 설정
+                const codeInput = wrapper.querySelector('[name="productCode"]');
+                if (codeInput) codeInput.value = product.code;
+
+                // 종류 자동 추출
+                const codeChars = product.code?.match(/[A-Za-z]/g);
+                if (codeChars && codeChars.length >= 3) {
+                    const categoryChar = codeChars[2].toUpperCase();
+                    const categoryMap = { 'E': 'E(귀걸이)', 'R': 'R(반지)', 'N': 'N(목걸이)', 'B': 'B(팔찌)' };
+                    const category = categoryMap[categoryChar] || '기타';
+                    const categorySelect = wrapper.querySelector('[name="category"]');
+                    if (categorySelect) categorySelect.value = category;
+
+                    // 귀걸이면 뒷침 표시, 아니면 해당 필드만 숨김
+                    setBackSupportVisibility(categoryChar === 'E');
+                }
+            };
+
             const searchableSelect = window.Utils.createSearchableSelect(
                 productOptions,
                 order?.productName || '',
-                null,
+                applyProductInfo,
                 '상품명 검색...',
                 'productName'
             );
@@ -1323,31 +1943,8 @@ window.SalesManagementModule = {
             // 상품명 변경 시 자동으로 종류와 제품코드 업데이트
             const productInput = wrapper.querySelector('.searchable-select-input[name="productName"]');
             if (productInput) {
-                productInput.addEventListener('change', (e) => {
-                    const product = products.find(p => p.name === e.target.value);
-                    if (product) {
-                        // 제품코드 자동 설정
-                        const codeInput = wrapper.querySelector('[name="productCode"]');
-                        if (codeInput) codeInput.value = product.code;
-
-                        // 종류 자동 추출
-                        const codeChars = product.code.match(/[A-Za-z]/g);
-                        if (codeChars && codeChars.length >= 3) {
-                            const categoryChar = codeChars[2].toUpperCase();
-                            const categoryMap = { 'E': 'E(귀걸이)', 'R': 'R(반지)', 'N': 'N(목걸이)', 'B': 'B(팔찌)' };
-                            const category = categoryMap[categoryChar] || '기타';
-                            const categorySelect = wrapper.querySelector('[name="category"]');
-                            if (categorySelect) categorySelect.value = category;
-
-                            // 귀걸이면 뒷침 표시, 아니면 숨김
-                            const isEarring = categoryChar === 'E';
-                            const backSupportGroup = wrapper.querySelector('[name="backSupport"]')?.parentElement?.parentElement;
-                            if (backSupportGroup) {
-                                backSupportGroup.style.display = isEarring ? '' : 'none';
-                            }
-                        }
-                    }
-                });
+                productInput.addEventListener('change', (e) => applyProductInfo(e.target.value));
+                productInput.addEventListener('blur', (e) => applyProductInfo(e.target.value));
             }
 
             // 신규 상품 추가 버튼
@@ -1414,31 +2011,43 @@ window.SalesManagementModule = {
             }
         }
 
+        const currentCategory = wrapper.querySelector('[name="category"]')?.value || order?.category || '';
+        setBackSupportVisibility(currentCategory === 'E(귀걸이)');
+
         // 구매경로 변경 시 구매경로상세 옵션 업데이트
         const purchaseSelect = wrapper.querySelector('[name="purchasePath"]');
+        const updatePurchasePathDetailOptions = (purchasePath, selectedValue = '') => {
+            const detailSelect = wrapper.querySelector('[name="purchasePathDetail"]');
+            if (!detailSelect) return;
+            this.updatePurchasePathDetailSelect(detailSelect, purchasePath, selectedValue);
+        };
+
         if (purchaseSelect) {
             purchaseSelect.addEventListener('change', (e) => {
-                const detailSelect = wrapper.querySelector('[name="purchasePathDetail"]');
-                if (detailSelect) {
-                    const onlineOptions = ['듀인피니스 공식몰','신세계V','SSG','더현대닷컴'];
-                    const offlineOptions = ['현대백화점 압구정본점','현대백화점 무역점','현대백화점 킨텍스점','현대백화점 목동점'];
-                    const options = e.target.value === '오프라인' ? offlineOptions : onlineOptions;
-                    detailSelect.innerHTML = `<option value="">선택</option>` +
-                        options.map(opt => `<option value="${opt}">${opt}</option>`).join('') +
-                        `<option value="">+ 신규 입력</option>`;
-                    detailSelect.value = '';
-                }
+                updatePurchasePathDetailOptions(e.target.value, '');
             });
         }
 
         // 구매경로상세에서 신규입력 처리
         const detailSelect = wrapper.querySelector('[name="purchasePathDetail"]');
         if (detailSelect) {
-            detailSelect.addEventListener('change', (e) => {
-                if (e.target.value === '+ 신규 입력' || e.target.value === '') {
+            detailSelect.addEventListener('change', async (e) => {
+                if (e.target.value === '__new__') {
                     const value = prompt('새로운 구매경로상세를 입력하세요:');
                     if (value) {
-                        e.target.value = value;
+                        try {
+                            const savedValue = await this.addCustomPurchasePathDetailOption(
+                                purchaseSelect?.value || order?.purchasePath || '온라인',
+                                value
+                            );
+                            updatePurchasePathDetailOptions(purchaseSelect?.value || '', savedValue);
+                        } catch (error) {
+                            console.error('[SalesManagement] 구매경로상세 신규 저장 실패:', error);
+                            window.Utils.showNotification('구매경로상세 저장 실패: ' + error.message, 'error');
+                            e.target.value = '';
+                        }
+                    } else {
+                        e.target.value = '';
                     }
                 }
             });
@@ -2085,13 +2694,14 @@ window.SalesManagementModule = {
             const orderDate = order.orderDate?.toDate
                 ? new Date(order.orderDate.toDate()).toLocaleDateString('ko-KR')
                 : (order.orderDate || '');
+            const stoneInfo = this.buildStoneInfoText(order);
 
             return {
                 '주문일': orderDate,
                 '고객명': order.customerName || '',
                 '제품명': order.productName || '',
                 '옵션명': order.optionName || '',
-                '나석정보': order.stoneInfo || '',
+                '나석정보': stoneInfo,
                 '기타': order.remark || '',
                 '보증서': order.warranty || ''
             };

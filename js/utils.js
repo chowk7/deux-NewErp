@@ -66,7 +66,9 @@ window.Utils = {
                     const data = Object.fromEntries(formData);
                     ['img_salesReceipt', 'img_orderSheet'].forEach(key => {
                         if (formData.has(key)) {
-                            data[key] = formData.getAll(key);
+                            data[key] = formData.getAll(key).filter(file =>
+                                file instanceof File && file.name && file.size > 0
+                            );
                         }
                     });
                     await onSubmit(data, wrapper);
@@ -136,15 +138,17 @@ window.Utils = {
 
     extractDeptStoneCarat(typeText) {
         const typeStr = String(typeText || '').trim();
-        const isCarat = /캐럿|ct$/i.test(typeStr);
-        if (!isCarat) return null;
+        const match = typeStr.match(/([0-9]+(?:\.[0-9]+)?)\s*(캐럿|ct)/i);
+        if (!match) return null;
 
-        const numPart = typeStr.replace(/캐럿|ct$/i, '').trim();
-        const isFancy = /^[^0-9\s]/.test(numPart);
-        const carat = parseFloat(numPart.replace(/[^0-9.]/g, '')) || 0;
+        const prefix = typeStr.slice(0, match.index).trim();
+        const carat = parseFloat(match[1]) || 0;
         if (!carat) return null;
 
-        return { carat, isFancy };
+        return {
+            carat,
+            isFancy: /[^\d\s./()-]/.test(prefix)
+        };
     },
 
     normalizeDeptStoneRowsFromPrices(stonePrices = {}) {
@@ -535,6 +539,41 @@ window.Utils = {
 
     // ===== 기타 =====
 
+    _getDisplayFieldsStorageKey(tableKey) {
+        return `${tableKey}_displayFields`;
+    },
+
+    _loadDisplayFields(tableKey) {
+        const storageKey = this._getDisplayFieldsStorageKey(tableKey);
+
+        try {
+            const localSaved = JSON.parse(localStorage.getItem(storageKey) || '[]');
+            if (Array.isArray(localSaved) && localSaved.length > 0) {
+                return localSaved;
+            }
+        } catch (error) {
+            console.warn('표시항목 localStorage 로드 실패:', error);
+        }
+
+        try {
+            const sessionSaved = JSON.parse(sessionStorage.getItem(storageKey) || '[]');
+            if (Array.isArray(sessionSaved) && sessionSaved.length > 0) {
+                localStorage.setItem(storageKey, JSON.stringify(sessionSaved));
+                return sessionSaved;
+            }
+        } catch (error) {
+            console.warn('표시항목 sessionStorage 로드 실패:', error);
+        }
+
+        return [];
+    },
+
+    _saveDisplayFields(tableKey, selectedKeys) {
+        const storageKey = this._getDisplayFieldsStorageKey(tableKey);
+        localStorage.setItem(storageKey, JSON.stringify(selectedKeys));
+        sessionStorage.setItem(storageKey, JSON.stringify(selectedKeys));
+    },
+
     /**
      * 표시 항목 선택 모달
      * @param {string} tableKey - 테이블 키
@@ -543,7 +582,7 @@ window.Utils = {
      */
     openDisplayFieldsModal(tableKey, fields, onSave, defaultKeys = null) {
         // 저장된 표시 필드 로드 (없으면 defaultKeys, 그것도 없으면 전체)
-        const savedFields = JSON.parse(sessionStorage.getItem(`${tableKey}_displayFields`) || '[]');
+        const savedFields = this._loadDisplayFields(tableKey);
         const fallback = defaultKeys || fields.map(f => f.key);
         const displayFieldKeys = savedFields.length > 0 ? savedFields : fallback;
 
@@ -561,11 +600,11 @@ window.Utils = {
             </div>
         `;
 
-        this.openModal('표시 항목 설정', bodyHtml, async (formData) => {
-            const selectedKeys = Array.from(document.querySelectorAll('input[name="displayField"]:checked'))
+        this.openModal('표시 항목 설정', bodyHtml, async (formData, wrapper) => {
+            const selectedKeys = Array.from(wrapper.querySelectorAll('input[name="displayField"]:checked'))
                 .map(el => el.value);
-            sessionStorage.setItem(`${tableKey}_displayFields`, JSON.stringify(selectedKeys));
-            if (onSave) onSave(selectedKeys);
+            this._saveDisplayFields(tableKey, selectedKeys);
+            if (onSave) await onSave(selectedKeys);
         }, '저장');
     },
 
@@ -573,7 +612,7 @@ window.Utils = {
      * 저장된 표시 필드 조회
      */
     getDisplayFields(tableKey, allFieldKeys) {
-        const saved = JSON.parse(sessionStorage.getItem(`${tableKey}_displayFields`) || '[]');
+        const saved = this._loadDisplayFields(tableKey);
         return saved.length > 0 ? saved : allFieldKeys;
     },
 
@@ -813,7 +852,7 @@ window.Utils = {
      */
     showAdditionalOrderModal(orderData = {}) {
         return new Promise((resolve) => {
-            const onlineOptions = ['듀인피니스 공식몰', '신세계V', 'SSG', '더현대닷컴'];
+            const onlineOptions = ['듀인피니스 공식몰', '신세계V', 'SSG', '더현대하이'];
             const offlineOptions = ['현대백화점 압구정본점', '현대백화점 무역점', '현대백화점 킨텍스점', '현대백화점 목동점'];
             const warrantyOptions = ['없음', 'VS', 'VVS'];
 

@@ -20,8 +20,18 @@ window.AdminExpensesModule = {
     ],
 
     expenses: [],
+    allExpenses: [],
+    filteredExpenses: [],
     filterYear: new Date().getFullYear(),
     filterMonth: '',
+    sortState: { column: 'date', direction: 'desc' },
+    searchFilters: {
+        date: '',
+        accountType: '',
+        description: '',
+        vendor: '',
+        amount: ''
+    },
 
     async init() {
         // FIELDS의 accountType options 동적으로 설정
@@ -29,6 +39,8 @@ window.AdminExpensesModule = {
 
         document.getElementById('addAdminExpenseBtn')
             ?.addEventListener('click', () => this.showForm());
+        document.getElementById('bulkDeleteAdminExpenseBtn')
+            ?.addEventListener('click', () => this.bulkDelete());
 
         document.getElementById('expenseYearFilter')
             ?.addEventListener('change', (e) => {
@@ -40,6 +52,34 @@ window.AdminExpensesModule = {
                 this.filterMonth = e.target.value;
                 this.load();
             });
+
+        document.getElementById('expenseDateSearch')
+            ?.addEventListener('input', (e) => {
+                this.searchFilters.date = e.target.value.trim();
+                this.applyFiltersAndSort();
+            });
+        document.getElementById('expenseAccountTypeFilter')
+            ?.addEventListener('change', (e) => {
+                this.searchFilters.accountType = e.target.value;
+                this.applyFiltersAndSort();
+            });
+        document.getElementById('expenseDescriptionSearch')
+            ?.addEventListener('input', (e) => {
+                this.searchFilters.description = e.target.value.trim();
+                this.applyFiltersAndSort();
+            });
+        document.getElementById('expenseVendorSearch')
+            ?.addEventListener('input', (e) => {
+                this.searchFilters.vendor = e.target.value.trim();
+                this.applyFiltersAndSort();
+            });
+        document.getElementById('expenseAmountSearch')
+            ?.addEventListener('input', (e) => {
+                this.searchFilters.amount = e.target.value.trim();
+                this.applyFiltersAndSort();
+            });
+        document.getElementById('expenseFilterResetBtn')
+            ?.addEventListener('click', () => this.resetFilters());
 
         // CSV 버튼 리스너
         document.getElementById('csvUploadAdminBtn')
@@ -76,27 +116,145 @@ window.AdminExpensesModule = {
             .collection('sales').doc('adminExpenses').collection('items')
             .orderBy('date', 'desc');
 
-        if (this.filterYear) {
-            query = query.where('expenseYear', '==', String(this.filterYear));
+        const yearNum = parseInt(this.filterYear);
+        if (!isNaN(yearNum) && yearNum > 0) {
+            query = query.where('expenseYear', '==', String(yearNum));
         }
 
         const snap = await query.get();
-        this.expenses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        this.allExpenses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        this.populateAccountTypeFilter();
+        this.applyFiltersAndSort();
+    },
+
+    normalizeDateString(value) {
+        if (!value) return '';
+        if (value.toDate) value = value.toDate();
+        const date = value instanceof Date ? value : new Date(value);
+        if (Number.isNaN(date.getTime())) return '';
+        const yyyy = date.getFullYear();
+        const mm = String(date.getMonth() + 1).padStart(2, '0');
+        const dd = String(date.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+    },
+
+    applyFiltersAndSort() {
+        const amountQuery = String(this.searchFilters.amount || '').replace(/,/g, '').trim();
+        const dateQuery = String(this.searchFilters.date || '').replace(/\./g, '-').replace(/\s+/g, '');
+        const descriptionQuery = String(this.searchFilters.description || '').toLowerCase();
+        const vendorQuery = String(this.searchFilters.vendor || '').toLowerCase();
+
+        let data = [...this.allExpenses];
 
         if (this.filterMonth) {
-            this.expenses = this.expenses.filter(e =>
-                String(e.expenseMonth).padStart(2,'0') === String(this.filterMonth).padStart(2,'0'));
+            data = data.filter(e =>
+                String(e.expenseMonth).padStart(2, '0') === String(this.filterMonth).padStart(2, '0'));
         }
 
+        if (dateQuery) {
+            data = data.filter(e => this.normalizeDateString(e.date).includes(dateQuery));
+        }
+        if (this.searchFilters.accountType) {
+            data = data.filter(e => String(e.accountType || '') === this.searchFilters.accountType);
+        }
+        if (descriptionQuery) {
+            data = data.filter(e => String(e.description || '').toLowerCase().includes(descriptionQuery));
+        }
+        if (vendorQuery) {
+            data = data.filter(e => String(e.vendor || '').toLowerCase().includes(vendorQuery));
+        }
+        if (amountQuery) {
+            data = data.filter(e => String(parseFloat(e.amount) || 0).includes(amountQuery));
+        }
+
+        const { column, direction } = this.sortState;
+        const dir = direction === 'asc' ? 1 : -1;
+        data.sort((a, b) => {
+            let av = a[column];
+            let bv = b[column];
+
+            if (column === 'date') {
+                av = this.normalizeDateString(av);
+                bv = this.normalizeDateString(bv);
+            } else if (column === 'amount') {
+                av = parseFloat(av) || 0;
+                bv = parseFloat(bv) || 0;
+                return (av - bv) * dir;
+            } else {
+                av = String(av || '').toLowerCase();
+                bv = String(bv || '').toLowerCase();
+            }
+
+            return String(av).localeCompare(String(bv), 'ko') * dir;
+        });
+
+        this.filteredExpenses = data;
+        this.expenses = data;
         this.renderTable();
         this.renderSummary();
+        this.renderResultCount();
+    },
+
+    populateAccountTypeFilter() {
+        const select = document.getElementById('expenseAccountTypeFilter');
+        if (!select) return;
+
+        const currentValue = this.searchFilters.accountType || '';
+        select.innerHTML = `
+            <option value="">전체</option>
+            ${this.ACCOUNT_TYPES.map(type => `
+                <option value="${type}" ${type === currentValue ? 'selected' : ''}>${type}</option>
+            `).join('')}
+        `;
+    },
+
+    renderResultCount() {
+        const countEl = document.getElementById('expenseResultCount');
+        if (!countEl) return;
+        countEl.textContent = `검색 건수 ${this.expenses.length}건`;
+    },
+
+    resetFilters() {
+        this.searchFilters = {
+            date: '',
+            accountType: '',
+            description: '',
+            vendor: '',
+            amount: ''
+        };
+
+        const ids = [
+            'expenseDateSearch',
+            'expenseDescriptionSearch',
+            'expenseVendorSearch',
+            'expenseAmountSearch'
+        ];
+        ids.forEach((id) => {
+            const input = document.getElementById(id);
+            if (input) input.value = '';
+        });
+        const accountSelect = document.getElementById('expenseAccountTypeFilter');
+        if (accountSelect) accountSelect.value = '';
+
+        this.applyFiltersAndSort();
+    },
+
+    toggleSort(column) {
+        if (this.sortState.column === column) {
+            this.sortState.direction = this.sortState.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+            this.sortState = { column, direction: column === 'date' || column === 'amount' ? 'desc' : 'asc' };
+        }
+        this.applyFiltersAndSort();
     },
 
     renderTable() {
         const tbody = document.querySelector('#adminExpensesTable tbody');
         if (!tbody) return;
         if (this.expenses.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="8" style="text-align:center">데이터가 없습니다.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="9" style="text-align:center">데이터가 없습니다.</td></tr>`;
+            this.updateBulkDeleteButton();
             return;
         }
         tbody.innerHTML = this.expenses.map(e => {
@@ -111,6 +269,7 @@ window.AdminExpensesModule = {
             }
             return `
             <tr>
+                <td style="text-align:center;"><input type="checkbox" class="admin-expense-row-checkbox" data-id="${e.id}"></td>
                 <td>${dateStr}</td>
                 <td><span class="badge">${e.accountType || '-'}</span></td>
                 <td>${e.description || '-'}</td>
@@ -132,6 +291,11 @@ window.AdminExpensesModule = {
         if (table) {
             table.removeEventListener('click', this._tableHandler);
             this._tableHandler = (e) => {
+                const sortableHeader = e.target.closest('th[data-column]');
+                if (sortableHeader) {
+                    this.toggleSort(sortableHeader.dataset.column);
+                    return;
+                }
                 const btn = e.target.closest('[data-action]');
                 if (!btn) return;
                 const action = btn.dataset.action;
@@ -141,7 +305,62 @@ window.AdminExpensesModule = {
                 }
             };
             table.addEventListener('click', this._tableHandler);
+
+            table.querySelectorAll('thead th[data-column]').forEach((th) => {
+                const column = th.dataset.column;
+                const isActive = this.sortState.column === column;
+                const arrow = isActive ? (this.sortState.direction === 'asc' ? ' ▲' : ' ▼') : '';
+                const baseLabel = th.textContent.replace(/ [▲▼]$/, '');
+                th.textContent = `${baseLabel}${arrow}`;
+                th.style.cursor = 'pointer';
+                th.style.userSelect = 'none';
+            });
+
+            const headerCheckbox = document.getElementById('adminExpenseHeaderCheckbox');
+            if (headerCheckbox) {
+                headerCheckbox.checked = false;
+                headerCheckbox.onchange = (e) => {
+                    table.querySelectorAll('tbody .admin-expense-row-checkbox').forEach((cb) => {
+                        cb.checked = e.target.checked;
+                    });
+                    this.updateBulkDeleteButton();
+                };
+            }
+
+            table.querySelectorAll('tbody .admin-expense-row-checkbox').forEach((checkbox) => {
+                checkbox.addEventListener('change', () => this.updateBulkDeleteButton());
+            });
         }
+        this.updateBulkDeleteButton();
+    },
+
+    updateBulkDeleteButton() {
+        const button = document.getElementById('bulkDeleteAdminExpenseBtn');
+        if (!button) return;
+        const checkedCount = document.querySelectorAll('#adminExpensesTable tbody .admin-expense-row-checkbox:checked').length;
+        button.style.display = checkedCount > 0 ? '' : 'none';
+        button.textContent = `🗑️ 선택 삭제 (${checkedCount})`;
+    },
+
+    getSelectedExpenseIds() {
+        return Array.from(document.querySelectorAll('#adminExpensesTable tbody .admin-expense-row-checkbox:checked'))
+            .map((checkbox) => checkbox.dataset.id)
+            .filter(Boolean);
+    },
+
+    async bulkDelete() {
+        const selectedIds = this.getSelectedExpenseIds();
+        if (selectedIds.length === 0) {
+            window.Utils.showNotification('선택된 항목이 없습니다.', 'warning');
+            return;
+        }
+        if (!(await window.Utils.confirm(`선택한 ${selectedIds.length}개 항목을 삭제하시겠습니까?`))) return;
+
+        const collection = window.firebaseDb.collection('sales').doc('adminExpenses').collection('items');
+        const batch = window.firebaseDb.batch();
+        selectedIds.forEach((id) => batch.delete(collection.doc(id)));
+        await batch.commit();
+        await this.load();
     },
 
     renderSummary() {
@@ -181,7 +400,15 @@ window.AdminExpensesModule = {
 
         const body = `<div class="form-grid">` + fields.map(f => {
             let val = exp?.[f.key] ?? '';
-            if (f.key === 'date' && !val) val = today;
+            if (f.key === 'date') {
+                if (val?.toDate) {
+                    val = this.normalizeDateString(val);
+                } else if (val) {
+                    val = this.normalizeDateString(val);
+                } else {
+                    val = today;
+                }
+            }
             if (f.key === 'expenseYear' && !val) val = String(now.getFullYear());
             if (f.key === 'expenseMonth' && !val) val = String(now.getMonth() + 1).padStart(2,'0');
 
@@ -203,8 +430,10 @@ window.AdminExpensesModule = {
             async (data, w) => {
                 // 데이터 정규화
                 data.amount = parseFloat(data.amount) || 0;
-                data.expenseYear = String(data.expenseYear || new Date().getFullYear());
-                data.expenseMonth = String(data.expenseMonth || String(new Date().getMonth() + 1).padStart(2,'0')).padStart(2,'0');
+                const parsedYear = parseInt(data.expenseYear);
+                data.expenseYear = String(!isNaN(parsedYear) && parsedYear > 0 ? parsedYear : new Date().getFullYear());
+                const parsedMonth = parseInt(data.expenseMonth);
+                data.expenseMonth = String(!isNaN(parsedMonth) && parsedMonth >= 1 && parsedMonth <= 12 ? parsedMonth : new Date().getMonth() + 1).padStart(2, '0');
 
                 // date를 Firestore Timestamp로 변환
                 if (data.date && typeof data.date === 'string') {

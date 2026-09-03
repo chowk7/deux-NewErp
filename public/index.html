@@ -124,6 +124,8 @@
                 </div>
                 <div class="navbar-menu">
                     <div class="navbar-user">
+                        <button id="quickActionsBtn" class="btn btn-outline btn-sm hidden">빠른작업</button>
+                        <span id="userRoleBadge" class="badge">스태프</span>
                         <span id="userEmail"></span>
                         <button id="logoutBtn" class="btn btn-sm btn-outline">로그아웃</button>
                     </div>
@@ -155,6 +157,7 @@
                             <li><a href="#" data-menu="images" class="nav-link">🖼️ 이미지 관리</a></li>
                             <li><a href="#" data-menu="word-templates" class="nav-link">📄 양식 관리</a></li>
                             <li><a href="#" data-menu="inventory" class="nav-link">📦 재고관리</a></li>
+                            <li><a href="#" data-menu="admin-menu" class="nav-link">🛠️ 관리자메뉴</a></li>
                         </ul>
                     </nav>
                 </div>
@@ -237,9 +240,9 @@
                         </div>
                         <div style="margin:12px 0;padding:12px 14px;border:1px solid #dbeafe;border-radius:8px;background:#f8fbff;font-size:0.82rem;line-height:1.6;color:#334155;">
                             <div style="font-weight:600;color:#1e40af;margin-bottom:4px;">백화점 산식 안내</div>
-                            <div>백화점가 = 최종소비자가 + 5부 이상 나석 보증서 추가금 합계</div>
-                            <div>백화점이익 = 비나석분 매출 × (1 - 백화점수수료율) + 나석분 매출 × (1 - 나석마진율) - 판매원가 - (5부 이상 나석 보증서 추가금 합계 × 0.8)</div>
-                            <div>백화점이익률 = 백화점이익 / 백화점가 × 100</div>
+                            <div>백화점가(자동) = 최종소비자가 + 5부 이상 나석 보증서 추가금 합계</div>
+                            <div>백화점이익 = 백화점가(수동)를 기준으로 비나석분 매출 × (1 - 백화점수수료율) + 나석분 매출 × (1 - 나석마진율) - 판매원가 - (5부 이상 나석 보증서 추가금 합계 × 0.8)</div>
+                            <div>백화점이익률 = 백화점이익 / 백화점가(수동) × 100</div>
                         </div>
                         <!-- 검색 + 탭 필터 -->
                         <div id="productRatesFilters" style="margin:12px 0;display:flex;flex-direction:column;gap:10px;">
@@ -499,6 +502,7 @@
                         <div class="button-group">
                             <button id="adminRefreshBtn" class="btn btn-outline">🔄 새로고침</button>
                             <button id="addAdminExpenseBtn" class="btn btn-primary">+ 새 항목 추가</button>
+                            <button id="bulkDeleteAdminExpenseBtn" class="btn btn-danger" style="display:none;">🗑️ 선택 삭제</button>
                             <button id="csvUploadAdminBtn" class="btn btn-secondary">📤 CSV 업로드</button>
                             <div id="adminDownloadBtns" style="display:none;margin-left:8px;">
                                 <button id="downloadAdminTemplateBtn" class="btn btn-secondary">📥 양식 다운로드</button>
@@ -527,12 +531,33 @@
                                 </select>
                             </label>
                         </div>
+                        <div id="adminExpenseFilterBar" style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:12px;">
+                            <label>날짜 검색
+                                <input id="expenseDateSearch" class="form-control" type="text" placeholder="2026-06 또는 2026. 6." style="min-width:160px;">
+                            </label>
+                            <label>계정과목
+                                <select id="expenseAccountTypeFilter" class="form-control" style="min-width:140px;">
+                                    <option value="">전체</option>
+                                </select>
+                            </label>
+                            <label>거래내용
+                                <input id="expenseDescriptionSearch" class="form-control" type="text" placeholder="거래내용 검색" style="min-width:180px;">
+                            </label>
+                            <label>거래처
+                                <input id="expenseVendorSearch" class="form-control" type="text" placeholder="거래처 검색" style="min-width:160px;">
+                            </label>
+                            <label>금액
+                                <input id="expenseAmountSearch" class="form-control" type="text" placeholder="금액 검색" style="min-width:140px;">
+                            </label>
+                            <button id="expenseFilterResetBtn" class="btn btn-outline" type="button">초기화</button>
+                            <div id="expenseResultCount" style="margin-left:auto;color:#6b7280;font-size:0.9rem;"></div>
+                        </div>
                         <div id="expenseSummary" style="margin-bottom:16px;"></div>
                         <div style="overflow-x:auto;">
                         <table id="adminExpensesTable" class="data-table">
                             <thead><tr>
-                                <th>날짜</th><th>계정과목</th><th>거래내용</th><th>거래처</th>
-                                <th>금액</th><th>결제방식</th><th>비용처리</th><th>관리</th>
+                                <th style="text-align:center;width:40px;"><input type="checkbox" id="adminExpenseHeaderCheckbox"></th><th data-column="date">날짜</th><th data-column="accountType">계정과목</th><th data-column="description">거래내용</th><th data-column="vendor">거래처</th>
+                                <th data-column="amount">금액</th><th>결제방식</th><th>비용처리</th><th>관리</th>
                             </tr></thead>
                             <tbody></tbody>
                         </table>
@@ -550,13 +575,23 @@
                                     <option value="2026" selected>2026</option>
                                 </select>
                             </label>
+                            <label>구매경로:
+                                <select id="plPurchasePathFilter" class="form-control" style="width:auto;display:inline-block;margin-left:4px;">
+                                    <option value="all">전체</option>
+                                </select>
+                            </label>
+                            <label>구매경로상세:
+                                <select id="plPurchasePathDetailFilter" class="form-control" style="width:auto;display:inline-block;margin-left:4px;">
+                                    <option value="all">전체</option>
+                                </select>
+                            </label>
                             <button id="calcPlBtn" class="btn btn-primary">📊 계산</button>
                             <button id="downloadPlDataBtn" class="btn btn-secondary">📊 데이터 다운로드</button>
                         </div>
                         <div style="overflow-x:auto; margin-top:16px;">
                         <table id="profitLossTable" class="data-table">
                             <thead><tr>
-                                <th>월</th><th>매출</th><th>매출원가</th><th>매출이익</th><th>매출이익률</th>
+                                <th>월</th><th>매출</th><th>제품원가</th><th>수수료</th><th>매출원가</th><th>매출이익</th><th>매출이익률</th>
                                 <th>R&D비용</th><th>광고선전비</th><th>재료매입</th><th>판관비</th>
                                 <th>운송비</th><th>지급수수료</th><th>포장비</th><th>임대료</th><th>기타</th>
                                 <th>판관비합계</th><th>영업이익</th><th>영업이익률</th>
@@ -651,6 +686,16 @@
                             </tbody>
                         </table>
                     </section>
+
+                    <section id="adminMenuContent" class="content-section hidden">
+                        <h2>관리자메뉴</h2>
+                        <p style="color:#6b7280;font-size:0.9rem;margin-bottom:12px;">
+                            신규 가입자는 기본적으로 대시보드만 볼 수 있습니다. 여기서 스태프 메뉴 접근 권한을 저장할 수 있습니다.
+                        </p>
+                        <div id="adminMenuPanel" style="padding:16px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;">
+                            불러오는 중...
+                        </div>
+                    </section>
                 </main>
             </div>
         </div>
@@ -690,6 +735,7 @@
     <script src="/js/modules/promotion.js"></script>
     <script src="/js/modules/wordTemplateManager.js"></script>
     <script src="/js/modules/inventoryManagement.js"></script>
+    <script src="/js/modules/employeeManagement.js"></script>
     <script src="/js/app.js"></script>
 </body>
 </html>

@@ -256,6 +256,9 @@ window.PriceManagementModule = {
         if (checkedIds.length === 0) return;
         if (!(await window.Utils.confirm(`${checkedIds.length}개 항목을 삭제하시겠습니까?`))) return;
 
+        const changedDiamondTypes = this.diamondRates
+            .filter(rate => checkedIds.includes(rate.id))
+            .map(rate => rate.diamondType);
         const batch = window.firebaseDb.batch();
         const collection = window.firebaseDb.collection('prices').doc('diamondRates').collection('items');
 
@@ -264,6 +267,7 @@ window.PriceManagementModule = {
         }
 
         await batch.commit();
+        await this._syncProductRatesForDiamondTypes(changedDiamondTypes);
         this.loadDiamondRates();
         window.Utils.showNotification(`${checkedIds.length}개 항목이 삭제되었습니다.`, 'success');
     },
@@ -297,23 +301,37 @@ window.PriceManagementModule = {
     },
 
     async _addDiamondRate(data) {
+        const saved = this._parseNumbers(data, ['costWithoutVat','costWithVat','vsWarrantyFee','vvsWarrantyFee']);
+
         await window.firebaseDb
             .collection('prices').doc('diamondRates').collection('items')
-            .add({ ...this._parseNumbers(data, ['costWithoutVat','costWithVat','vsWarrantyFee','vvsWarrantyFee']),
+            .add({ ...saved,
                    createdAt: new Date(), updatedAt: new Date() });
+
+        await this._syncProductRatesForDiamondTypes([saved.diamondType]);
     },
 
     async _updateDiamondRate(id, data) {
+        const previous = this.diamondRates.find(rate => rate.id === id);
+        const saved = this._parseNumbers(data, ['costWithoutVat','costWithVat','vsWarrantyFee','vvsWarrantyFee']);
+
         await window.firebaseDb
             .collection('prices').doc('diamondRates').collection('items').doc(id)
-            .update({ ...this._parseNumbers(data, ['costWithoutVat','costWithVat','vsWarrantyFee','vvsWarrantyFee']),
+            .update({ ...saved,
                       updatedAt: new Date() });
+
+        const renameMap = (previous?.diamondType && previous.diamondType !== saved.diamondType)
+            ? { [previous.diamondType]: saved.diamondType }
+            : {};
+        await this._syncProductRatesForDiamondTypes([previous?.diamondType, saved.diamondType].filter(Boolean), renameMap);
     },
 
     async deleteDiamondRate(id) {
         if (!(await window.Utils.confirm('이 항목을 삭제하시겠습니까?'))) return;
+        const previous = this.diamondRates.find(rate => rate.id === id);
         await window.firebaseDb
             .collection('prices').doc('diamondRates').collection('items').doc(id).delete();
+        await this._syncProductRatesForDiamondTypes([previous?.diamondType]);
         this.loadDiamondRates();
     },
 
@@ -329,15 +347,19 @@ window.PriceManagementModule = {
     openDiamondCsvUpload() {
         window.Utils.openCsvUploadModal(this.DIAMOND_FIELDS, async (rows) => {
             const batch = window.firebaseDb.batch();
+            const changedDiamondTypes = [];
             rows.forEach(row => {
+                const parsed = this._parseNumbers(row, ['costWithoutVat','costWithVat','vsWarrantyFee','vvsWarrantyFee']);
                 const ref = window.firebaseDb
                     .collection('prices').doc('diamondRates').collection('items').doc();
                 batch.set(ref, {
-                    ...this._parseNumbers(row, ['costWithoutVat','costWithVat','vsWarrantyFee','vvsWarrantyFee']),
+                    ...parsed,
                     createdAt: new Date(), updatedAt: new Date()
                 });
+                changedDiamondTypes.push(parsed.diamondType);
             });
             await batch.commit();
+            await this._syncProductRatesForDiamondTypes(changedDiamondTypes);
             alert(`${rows.length}개 항목이 저장되었습니다.`);
             this.loadDiamondRates();
         });
@@ -518,7 +540,27 @@ window.PriceManagementModule = {
                     updatedAt: new Date()
                 }, { merge: true })
         ]);
+
+        await this._syncProductRatesForPriceSettings();
+
         alert('가격 설정이 저장되었습니다.');
+    },
+
+    async _syncProductRatesForPriceSettings() {
+        if (!window.ProductRatesModule?.recalculateAllProducts) return;
+
+        try {
+            const result = await window.ProductRatesModule.recalculateAllProducts();
+            if (result?.updatedCount > 0) {
+                window.Utils.showNotification(
+                    `제품가격표 ${result.updatedCount}개 항목의 판매원가·이익을 다시 계산했습니다.`,
+                    'success'
+                );
+            }
+        } catch (error) {
+            console.error('Failed to sync product rates from price settings:', error);
+            window.Utils.showNotification('제품가격표 재계산 중 오류가 발생했습니다.', 'error');
+        }
     },
 
     _legacyStonePricesFromMatrix(rows) {
@@ -597,5 +639,92 @@ window.PriceManagementModule = {
         const result = { ...obj };
         keys.forEach(k => { if (k in result) result[k] = parseFloat(result[k]) || 0; });
         return result;
+    },
+
+    async _syncProductRatesForDiamondTypes(diamondTypes = [], renameMap = {}) {
+        if (!window.ProductRatesModule?.recalculateProductsForDiamondTypes) {
+            return;
+        }
+
+        try {
+            const result = await window.ProductRatesModule.recalculateProductsForDiamondTypes(diamondTypes, renameMap);
+            if (result?.updatedCount > 0) {
+                window.Utils.showNotification(
+                    `제품가격표 ${result.updatedCount}개 항목의 나석원가를 다시 계산했습니다.`,
+                    'success'
+                );
+            }
+        } catch (error) {
+            console.error('Failed to sync product rates from diamond rates:', error);
+            window.Utils.showNotification('제품가격표 나석원가 반영 중 오류가 발생했습니다.', 'error');
+        }
+
+        // 신제품가격산정 데이터도 자동 재계산
+        await this._syncNewProductPricingForDiamondTypes(diamondTypes, renameMap);
+    },
+
+    async _syncNewProductPricingForDiamondTypes(diamondTypes = [], renameMap = {}) {
+        if (!window.NewProductPricingModule?.calculate) {
+            return;
+        }
+
+        const targetTypes = Array.from(new Set(
+            (Array.isArray(diamondTypes) ? diamondTypes : [])
+                .map(type => String(type || '').trim())
+                .filter(Boolean)
+        ));
+        if (targetTypes.length === 0) return;
+
+        try {
+            const [nppSnap, diamondSnap] = await Promise.all([
+                window.firebaseDb.collection('prices').doc('newProductPricing').collection('items').get(),
+                window.firebaseDb.collection('prices').doc('diamondRates').collection('items').get(),
+            ]);
+
+            const diamondRates = diamondSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const products = nppSnap.docs.map(d => ({ _docId: d.id, ...d.data() }));
+
+            // 변경된 나석종류를 사용하는 신제품가격산정 항목만 필터링
+            const targetProducts = products.filter(p =>
+                Array.isArray(p.stones) &&
+                p.stones.some(s => targetTypes.includes(String(s.type || '').trim()))
+            );
+
+            if (targetProducts.length === 0) return;
+
+            // diamondRates를 NewProductPricingModule에 업데이트
+            window.NewProductPricingModule.diamondRates = diamondRates;
+
+            const col = window.firebaseDb.collection('prices').doc('newProductPricing').collection('items');
+            let updatedCount = 0;
+
+            for (const product of targetProducts) {
+                const { _docId, ...data } = product;
+                // 이름 변경 시 stones 배열의 type 필드도 갱신
+                if (Object.keys(renameMap).length > 0 && Array.isArray(data.stones)) {
+                    data.stones = data.stones.map(s => ({
+                        ...s,
+                        type: renameMap[s.type] || s.type
+                    }));
+                }
+                const calculated = window.NewProductPricingModule.calculate(data);
+                const updatedStones = Object.keys(renameMap).length > 0 ? data.stones : undefined;
+                await col.doc(_docId).update({
+                    ...calculated,
+                    ...(updatedStones ? { stones: updatedStones } : {}),
+                    updatedAt: new Date()
+                });
+                updatedCount++;
+            }
+
+            if (updatedCount > 0) {
+                window.Utils.showNotification(
+                    `신제품가격산정 ${updatedCount}개 항목의 나석정보를 자동 재계산했습니다.`,
+                    'success'
+                );
+            }
+        } catch (error) {
+            console.error('Failed to sync new product pricing from diamond rates:', error);
+        }
     }
 };

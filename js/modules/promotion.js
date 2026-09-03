@@ -171,7 +171,7 @@ window.PromotionModule = {
         const category    = p.category || '';
 
         const promoRate     = mode === 'fixed' ? rate : origRate + rate;
-        const promoPrice    = Math.round(finalPrice * (1 - promoRate / 100));
+        const promoPrice    = Math.max(0, Math.round(finalPrice * (1 - promoRate / 100)));
         const deptCalc = this._calculateDepartmentPricing({
             stones,
             category,

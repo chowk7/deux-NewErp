@@ -7,12 +7,26 @@ window.ProfitLossModule = {
     EXPENSE_TYPES: ['R&D비용','광고선전비','재료매입','판관비','운송비','지급수수료','포장비','임대료','기타'],
 
     plData: [],
+    productRates: [],
     selectedYear: new Date().getFullYear(),
+    selectedPurchasePath: 'all',
+    selectedPurchasePathDetail: 'all',
 
     async init() {
         document.getElementById('plYearSelect')
             ?.addEventListener('change', (e) => {
                 this.selectedYear = parseInt(e.target.value);
+                this.load();
+            });
+        document.getElementById('plPurchasePathFilter')
+            ?.addEventListener('change', (e) => {
+                this.selectedPurchasePath = e.target.value || 'all';
+                this.selectedPurchasePathDetail = 'all';
+                this.load();
+            });
+        document.getElementById('plPurchasePathDetailFilter')
+            ?.addEventListener('change', (e) => {
+                this.selectedPurchasePathDetail = e.target.value || 'all';
                 this.load();
             });
         document.getElementById('calcPlBtn')
@@ -31,26 +45,27 @@ window.ProfitLossModule = {
         const yearStart = new Date(year, 0, 1);
         const yearEnd   = new Date(year + 1, 0, 1);
 
-        const ordersSnap = await window.firebaseDb
-            .collection('sales').doc('orders').collection('items')
-            .where('orderDate', '>=', yearStart)
-            .where('orderDate', '<',  yearEnd)
-            .get();
+        const [ordersSnap, productSnap, expSnap] = await Promise.all([
+            window.firebaseDb
+                .collection('sales').doc('orders').collection('items')
+                .where('orderDate', '>=', yearStart)
+                .where('orderDate', '<',  yearEnd)
+                .get(),
+            window.firebaseDb
+                .collection('prices').doc('productRates').collection('items')
+                .get(),
+            // 3. 월별 판관비 집계
+            window.firebaseDb
+                .collection('sales').doc('adminExpenses').collection('items')
+                .where('expenseYear', '==', String(year))
+                .get(),
+        ]);
         const orders = ordersSnap.docs.map(d => d.data());
-
-        // 2. 월별 매출원가 집계 (sales/orders/items에서 manufacturingCost 필드로 로드)
-        const mfgSnap = await window.firebaseDb
-            .collection('sales').doc('orders').collection('items')
-            .where('manufacturingCost', '>', 0)
-            .get();
-        const mfgCosts = mfgSnap.docs.map(d => d.data());
-
-        // 3. 월별 판관비 집계
-        const expSnap = await window.firebaseDb
-            .collection('sales').doc('adminExpenses').collection('items')
-            .where('expenseYear', '==', String(year))
-            .get();
+        this.productRates = productSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         const expenses = expSnap.docs.map(d => d.data());
+        this.renderSourceFilters(orders);
+
+        const filteredOrders = orders.filter(order => this.matchesSourceFilters(order));
 
         // 월별 데이터 구성
         this.plData = Array.from({length: 12}, (_, i) => {
@@ -58,20 +73,17 @@ window.ProfitLossModule = {
             const monthStr = String(month).padStart(2, '0');
 
             // 주문일(orderDate) 기준 해당 월 매출합계
-            const monthOrders = orders.filter(o => {
+            const monthOrders = filteredOrders.filter(o => {
                 if (!o.orderDate?.toDate) return false;
                 const d = o.orderDate.toDate();
                 return (d.getMonth() + 1) === month;
             });
             const revenue = monthOrders.reduce((s, o) => s + (o.salesAmount || 0), 0);
 
-            // 해당 월 매출원가 (orderDate 기준 - 매출과 같은 월)
-            const monthMfg = mfgCosts.filter(m => {
-                if (!m.orderDate?.toDate) return false;
-                const d = m.orderDate.toDate();
-                return d.getFullYear() === year && (d.getMonth() + 1) === month;
-            });
-            const cogs = monthMfg.reduce((s, m) => s + (m.manufacturingCost || 0), 0);
+            // 해당 월 제품원가와 수수료를 분리 집계한다.
+            const productCogs = monthOrders.reduce((sum, order) => sum + this.getOrderCogs(order), 0);
+            const commissionCogs = monthOrders.reduce((sum, order) => sum + this.getOrderCommissionCost(order), 0);
+            const cogs = productCogs + commissionCogs;
 
             // 월별 매출이익합계
             const grossProfit  = revenue - cogs;
@@ -94,13 +106,110 @@ window.ProfitLossModule = {
 
             return {
                 year, month,
-                revenue, cogs, grossProfit, grossMargin,
+                revenue, productCogs, commissionCogs, cogs, grossProfit, grossMargin,
                 ...expByType,
                 totalExpenses, operatingProfit, operatingMargin,
             };
         });
 
         this.renderTable();
+    },
+
+    renderSourceFilters(orders = []) {
+        const purchasePathSelect = document.getElementById('plPurchasePathFilter');
+        const purchasePathDetailSelect = document.getElementById('plPurchasePathDetailFilter');
+        if (!purchasePathSelect || !purchasePathDetailSelect) return;
+
+        const purchasePaths = Array.from(new Set(
+            orders.map(order => String(order.purchasePath || '').trim()).filter(Boolean)
+        )).sort((a, b) => a.localeCompare(b, 'ko'));
+
+        if (this.selectedPurchasePath !== 'all' && !purchasePaths.includes(this.selectedPurchasePath)) {
+            this.selectedPurchasePath = 'all';
+        }
+
+        purchasePathSelect.innerHTML = [
+            '<option value="all">전체</option>',
+            ...purchasePaths.map(path => `<option value="${this.escapeHtml(path)}">${this.escapeHtml(path)}</option>`)
+        ].join('');
+        purchasePathSelect.value = this.selectedPurchasePath;
+
+        const detailSourceOrders = this.selectedPurchasePath === 'all'
+            ? orders
+            : orders.filter(order => String(order.purchasePath || '').trim() === this.selectedPurchasePath);
+
+        const purchasePathDetails = Array.from(new Set(
+            detailSourceOrders.map(order => String(order.purchasePathDetail || '').trim()).filter(Boolean)
+        )).sort((a, b) => a.localeCompare(b, 'ko'));
+
+        if (this.selectedPurchasePathDetail !== 'all' && !purchasePathDetails.includes(this.selectedPurchasePathDetail)) {
+            this.selectedPurchasePathDetail = 'all';
+        }
+
+        purchasePathDetailSelect.innerHTML = [
+            '<option value="all">전체</option>',
+            ...purchasePathDetails.map(detail => `<option value="${this.escapeHtml(detail)}">${this.escapeHtml(detail)}</option>`)
+        ].join('');
+        purchasePathDetailSelect.value = this.selectedPurchasePathDetail;
+    },
+
+    matchesSourceFilters(order = {}) {
+        const purchasePath = String(order.purchasePath || '').trim();
+        const purchasePathDetail = String(order.purchasePathDetail || '').trim();
+
+        if (this.selectedPurchasePath !== 'all' && purchasePath !== this.selectedPurchasePath) {
+            return false;
+        }
+        if (this.selectedPurchasePathDetail !== 'all' && purchasePathDetail !== this.selectedPurchasePathDetail) {
+            return false;
+        }
+        return true;
+    },
+
+    escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    },
+
+    findProductRate(order = {}) {
+        const productCode = (order.productCode || '').trim();
+        const productName = (order.productName || '').trim();
+
+        return this.productRates.find(product => {
+            const rateCode = (product.productCode || '').trim();
+            const rateName = (product.productName || '').trim();
+            if (productCode && rateCode && productCode === rateCode) return true;
+            if (productName && rateName && productName === rateName) return true;
+            return false;
+        });
+    },
+
+    isInputCompleted(order = {}) {
+        const value = order.inputCompleted;
+        if (typeof value === 'string') {
+            const normalized = value.trim().toLowerCase();
+            return normalized === 'true' || normalized === 'y' || normalized === 'yes' || normalized === '완료';
+        }
+        return Boolean(value);
+    },
+
+    getOrderCogs(order = {}) {
+        const manufacturingCost = parseFloat(order.manufacturingCost) || 0;
+        if (this.isInputCompleted(order)) return manufacturingCost;
+
+        const salesCost = parseFloat(this.findProductRate(order)?.salesCost);
+        if (Number.isFinite(salesCost)) return salesCost;
+
+        return manufacturingCost;
+    },
+
+    getOrderCommissionCost(order = {}) {
+        const salesAmount = parseFloat(order.salesAmount) || 0;
+        const commissionRate = parseFloat(order.commissionRate) || 0;
+        return salesAmount * (commissionRate / 100);
     },
 
     renderTable() {
@@ -114,6 +223,8 @@ window.ProfitLossModule = {
             <tr>
                 <td>${row.month}월</td>
                 <td style="text-align:right;">${fmt(row.revenue)}</td>
+                <td style="text-align:right;">${fmt(row.productCogs)}</td>
+                <td style="text-align:right;">${fmt(row.commissionCogs)}</td>
                 <td style="text-align:right;">${fmt(row.cogs)}</td>
                 <td style="text-align:right;font-weight:600;">${fmt(row.grossProfit)}</td>
                 <td style="text-align:right;">${pct(row.grossMargin)}</td>
@@ -128,7 +239,7 @@ window.ProfitLossModule = {
 
         // 연간 합계 행
         const totals = this.plData.reduce((acc, row) => {
-            ['revenue','cogs','grossProfit','totalExpenses','operatingProfit',
+            ['revenue','productCogs','commissionCogs','cogs','grossProfit','totalExpenses','operatingProfit',
              ...this.EXPENSE_TYPES].forEach(k => { acc[k] = (acc[k] || 0) + (row[k] || 0); });
             return acc;
         }, {});
@@ -139,6 +250,8 @@ window.ProfitLossModule = {
             <tr style="background:#f3f4f6;font-weight:700;border-top:2px solid #374151;">
                 <td>연간합계</td>
                 <td style="text-align:right;">${fmt(totals.revenue)}</td>
+                <td style="text-align:right;">${fmt(totals.productCogs)}</td>
+                <td style="text-align:right;">${fmt(totals.commissionCogs)}</td>
                 <td style="text-align:right;">${fmt(totals.cogs)}</td>
                 <td style="text-align:right;">${fmt(totals.grossProfit)}</td>
                 <td style="text-align:right;">${pct(totalGrossMargin)}</td>
@@ -153,7 +266,10 @@ window.ProfitLossModule = {
     downloadData() {
         const fields = [
             { key: 'year',    label: '연도' }, { key: 'month', label: '월' },
-            { key: 'revenue', label: '매출' }, { key: 'cogs', label: '매출원가' },
+            { key: 'revenue', label: '매출' },
+            { key: 'productCogs', label: '제품원가' },
+            { key: 'commissionCogs', label: '수수료' },
+            { key: 'cogs', label: '매출원가' },
             { key: 'grossProfit', label: '매출이익' }, { key: 'grossMargin', label: '매출이익률(%)' },
             ...this.EXPENSE_TYPES.map(t => ({ key: t, label: t })),
             { key: 'totalExpenses', label: '판관비합계' },

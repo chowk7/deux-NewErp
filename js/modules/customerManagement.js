@@ -4,7 +4,7 @@
 window.CustomerManagementModule = {
 
     FIELDS: [
-        { key: 'id',              label: 'ID',            type: 'text',     defaultRequired: true  },
+        { key: 'id',              label: 'ID',            type: 'text',     defaultRequired: true,  readonly: true },
         { key: 'customerName',    label: '고객명',        type: 'text',     defaultRequired: true  },
         { key: 'email',           label: '이메일',        type: 'email',    defaultRequired: false },
         { key: 'phone',           label: '전화번호',      type: 'text',     defaultRequired: false },
@@ -65,7 +65,7 @@ window.CustomerManagementModule = {
 
             const snap = await window.firebaseDb
                 .collection('sales').doc('customers').collection('items')
-                .orderBy('createdAt', 'desc').limit(this.pageSize).get();
+                .orderBy('createdAt', 'desc').get();
 
             console.log('✓ Firebase query succeeded, documents:', snap.docs.length);
             this.customers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -383,13 +383,15 @@ window.CustomerManagementModule = {
                     input = `<input type="checkbox" name="${f.key}"
                                 ${customer?.[f.key] ? 'checked' : ''}>`;
                 } else {
+                    const isReadOnly = f.readonly || false;
                     // 전화번호: '-' 제거 후 표시, 숫자 입력 안내
                     if (f.key === 'phone') val = this._normalizePhone(val);
                     const extra = f.key === 'phone'
                         ? ' placeholder="숫자만 입력 (예: 01012345678)" inputmode="numeric"'
                         : '';
+                    const readonlyAttr = isReadOnly ? ' readonly style="background:#f3f4f6;color:#6b7280;"' : '';
                     input = `<input type="${f.type}" name="${f.key}" value="${val}"
-                                ${isRequired ? 'required' : ''}${extra}>`;
+                                ${isRequired && !isReadOnly ? 'required' : ''}${extra}${readonlyAttr}>`;
                 }
 
                 return `
@@ -419,6 +421,7 @@ window.CustomerManagementModule = {
                 }
                 wrapper.remove();
                 await this.loadCustomers();
+                window.Utils.showNotification(customerId ? '고객 정보가 수정되었습니다.' : '고객이 추가되었습니다.', 'success');
             }
         );
     },
@@ -427,7 +430,7 @@ window.CustomerManagementModule = {
         if (!(await window.Utils.confirm('이 고객을 삭제하시겠습니까?'))) return;
         await window.firebaseDb
             .collection('sales').doc('customers').collection('items').doc(id).delete();
-        this.loadCustomers();
+        await this.loadCustomers();
     },
 
     downloadTemplate() {

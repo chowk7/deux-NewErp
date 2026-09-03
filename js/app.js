@@ -6,12 +6,36 @@
 class DiamonJewelryApp {
     constructor() {
         this.currentUser = null;
+        this.currentUserProfile = null;
         this.currentPage = null;
+        this.currentMenu = 'dashboard';
+        this.isApplyingHistory = false;
+        this.menuDefinitions = [
+            { id: 'dashboard', label: '대시보드', section: '공통' },
+            { id: 'diamond-rates', label: '나석단가표', section: '가격관리' },
+            { id: 'product-rates', label: '제품가격표', section: '가격관리' },
+            { id: 'new-product-pricing', label: '신제품가격산정', section: '가격관리' },
+            { id: 'gold-inventory', label: '금재고', section: '가격관리' },
+            { id: 'customers', label: '고객목록표', section: '가격관리' },
+            { id: 'option-charges', label: '각줄추가금액', section: '가격관리' },
+            { id: 'price-settings', label: '가격옵션', section: '가격관리' },
+            { id: 'orders', label: '매출표', section: '매출관리' },
+            { id: 'manufacturing-costs', label: '제조원가표', section: '매출관리' },
+            { id: 'admin-expenses', label: '판관비', section: '매출관리' },
+            { id: 'profit-loss', label: 'P&L표', section: '매출관리' },
+            { id: 'promotion', label: '프로모션', section: '기타' },
+            { id: 'notes', label: '노트', section: '기타' },
+            { id: 'images', label: '이미지 관리', section: '기타' },
+            { id: 'word-templates', label: '양식 관리', section: '기타' },
+            { id: 'inventory', label: '재고관리', section: '기타' },
+            { id: 'admin-menu', label: '관리자메뉴', section: '기타', adminOnly: true }
+        ];
         this.init();
     }
 
     init() {
         this.setupEventListeners();
+        this.setupHistoryNavigation();
         this.checkAuthState();
     }
 
@@ -50,11 +74,49 @@ class DiamonJewelryApp {
         });
     }
 
+    setupHistoryNavigation() {
+        window.addEventListener('popstate', async (event) => {
+            const state = event.state;
+            if (!state || !state.appState) return;
+
+            this.isApplyingHistory = true;
+            try {
+                if (state.page === 'dashboard' && state.menuId) {
+                    this.switchPage('dashboard', { updateHistory: false });
+                    await this.handleMenuClick(state.menuId, { updateHistory: false });
+                } else if (state.page === 'login' || state.page === 'signup') {
+                    this.switchPage(state.page, { updateHistory: false });
+                }
+            } finally {
+                this.isApplyingHistory = false;
+            }
+        });
+    }
+
+    buildHistoryState(page, extra = {}) {
+        return {
+            appState: true,
+            page,
+            ...extra
+        };
+    }
+
+    updateHistory(state, mode = 'push') {
+        const url = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        if (mode === 'replace') {
+            window.history.replaceState(state, '', url);
+        } else {
+            window.history.pushState(state, '', url);
+        }
+    }
+
     /**
      * 페이지 전환
      * @param {string} pageName - 'login', 'signup', 'dashboard'
      */
-    switchPage(pageName) {
+    switchPage(pageName, options = {}) {
+        const { updateHistory = true, historyMode = 'push' } = options;
+
         // 모든 페이지 숨기기
         document.querySelectorAll('.page').forEach(page => {
             page.classList.add('hidden');
@@ -73,6 +135,13 @@ class DiamonJewelryApp {
             if (page) {
                 page.classList.remove('hidden');
                 this.currentPage = pageName;
+
+                if (updateHistory && !this.isApplyingHistory) {
+                    const state = pageName === 'dashboard'
+                        ? this.buildHistoryState('dashboard', { menuId: this.currentMenu || 'dashboard' })
+                        : this.buildHistoryState(pageName);
+                    this.updateHistory(state, historyMode);
+                }
             }
         }
     }
@@ -81,7 +150,16 @@ class DiamonJewelryApp {
      * 메뉴 클릭 처리
      * @param {string} menuId - 메뉴 항목 ID
      */
-    async handleMenuClick(menuId) {
+    async handleMenuClick(menuId, options = {}) {
+        const { updateHistory = true, historyMode = 'push' } = options;
+
+        if (!this.canAccessMenu(menuId)) {
+            if (menuId !== 'dashboard') {
+                window.Utils.showNotification('해당 메뉴 접근 권한이 없습니다.', 'error');
+            }
+            menuId = 'dashboard';
+        }
+
         // 모든 콘텐츠 섹션 숨기기
         document.querySelectorAll('.content-section').forEach(section => {
             section.classList.add('hidden');
@@ -97,6 +175,8 @@ class DiamonJewelryApp {
         if (activeLink) {
             activeLink.classList.add('active');
         }
+
+        this.currentMenu = menuId;
 
         // 해당하는 섹션 보이기
         const sectionMap = {
@@ -116,7 +196,8 @@ class DiamonJewelryApp {
             'notes': 'notesContent',
             'images': 'imagesContent',
             'word-templates': 'wordTemplatesContent',
-            'inventory': 'inventoryContent'
+            'inventory': 'inventoryContent',
+            'admin-menu': 'adminMenuContent'
         };
 
         const sectionId = sectionMap[menuId];
@@ -124,6 +205,10 @@ class DiamonJewelryApp {
             const section = document.getElementById(sectionId);
             if (section) {
                 section.classList.remove('hidden');
+
+                if (updateHistory && !this.isApplyingHistory) {
+                    this.updateHistory(this.buildHistoryState('dashboard', { menuId }), historyMode);
+                }
 
                 // 해당 모듈 로드
                 try {
@@ -155,6 +240,8 @@ class DiamonJewelryApp {
                     } else if (window.InventoryManagementModule && menuId === 'inventory') {
                         window.InventoryManagementModule.allItems = [];
                         await window.InventoryManagementModule.load();
+                    } else if (window.EmployeeManagementModule && menuId === 'admin-menu') {
+                        await window.EmployeeManagementModule.loadAdminMenuSection();
                     }
                 } catch (error) {
                     console.error(`[App] 메뉴 로드 실패 (${menuId}):`, error);
@@ -168,14 +255,134 @@ class DiamonJewelryApp {
      * 인증 상태 확인 및 UI 업데이트
      */
     checkAuthState() {
-        const unsubscribe = window.firebaseAuth.onAuthStateChanged((user) => {
+        const unsubscribe = window.firebaseAuth.onAuthStateChanged(async (user) => {
             if (user) {
                 this.currentUser = user;
+                this.currentUserProfile = await this.loadCurrentUserProfile(user);
                 this.showDashboard();
                 this.updateUserInfo();
             } else {
                 this.currentUser = null;
+                this.currentUserProfile = null;
                 this.showLoginPage();
+            }
+        });
+    }
+
+    normalizeRole(role) {
+        const normalized = String(role || '').trim().toLowerCase();
+        if (normalized === 'admin' || normalized === 'manager' || normalized === 'staff') {
+            return normalized;
+        }
+        if (normalized === 'user') return 'staff';
+        return 'staff';
+    }
+
+    getRoleLabel(role) {
+        const normalized = this.normalizeRole(role);
+        if (normalized === 'admin') return '관리자';
+        if (normalized === 'manager') return '매니저';
+        return '스태프';
+    }
+
+    async loadCurrentUserProfile(user) {
+        try {
+            const token = await user.getIdToken();
+            const response = await fetch('/api/users/me', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('사용자 프로필 API 조회 실패');
+            }
+
+            const profile = await response.json();
+            return {
+                uid: user.uid,
+                email: profile.email || user.email || '',
+                displayName: profile.displayName || user.displayName || '',
+                role: this.normalizeRole(profile.role),
+                allowedMenus: this.normalizeAllowedMenus(profile.allowedMenus, profile.role)
+            };
+        } catch (error) {
+            console.error('[App] 사용자 프로필 로드 실패:', error);
+            try {
+                const doc = await window.firebaseDb.collection('users').doc(user.uid).get();
+                const profile = doc.exists ? (doc.data() || {}) : {};
+                return {
+                    uid: user.uid,
+                    email: profile.email || user.email || '',
+                    displayName: profile.displayName || user.displayName || '',
+                    role: this.normalizeRole(profile.role),
+                    allowedMenus: this.normalizeAllowedMenus(profile.allowedMenus, profile.role)
+                };
+            } catch (fallbackError) {
+                console.error('[App] 사용자 프로필 fallback 로드 실패:', fallbackError);
+                return {
+                    uid: user.uid,
+                    email: user.email || '',
+                    displayName: user.displayName || '',
+                    role: 'staff',
+                    allowedMenus: ['dashboard']
+                };
+            }
+        }
+    }
+
+    normalizeAllowedMenus(menuIds, role = null) {
+        const normalizedRole = this.normalizeRole(role || this.currentUserProfile?.role);
+        if (normalizedRole === 'admin') {
+            return this.menuDefinitions.map((menu) => menu.id);
+        }
+        if (normalizedRole === 'manager') {
+            return this.menuDefinitions.filter((menu) => !menu.adminOnly).map((menu) => menu.id);
+        }
+
+        const knownMenus = new Set(this.menuDefinitions.map((menu) => menu.id));
+        const normalized = Array.isArray(menuIds)
+            ? menuIds
+                .map((menuId) => String(menuId || '').trim())
+                .filter((menuId) => knownMenus.has(menuId))
+            : [];
+        const output = new Set(normalized.length > 0 ? normalized : ['dashboard']);
+        output.add('dashboard');
+        output.delete('admin-menu');
+        return Array.from(output);
+    }
+
+    canAccessMenu(menuId) {
+        if (!menuId) return false;
+        const allowedMenus = this.normalizeAllowedMenus(this.currentUserProfile?.allowedMenus, this.currentUserProfile?.role);
+        return allowedMenus.includes(menuId);
+    }
+
+    applyMenuPermissions() {
+        const allowedMenus = new Set(this.normalizeAllowedMenus(this.currentUserProfile?.allowedMenus, this.currentUserProfile?.role));
+        const navItems = Array.from(document.querySelectorAll('.nav-menu li'));
+
+        navItems.forEach((item) => {
+            const link = item.querySelector('[data-menu]');
+            if (link) {
+                const visible = allowedMenus.has(link.getAttribute('data-menu'));
+                item.style.display = visible ? '' : 'none';
+            } else if (item.classList.contains('nav-section')) {
+                item.style.display = 'none';
+            }
+        });
+
+        navItems.forEach((item) => {
+            const link = item.querySelector('[data-menu]');
+            if (!link || item.style.display === 'none') return;
+
+            let previous = item.previousElementSibling;
+            while (previous) {
+                if (previous.classList.contains('nav-section')) {
+                    previous.style.display = '';
+                    break;
+                }
+                previous = previous.previousElementSibling;
             }
         });
     }
@@ -184,18 +391,20 @@ class DiamonJewelryApp {
      * 대시보드 표시
      */
     showDashboard() {
-        this.switchPage('dashboard');
+        this.currentMenu = 'dashboard';
+        this.switchPage('dashboard', { updateHistory: false });
         this.setupPriceManagementModule();
         this.setupSalesManagementModule();
         this.setupNewModules();
-        this.loadDashboard();
+        this.updateHistory(this.buildHistoryState('dashboard', { menuId: 'dashboard' }), 'replace');
+        this.handleMenuClick('dashboard', { updateHistory: false });
     }
 
     /**
      * 로그인 페이지 표시
      */
     showLoginPage() {
-        this.switchPage('login');
+        this.switchPage('login', { historyMode: 'replace' });
     }
 
     /**
@@ -206,6 +415,17 @@ class DiamonJewelryApp {
         if (userEmailElement && this.currentUser) {
             userEmailElement.textContent = this.currentUser.email;
         }
+
+        const roleBadgeElement = document.getElementById('userRoleBadge');
+        if (roleBadgeElement) {
+            roleBadgeElement.textContent = this.getRoleLabel(this.currentUserProfile?.role);
+        }
+
+        this.applyMenuPermissions();
+
+        if (window.EmployeeManagementModule) {
+            window.EmployeeManagementModule.setCurrentUserContext(this.currentUser, this.currentUserProfile);
+        }
     }
 
     /**
@@ -214,6 +434,7 @@ class DiamonJewelryApp {
     logout() {
         window.firebaseAuth.signOut().then(() => {
             this.currentUser = null;
+            this.currentUserProfile = null;
             this.showLoginPage();
         }).catch(error => {
             console.error('로그아웃 오류:', error);
@@ -255,6 +476,7 @@ class DiamonJewelryApp {
         if (window.notes) window.notes.init();
         if (window.WordTemplateManager) window.WordTemplateManager.init();
         if (window.InventoryManagementModule) window.InventoryManagementModule.init();
+        if (window.EmployeeManagementModule) window.EmployeeManagementModule.init();
     }
 
     /**

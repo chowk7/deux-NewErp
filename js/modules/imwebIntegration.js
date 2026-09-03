@@ -29,9 +29,13 @@ window.ImwebIntegrationModule = {
             }
 
             this.recentOrderMap = new Map();
+            this.recentOrderNumbers = new Set();
             recentSnap.docs.forEach(d => {
-                const name = (d.data().customerName || '').trim();
-                const prod = (d.data().productName  || '').trim();
+                const data = d.data();
+                const name = (data.customerName || '').trim();
+                const prod = (data.productName  || '').trim();
+                const orderNum = (data.orderNumber || '').trim();
+                if (orderNum) this.recentOrderNumbers.add(orderNum);
                 if (!name) return;
                 if (!this.recentOrderMap.has(name)) this.recentOrderMap.set(name, []);
                 this.recentOrderMap.get(name).push(prod);
@@ -131,8 +135,10 @@ window.ImwebIntegrationModule = {
             );
             const custName   = (order.customerName || '').trim();
             const imwebProd  = (order.productName  || '').trim();
+            const orderNum   = (order.orderNumber  || '').trim();
             const existProds = this.recentOrderMap.get(custName) || [];
-            const isDuplicate = existProds.some(p => p.includes(imwebProd));
+            const isDuplicate = (orderNum && (this.recentOrderNumbers || new Set()).has(orderNum))
+                || existProds.some(p => p.includes(imwebProd));
             const color = isDuplicate ? 'color:#aaa;' : 'color:#000;';
             const tr = document.createElement('tr');
             tr.innerHTML = `
@@ -426,6 +432,10 @@ window.ImwebIntegrationModule = {
 
                 // 추가 정보 입력 모달
                 const additionalInfo = await window.Utils.showAdditionalOrderModal(order);
+                if (!additionalInfo) {
+                    window.Utils.showNotification('가져오기가 취소되었습니다.', 'info');
+                    return;
+                }
 
                 const docRef = collection.doc();
                 savedDocRefs.push(docRef);
@@ -485,10 +495,15 @@ window.ImwebIntegrationModule = {
 
             await batch.commit();
 
-            // 배치 커밋 후 각 주문에 나석정보 자동입력 (제품단가표 기준)
-            if (window.ManufacturingCostsModule) {
-                for (const docRef of savedDocRefs) {
-                    await window.ManufacturingCostsModule.autoFillFromProductRates(docRef.id);
+            // 배치 커밋 후 각 주문에 나석정보 자동입력 (제품단가표 기준, 병렬 처리)
+            if (window.ManufacturingCostsModule && savedDocRefs.length > 0) {
+                window.Utils.showNotification(`나석정보 자동입력 중... (${savedDocRefs.length}건)`, 'info');
+                const fillResults = await Promise.allSettled(
+                    savedDocRefs.map(docRef => window.ManufacturingCostsModule.autoFillFromProductRates(docRef.id))
+                );
+                const failCount = fillResults.filter(r => r.status === 'rejected').length;
+                if (failCount > 0) {
+                    console.warn(`[Imweb] 나석정보 자동입력 실패: ${failCount}건`);
                 }
             }
 
@@ -500,7 +515,7 @@ window.ImwebIntegrationModule = {
 
             if (window.SalesManagementModule) {
                 window.SalesManagementModule.allOrders = [];
-                window.SalesManagementModule.loadOrders();
+                await window.SalesManagementModule.loadOrders();
             }
             if (window.ManufacturingCostsModule) {
                 window.ManufacturingCostsModule.load();

@@ -6,6 +6,9 @@
  */
 window.OrderManagementModule = {
 
+    PRESET_STONE_VENDORS: ['에이디스타', '영재큐빅', '다이나믹'],
+    MAX_STONE_ITEMS: 15,
+
     IMAGE_TYPES: [
         { key: 'stoneReceipt',    label: '나석매입전표' },
         { key: 'workshopReceipt', label: '공방매입전표' },
@@ -27,6 +30,7 @@ window.OrderManagementModule = {
 
     items: [],
     allItems: [],
+    diamondRates: [],
     pageSize: 50,
     currentPage: 1,
 
@@ -82,6 +86,365 @@ window.OrderManagementModule = {
         return checked
             ? `<span style="color:#10b981;font-weight:600">✓</span>`
             : `<span style="color:#d1d5db">○</span>`;
+    },
+
+    _parseStoneArray(item = {}) {
+        try {
+            const raw = item?.stoneArray;
+            if (!raw) return [];
+            const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (error) {
+            console.warn('[OrderManagement] stoneArray 파싱 실패:', error);
+            return [];
+        }
+    },
+
+    _buildStoneInfoText(stoneArray = []) {
+        return (stoneArray || [])
+            .filter(stone => stone?.stoneType && stone?.stoneQty > 0)
+            .map(stone => `${stone.stoneQty} × ${stone.stoneType}`)
+            .join(', ');
+    },
+
+    async _ensureDiamondRates() {
+        if (Array.isArray(this.diamondRates) && this.diamondRates.length > 0) {
+            return this.diamondRates;
+        }
+
+        try {
+            const snap = await window.firebaseDb
+                .collection('prices').doc('diamondRates').collection('items')
+                .get();
+            this.diamondRates = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        } catch (error) {
+            console.warn('[OrderManagement] diamondRates 로드 실패:', error);
+            this.diamondRates = [];
+        }
+
+        return this.diamondRates;
+    },
+
+    _escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    },
+
+    _normalizeStoneOrderDate(value) {
+        if (!value) return '';
+        if (value?.toDate) {
+            return value.toDate().toISOString().split('T')[0];
+        }
+        const text = String(value).trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+        const date = new Date(text);
+        return Number.isNaN(date.getTime()) ? '' : date.toISOString().split('T')[0];
+    },
+
+    _normalizeStoneItem(stone = {}, index = 0) {
+        const stoneType = String(stone?.stoneType || stone?.type || '').trim();
+        const stoneQty = Math.max(0, parseInt(stone?.stoneQty || stone?.qty || 0, 10) || 0);
+        const stoneVendor = String(stone?.stoneVendor || stone?.vendor || '').trim();
+        const stoneOrderDate = this._normalizeStoneOrderDate(stone?.stoneOrderDate);
+        const stoneCert = String(stone?.stoneCert || '').trim();
+        const stonePrice = Number(stone?.stonePrice || 0) || 0;
+        const warrantyFee = Number(stone?.warrantyFee || 0) || 0;
+
+        return {
+            ...stone,
+            id: stone?.id || `stone_${Date.now()}_${index}`,
+            stoneType,
+            type: stoneType,
+            stoneQty,
+            qty: stoneQty,
+            stoneVendor,
+            vendor: stoneVendor,
+            stoneOrderDate,
+            stoneCert,
+            stonePrice,
+            totalPrice: stonePrice * stoneQty,
+            warrantyFee,
+        };
+    },
+
+    _getDiamondRateByType(stoneType = '') {
+        const typeKey = String(stoneType || '').trim();
+        if (!typeKey || !Array.isArray(this.diamondRates)) return null;
+        return this.diamondRates.find((diamond) => diamond?.diamondType === typeKey) || null;
+    },
+
+    _getWarrantyFee(diamond, cert) {
+        if (!diamond || !cert) return 0;
+        if (cert === 'VS') return Number(diamond.vsWarrantyFee || 0) || 0;
+        if (cert === 'VVS') return Number(diamond.vvsWarrantyFee || 0) || 0;
+        return 0;
+    },
+
+    _getStoneTypeSuggestions(stoneArray = []) {
+        const types = new Set(
+            (stoneArray || [])
+                .map((stone) => String(stone?.stoneType || stone?.type || '').trim())
+                .filter(Boolean)
+        );
+
+        (this.diamondRates || []).forEach((diamond) => {
+            const diamondType = String(diamond?.diamondType || '').trim();
+            if (diamondType) types.add(diamondType);
+        });
+
+        return Array.from(types).sort((a, b) => a.localeCompare(b, 'ko-KR'));
+    },
+
+    _isStoneOrderFilled(stone = {}) {
+        const vendor = String(stone.stoneVendor || stone.vendor || '').trim();
+        const orderDate = this._normalizeStoneOrderDate(stone.stoneOrderDate);
+        return Boolean(stone?.stoneType) && Number(stone?.stoneQty || 0) > 0 && Boolean(vendor) && Boolean(orderDate);
+    },
+
+    _isStoneRequestCompleted(stoneArray = []) {
+        return Array.isArray(stoneArray) && stoneArray.length > 0 && stoneArray.every((stone) => this._isStoneOrderFilled(stone));
+    },
+
+    _getRepresentativeStoneRequestDate(stoneArray = []) {
+        const dates = (stoneArray || [])
+            .map((stone) => this._normalizeStoneOrderDate(stone.stoneOrderDate))
+            .filter(Boolean)
+            .sort();
+        return dates[0] || '';
+    },
+
+    _renderStoneOrderSummary(stoneArray = []) {
+        if (!stoneArray.length) return '등록된 나석이 없습니다.';
+        return stoneArray.map((stone, index) => {
+            const vendor = String(stone.stoneVendor || stone.vendor || '').trim() || '-';
+            const orderDate = this._normalizeStoneOrderDate(stone.stoneOrderDate) || '-';
+            return `<div>${index + 1}. ${stone.stoneQty} × ${stone.stoneType} | 업체: ${vendor} | 주문일: ${orderDate}</div>`;
+        }).join('');
+    },
+
+    _renderStoneVendorEditor(stoneArray = []) {
+        const normalizedStoneArray = (stoneArray || []).map((stone, index) => this._normalizeStoneItem(stone, index));
+        const stoneTypeOptions = this._getStoneTypeSuggestions(normalizedStoneArray)
+            .map((stoneType) => `<option value="${this._escapeHtml(stoneType)}"></option>`)
+            .join('');
+
+        const editorRows = normalizedStoneArray.length
+            ? normalizedStoneArray.map((stone, index) => {
+            const currentVendor = String(stone?.stoneVendor || stone?.vendor || '').trim();
+            const isPresetVendor = this.PRESET_STONE_VENDORS.includes(currentVendor);
+            const selectedVendor = isPresetVendor ? currentVendor : (currentVendor ? '__custom__' : '');
+            const orderDate = this._normalizeStoneOrderDate(stone?.stoneOrderDate) || '-';
+            const vendorOptions = this.PRESET_STONE_VENDORS
+                .map((vendor) => `<option value="${this._escapeHtml(vendor)}" ${vendor === selectedVendor ? 'selected' : ''}>${this._escapeHtml(vendor)}</option>`)
+                .join('');
+
+            return `
+                <div data-stone-row data-stone-index="${index}" data-stone-id="${this._escapeHtml(stone.id)}"
+                    style="padding:12px;border:1px solid #e5e7eb;border-radius:6px;background:#f9fafb;margin-bottom:8px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px;">
+                        <div style="font-weight:600;color:#111827;">${index + 1}. 나석 항목</div>
+                        <button type="button" class="btn btn-sm btn-danger" data-stone-delete data-stone-index="${index}"
+                            style="padding:6px 10px;">삭제</button>
+                    </div>
+                    <div style="display:grid;grid-template-columns:minmax(0,1.4fr) minmax(120px,0.6fr);gap:12px;align-items:end;margin-bottom:12px;">
+                        <div class="form-group" style="margin:0;">
+                            <label style="margin-bottom:6px;">나석 종류</label>
+                            <input
+                                type="text"
+                                list="omStoneTypeOptions"
+                                data-stone-type-input
+                                data-stone-index="${index}"
+                                value="${this._escapeHtml(stone?.stoneType)}"
+                                placeholder="나석 종류 입력"
+                                style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:4px;">
+                        </div>
+                        <div class="form-group" style="margin:0;">
+                            <label style="margin-bottom:6px;">개수</label>
+                            <input
+                                type="number"
+                                min="1"
+                                max="100"
+                                data-stone-qty-input
+                                data-stone-index="${index}"
+                                value="${this._escapeHtml(stone?.stoneQty || 1)}"
+                                style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:4px;">
+                        </div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:end;">
+                        <div class="form-group" style="margin:0;">
+                            <label style="margin-bottom:6px;">주문업체</label>
+                            <select
+                                data-stone-vendor-select
+                                data-stone-index="${index}"
+                                style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:4px;">
+                                <option value="">선택</option>
+                                ${vendorOptions}
+                                <option value="__custom__" ${selectedVendor === '__custom__' ? 'selected' : ''}>+신규</option>
+                            </select>
+                            <input
+                                type="text"
+                                data-stone-vendor-custom
+                                data-stone-index="${index}"
+                                value="${isPresetVendor ? '' : this._escapeHtml(currentVendor)}"
+                                placeholder="업체명을 직접 입력하세요"
+                                style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:4px;margin-top:8px;display:${selectedVendor === '__custom__' ? 'block' : 'none'};">
+                        </div>
+                        <div class="form-group" style="margin:0;">
+                            <label style="margin-bottom:6px;">주문일</label>
+                            <input
+                                type="date"
+                                data-stone-order-date-input
+                                data-stone-index="${index}"
+                                value="${this._escapeHtml(orderDate)}"
+                                style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:4px;">
+                        </div>
+                    </div>
+                    <input type="hidden" data-stone-cert value="${this._escapeHtml(stone.stoneCert || '')}">
+                    <input type="hidden" data-stone-price value="${this._escapeHtml(stone.stonePrice || 0)}">
+                    <input type="hidden" data-stone-warranty-fee value="${this._escapeHtml(stone.warrantyFee || 0)}">
+                </div>`;
+            }).join('')
+            : '<div style="padding:12px;border:1px solid #e5e7eb;border-radius:6px;background:#f9fafb;color:#6b7280;">등록된 나석이 없습니다.</div>';
+
+        return `
+            <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+                <button type="button" class="btn btn-sm btn-outline" data-stone-add style="padding:8px 12px;">+ 나석 추가</button>
+            </div>
+            <datalist id="omStoneTypeOptions">${stoneTypeOptions}</datalist>
+            <div>${editorRows}</div>`;
+    },
+
+    _bindStoneVendorEditor(wrapper) {
+        const stoneArrayInput = wrapper?.querySelector('#omStoneArrayInput');
+        const stoneInfoDisplay = wrapper?.querySelector('#omStoneInfoDisplay');
+        const stoneVendorSummary = wrapper?.querySelector('#omStoneVendorSummary');
+        const stoneVendorEditor = wrapper?.querySelector('#omStoneVendorEditor');
+        if (!stoneArrayInput || !stoneVendorEditor) return;
+        const parseStoneArrayInput = () => {
+            try {
+                const parsed = JSON.parse(stoneArrayInput.value || '[]');
+                return Array.isArray(parsed)
+                    ? parsed.map((stone, index) => this._normalizeStoneItem(stone, index))
+                    : [];
+            } catch (error) {
+                console.warn('[OrderManagement] 상태 모달 stoneArray 재파싱 실패:', error);
+                return [];
+            }
+        };
+
+        const syncStoneArray = (stoneArray, rerender = false) => {
+            const normalizedStoneArray = (stoneArray || []).map((stone, index) => this._normalizeStoneItem(stone, index));
+            stoneArrayInput.value = JSON.stringify(normalizedStoneArray);
+            if (stoneInfoDisplay) stoneInfoDisplay.value = this._buildStoneInfoText(normalizedStoneArray);
+            if (stoneVendorSummary) {
+                stoneVendorSummary.innerHTML = this._renderStoneOrderSummary(normalizedStoneArray);
+            }
+            this._syncStoneOrderStatusFields(wrapper, normalizedStoneArray);
+            if (rerender) {
+                stoneVendorEditor.innerHTML = this._renderStoneVendorEditor(normalizedStoneArray);
+            }
+        };
+
+        const collectStoneArrayFromEditor = () => {
+            const currentStoneArray = parseStoneArrayInput();
+            const rows = Array.from(stoneVendorEditor.querySelectorAll('[data-stone-row]'));
+            return rows.map((row, index) => {
+                const baseStone = currentStoneArray[index] || {};
+                const stoneType = String(row.querySelector('[data-stone-type-input]')?.value || '').trim();
+                const stoneQty = Math.max(0, parseInt(row.querySelector('[data-stone-qty-input]')?.value || 0, 10) || 0);
+                const vendorSelect = row.querySelector('[data-stone-vendor-select]');
+                const vendorCustom = row.querySelector('[data-stone-vendor-custom]');
+                const stoneVendor = vendorSelect?.value === '__custom__'
+                    ? String(vendorCustom?.value || '').trim()
+                    : String(vendorSelect?.value || '').trim();
+                const stoneOrderDate = this._normalizeStoneOrderDate(
+                    row.querySelector('[data-stone-order-date-input]')?.value || baseStone.stoneOrderDate
+                );
+                const stoneCert = String(row.querySelector('[data-stone-cert]')?.value || baseStone.stoneCert || '').trim();
+                const previousPrice = Number(row.querySelector('[data-stone-price]')?.value || baseStone.stonePrice || 0) || 0;
+                const previousWarrantyFee = Number(row.querySelector('[data-stone-warranty-fee]')?.value || baseStone.warrantyFee || 0) || 0;
+                const diamond = this._getDiamondRateByType(stoneType);
+                const stonePrice = diamond ? (Number(diamond.costWithoutVat || 0) || 0) : previousPrice;
+                const warrantyFee = diamond ? this._getWarrantyFee(diamond, stoneCert) * stoneQty : previousWarrantyFee;
+
+                return this._normalizeStoneItem({
+                    ...baseStone,
+                    id: row.dataset.stoneId || baseStone.id,
+                    stoneType,
+                    stoneQty,
+                    stoneVendor,
+                    stoneOrderDate,
+                    stoneCert,
+                    stonePrice,
+                    warrantyFee,
+                }, index);
+            });
+        };
+
+        stoneVendorEditor.addEventListener('click', (event) => {
+            const addButton = event.target.closest('[data-stone-add]');
+            if (addButton) {
+                const currentStoneArray = collectStoneArrayFromEditor();
+                if (currentStoneArray.length >= this.MAX_STONE_ITEMS) {
+                    window.Utils.showNotification(`나석은 최대 ${this.MAX_STONE_ITEMS}개까지 추가할 수 있습니다.`, 'error');
+                    return;
+                }
+                const defaultOrderDate = this._normalizeStoneOrderDate(
+                    wrapper.querySelector('[name="stoneRequestDate"]')?.value || ''
+                );
+                currentStoneArray.push(this._normalizeStoneItem({
+                    stoneQty: 1,
+                    stoneOrderDate: defaultOrderDate,
+                }, currentStoneArray.length));
+                syncStoneArray(currentStoneArray, true);
+                return;
+            }
+
+            const deleteButton = event.target.closest('[data-stone-delete]');
+            if (deleteButton) {
+                const deleteIndex = parseInt(deleteButton.dataset.stoneIndex || '-1', 10);
+                const currentStoneArray = collectStoneArrayFromEditor()
+                    .filter((_, index) => index !== deleteIndex);
+                syncStoneArray(currentStoneArray, true);
+            }
+        });
+
+        stoneVendorEditor.addEventListener('change', (event) => {
+            const select = event.target.closest('[data-stone-vendor-select]');
+            if (select) {
+                const index = select.dataset.stoneIndex;
+                const customInput = stoneVendorEditor.querySelector(`[data-stone-vendor-custom][data-stone-index="${index}"]`);
+                if (customInput) {
+                    const useCustom = select.value === '__custom__';
+                    customInput.style.display = useCustom ? 'block' : 'none';
+                    if (!useCustom) customInput.value = '';
+                }
+            }
+            syncStoneArray(collectStoneArrayFromEditor());
+        });
+
+        stoneVendorEditor.addEventListener('input', (event) => {
+            if (!event.target.closest('[data-stone-vendor-custom], [data-stone-type-input], [data-stone-qty-input], [data-stone-order-date-input]')) return;
+            syncStoneArray(collectStoneArrayFromEditor());
+        });
+    },
+
+    _syncStoneOrderStatusFields(wrapper, stoneArray = []) {
+        const normalizedStoneArray = (stoneArray || []).map((stone) => ({
+            ...stone,
+            stoneOrderDate: this._normalizeStoneOrderDate(stone.stoneOrderDate),
+        }));
+        const isCompleted = this._isStoneRequestCompleted(normalizedStoneArray);
+        const representativeDate = this._getRepresentativeStoneRequestDate(normalizedStoneArray);
+
+        const stoneRequestedCheckbox = wrapper?.querySelector('#om_stoneRequested');
+        const stoneRequestDateInput = wrapper?.querySelector('[name="stoneRequestDate"]');
+        if (stoneRequestedCheckbox) stoneRequestedCheckbox.checked = isCompleted;
+        if (stoneRequestDateInput) stoneRequestDateInput.value = representativeDate;
     },
 
     renderTable() {
@@ -248,8 +611,11 @@ window.OrderManagementModule = {
         });
     },
 
-    showForm(itemId = null, itemData = null, onComplete = null) {
+    async showForm(itemId = null, itemData = null, onComplete = null) {
+        await this._ensureDiamondRates();
         const item = itemData || (itemId ? this.allItems.find(i => i.id === itemId) : null);
+        const stoneArray = this._parseStoneArray(item);
+        const stoneInfoText = this._buildStoneInfoText(stoneArray);
 
         const statusInputs = this.STATUS_FIELDS.map(f => {
             const val = item?.[f.key] ?? '';
@@ -266,6 +632,23 @@ window.OrderManagementModule = {
                     <input type="date" name="${f.key}" value="${val}">
                 </div>`;
         }).join('');
+
+        const stoneSection = `
+            <div style="grid-column:1/-1;border-top:1px solid #e5e7eb;padding-top:16px;margin-top:8px;">
+                <p style="font-weight:600;margin-bottom:12px;">나석정보</p>
+                <div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;">
+                    <input type="text" id="omStoneInfoDisplay" value="${stoneInfoText.replace(/"/g, '&quot;')}"
+                        readonly style="background:#f3f4f6;flex:1;">
+                </div>
+                <input type="hidden" name="stoneArray" id="omStoneArrayInput"
+                    value='${JSON.stringify(stoneArray).replace(/'/g, '&#39;')}'>
+                <div id="omStoneVendorEditor" style="margin-bottom:8px;">
+                    ${this._renderStoneVendorEditor(stoneArray)}
+                </div>
+                <div id="omStoneVendorSummary" style="margin-top:8px;font-size:0.82rem;color:#6b7280;">
+                    ${this._renderStoneOrderSummary(stoneArray)}
+                </div>
+            </div>`;
 
         // 이미지 섹션 (타입별 다중 이미지)
         const imageSection = `
@@ -308,6 +691,7 @@ window.OrderManagementModule = {
             </div>
             <div class="form-grid">
                 ${statusInputs}
+                ${stoneSection}
                 ${imageSection}
             </div>`;
 
@@ -324,15 +708,61 @@ window.OrderManagementModule = {
                     images[t.key] = this._imagePaths(item, t.key);
                 });
 
-                // 새 파일 업로드 (타입별 여러 파일)
+                const parsedStoneArray = (() => {
+                    try {
+                        const raw = data.stoneArray || '[]';
+                        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+                        return Array.isArray(parsed)
+                            ? parsed.map((stone) => ({
+                                ...stone,
+                                stoneOrderDate: this._normalizeStoneOrderDate(stone.stoneOrderDate),
+                            }))
+                            : [];
+                    } catch (error) {
+                        console.warn('[OrderManagement] 저장용 stoneArray 파싱 실패:', error);
+                        return [];
+                    }
+                })();
+                const hasStoneArray = parsedStoneArray.length > 0;
+                const autoStoneRequested = hasStoneArray
+                    ? this._isStoneRequestCompleted(parsedStoneArray)
+                    : data.stoneRequested;
+                const autoStoneRequestDate = hasStoneArray
+                    ? this._getRepresentativeStoneRequestDate(parsedStoneArray)
+                    : (data.stoneRequestDate || '');
+
+                const baseDocData = {
+                    orderId:             data.orderId || '',
+                    stoneArray:          JSON.stringify(parsedStoneArray),
+                    stoneInfo:           this._buildStoneInfoText(parsedStoneArray),
+                    stoneRequestDate:    autoStoneRequestDate     || null,
+                    workshopRequestDate: data.workshopRequestDate || null,
+                    completionDate:      data.completionDate      || null,
+                    shippingReadyDate:   data.shippingReadyDate   || null,
+                    stoneRequested:      autoStoneRequested,
+                    workshopRequested:   data.workshopRequested,
+                    productionComplete:  data.productionComplete,
+                    shippingReady:       data.shippingReady,
+                    delivered:           data.delivered,
+                    updatedAt: new Date(),
+                };
+
+                // 신규 추가 시 먼저 Firestore에 저장하여 실제 문서 ID 확보
+                let resolvedItemId = itemId;
+                if (!itemId) {
+                    const newDocRef = await window.firebaseDb.collection('sales').doc('orders')
+                        .collection('items').add({ ...baseDocData, images, createdAt: new Date() });
+                    resolvedItemId = newDocRef.id;
+                }
+
+                // 이미지 업로드 (실제 문서 ID 사용)
                 const token = await window.firebaseAuth.currentUser.getIdToken();
                 for (const t of this.IMAGE_TYPES) {
                     const fileInput = wrapper.querySelector(`[name="img_${t.key}"]`);
                     if (!fileInput?.files?.length) continue;
 
-                    const docId = itemId || 'new_' + Date.now();
                     for (const file of fileInput.files) {
-                        const folder = `orders/${docId}/${t.key}`;
+                        const folder = `orders/${resolvedItemId}/${t.key}`;
                         const formData = new FormData();
                         formData.append('file', file);
                         formData.append('folder', folder);
@@ -344,34 +774,23 @@ window.OrderManagementModule = {
                         });
                         if (!uploadRes.ok) {
                             const err = await uploadRes.json();
-                            throw new Error(err.error || '이미지 업로드 실패');
+                            window.Utils.showNotification(`이미지 업로드 실패: ${err.error || '알 수 없는 오류'}`, 'error');
+                            continue;
                         }
                         const { path } = await uploadRes.json();
                         images[t.key].push(path);
                     }
                 }
 
-                const docData = {
-                    orderId:             data.orderId || '',
-                    stoneRequestDate:    data.stoneRequestDate    || null,
-                    workshopRequestDate: data.workshopRequestDate || null,
-                    completionDate:      data.completionDate      || null,
-                    shippingReadyDate:   data.shippingReadyDate   || null,
-                    stoneRequested:      data.stoneRequested,
-                    workshopRequested:   data.workshopRequested,
-                    productionComplete:  data.productionComplete,
-                    shippingReady:       data.shippingReady,
-                    delivered:           data.delivered,
-                    images,
-                    updatedAt: new Date(),
-                };
+                const docData = { ...baseDocData, images };
 
                 if (itemId) {
                     await window.firebaseDb.collection('sales').doc('orders')
                         .collection('items').doc(itemId).update(docData);
                 } else {
+                    // 신규 문서는 이미 생성됨 — 이미지 경로만 update
                     await window.firebaseDb.collection('sales').doc('orders')
-                        .collection('items').add({ ...docData, createdAt: new Date() });
+                        .collection('items').doc(resolvedItemId).update({ images, updatedAt: new Date() });
                 }
                 w.remove();
                 if (onComplete) {
@@ -382,6 +801,9 @@ window.OrderManagementModule = {
                 }
             }
         );
+
+        this._syncStoneOrderStatusFields(wrapper, stoneArray);
+        this._bindStoneVendorEditor(wrapper);
 
         // 폼 내 이미지 버튼 이벤트
         wrapper.addEventListener('click', async (e) => {

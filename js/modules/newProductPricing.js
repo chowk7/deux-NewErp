@@ -14,19 +14,20 @@ window.NewProductPricingModule = {
           options: ['R(반지)','N(목걸이)','B(팔찌)','E(귀걸이)','기타'] },
         { key: 'productName',     label: '상품명',          type: 'text',   calc: false },
         { key: 'size',            label: '사이즈',          type: 'text',   calc: false },
-        { key: 'sizeAddFee',      label: '사이즈추가금',    type: 'number', calc: false },
+        { key: 'sizeAddFee14k',   label: '14K사이즈추가금', type: 'number', calc: false },
+        { key: 'sizeAddFee18k',   label: '18K사이즈추가금', type: 'number', calc: false },
         { key: 'stones',          label: '나석 정보',       type: 'custom', calc: false },
-        { key: 'stoneCost',       label: '나석원가',        type: 'number', calc: true },
+        { key: 'stoneCost',       label: '나석원가(VAT별도)', type: 'number', calc: true },
         { key: 'stoneWarranty',   label: '보증서',          type: 'select', calc: false, options: ['없음', 'VS', 'VVS'] },
         { key: 'stoneWarrantyFee',label: '보증서추가금',    type: 'number', calc: true },
         { key: 'workshop',        label: '공방',            type: 'text',   calc: false },
-        { key: 'laborCost',       label: '공임비',          type: 'number', calc: false },
+        { key: 'laborCost',       label: '공임비(VAT별도)', type: 'number', calc: false },
         { key: 'goldWeight14k',   label: '금중량(14K기준g)', type: 'number', calc: false },
-        { key: 'goldValue',       label: '금값',            type: 'number', calc: true },
-        { key: 'otherMaterial',   label: '기타재료',        type: 'number', calc: false },
-        { key: 'productCost',     label: '제품원가',        type: 'number', calc: true },
+        { key: 'goldValue',       label: '금값(VAT별도)',   type: 'number', calc: true },
+        { key: 'otherMaterial',   label: '기타재료(VAT별도)', type: 'number', calc: false },
+        { key: 'productCost',     label: '제품원가(VAT별도)', type: 'number', calc: true },
         { key: 'vatCost',         label: 'VAT포함원가',     type: 'number', calc: true },
-        { key: 'shipping',        label: '배송및패키지',    type: 'number', calc: false },
+        { key: 'shipping',        label: '배송및패키지(VAT포함)', type: 'number', calc: false },
         { key: 'salesCost',       label: '판매원가',        type: 'number', calc: true },
         { key: 'marginPrice',     label: '마진포함가',      type: 'number', calc: true },
         { key: 'priceAdj',        label: '가격조정',        type: 'number', calc: false },
@@ -39,7 +40,7 @@ window.NewProductPricingModule = {
         { key: 'deptPrice',       label: '백화점가',        type: 'number', calc: true },
         { key: 'deptProfit',      label: '백화점이익',      type: 'number', calc: true },
         { key: 'deptProfitRate',  label: '백화점이익률(%)', type: 'number', calc: true },
-        { key: 'goldValue18k',    label: '18K금값',         type: 'number', calc: true },
+        { key: 'goldValue18k',    label: '18K금값(VAT별도)', type: 'number', calc: true },
         { key: 'marginPrice18k',  label: '18K마진포함가',   type: 'number', calc: true },
         { key: 'finalPrice18k',   label: '18K최종소비자가', type: 'number', calc: false },
         { key: 'discountPrice18k',label: '18K할인가',       type: 'number', calc: true },
@@ -428,14 +429,26 @@ window.NewProductPricingModule = {
             document.querySelectorAll('#newProductPricingTbody .row-checkbox:checked')
         ).map(cb => cb.dataset.id);
         if (checkedIds.length === 0) return;
-        if (!(await window.Utils.confirm(`선택한 ${checkedIds.length}개 항목을 제품가격표에 추가하시겠습니까?`))) return;
+        if (!(await window.Utils.confirm(`선택한 ${checkedIds.length}개 항목을 제품가격표에 추가하시겠습니까?`, '추가'))) return;
 
         const col = window.firebaseDb.collection('prices').doc('productRates').collection('items');
         for (const id of checkedIds) {
             const item = this.products.find(p => p.id === id);
             if (!item) continue;
             const { id: _id, ...docData } = item;
-            await col.add({ ...docData, createdAt: new Date(), updatedAt: new Date() });
+            await col.add({
+                ...docData,
+                // 제품가격표로 처음 복사할 때는 자동 백화점가를 수동가의 초기값으로
+                // 저장한다. 참조 제품에 수동가가 있으면 그 값은 보존한다.
+                deptPriceManual: parseFloat(docData.deptPriceManual) > 0
+                    ? docData.deptPriceManual
+                    : (docData.deptPrice || 0),
+                deptPriceManual18k: parseFloat(docData.deptPriceManual18k) > 0
+                    ? docData.deptPriceManual18k
+                    : (docData.deptPrice18k || 0),
+                createdAt: new Date(),
+                updatedAt: new Date()
+            });
         }
         window.Utils.showNotification(`${checkedIds.length}개 항목이 제품가격표에 추가되었습니다.`, 'success');
         if (window.ProductRatesModule?.products !== undefined) {
@@ -644,7 +657,9 @@ window.NewProductPricingModule = {
                                 </div>
                             </div>`;
                     }
-                    const val = product?.[f.key] ?? '';
+                    const val = product?.[f.key]
+                        ?? ((f.key === 'sizeAddFee14k' || f.key === 'sizeAddFee18k') ? product?.sizeAddFee : '')
+                        ?? '';
                     let input;
                     if (f.type === 'select') {
                         const opts = (f.options || []).map(o =>
@@ -924,7 +939,9 @@ window.NewProductPricingModule = {
         const salesCost    = vatCost + n('shipping');
         const marginPrice  = ownMargin > 0 ? salesCost / (1 - ownMargin / 100) : salesCost;
         const expectedPrice = Math.round((marginPrice + n('priceAdj')) / 1000) * 1000;
-        const finalPrice   = (n('finalPrice') || expectedPrice) + n('sizeAddFee');
+        const sizeAddFee14k = n('sizeAddFee14k') || n('sizeAddFee');
+        const sizeAddFee18k = n('sizeAddFee18k') || n('sizeAddFee');
+        const finalPrice   = (n('finalPrice') || expectedPrice);
         const discountPrice = finalPrice * (1 - n('discountRate') / 100);
         const ownMallProfit = discountPrice * (1 - ownMallFee / 100) - salesCost;
         const ownMallProfitRate = discountPrice > 0 ? (ownMallProfit / discountPrice) * 100 : 0;
@@ -937,7 +954,7 @@ window.NewProductPricingModule = {
         const salesCost18k  = vatCost18k + n('shipping');
         const marginPrice18k = ownMargin > 0 ? salesCost18k / (1 - ownMargin / 100) : salesCost18k;
         const expectedPrice18k = Math.round(marginPrice18k / 1000) * 1000;
-        const finalPrice18k = (n('finalPrice18k') || expectedPrice18k) + n('sizeAddFee');
+        const finalPrice18k = (n('finalPrice18k') || expectedPrice18k);
         const discountPrice18k = finalPrice18k * (1 - n('discountRate') / 100);
         const ownMallProfit18k = discountPrice18k * (1 - ownMallFee / 100) - salesCost18k;
         const ownMallProfitRate18k = discountPrice18k > 0 ? (ownMallProfit18k / discountPrice18k) * 100 : 0;
@@ -982,7 +999,17 @@ window.NewProductPricingModule = {
             const calculated = this.calculate(data);
             const { id, ...docData } = calculated;
             await window.firebaseDb.collection('prices').doc('productRates')
-                .collection('items').add({ ...docData, createdAt: new Date(), updatedAt: new Date() });
+                .collection('items').add({
+                    ...docData,
+                    deptPriceManual: parseFloat(docData.deptPriceManual) > 0
+                        ? docData.deptPriceManual
+                        : (docData.deptPrice || 0),
+                    deptPriceManual18k: parseFloat(docData.deptPriceManual18k) > 0
+                        ? docData.deptPriceManual18k
+                        : (docData.deptPrice18k || 0),
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                });
             window.Utils.showNotification('제품가격표에 추가되었습니다.', 'success');
             // ProductRatesModule이 열려 있다면 갱신
             if (window.ProductRatesModule?.products !== undefined) {
