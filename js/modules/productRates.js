@@ -330,23 +330,17 @@ window.ProductRatesModule = {
             departmentStonePriceMatrix: window.Utils.normalizeDeptStoneRowsFromPrices(stonePrices)
         };
 
-        const [snap, discountsSnap] = await Promise.all([
-            window.firebaseDb
-                .collection('prices').doc('productRates').collection('items')
-                .orderBy('createdAt', 'desc').get(),
-            // DI store management의 백화점가 메뉴가 같은 컬렉션을 읽어 할인가를
-            // 계산한다 — 여기서도 그대로 읽어와 병합하면 두 화면이 항상 같은
-            // 값을 보게 된다 (별도 동기화 로직 불필요, 같은 Firestore 프로젝트).
-            window.firebaseDb
-                .collection('adminSettings').doc('productDiscounts').collection('items').get()
-                .catch(() => ({ docs: [] }))
-        ]);
-        const discountRates = {};
-        discountsSnap.docs.forEach(d => { discountRates[d.id] = d.data().discountRate || 0; });
+        // deptDiscountRate(백화점 할인율)는 이 문서 자체의 필드가 단일 소스다.
+        // DI store management는 이 값을 읽기 전용으로만 가져다 쓰고, 여기 제품
+        // 가격표에서만 입력/수정한다 (구 adminSettings/productDiscounts 동기화는
+        // 제거함 - 두 값이 어긋나면 옛 컬렉션 값이 새 값을 덮어쓰는 문제가 있었음).
+        const snap = await window.firebaseDb
+            .collection('prices').doc('productRates').collection('items')
+            .orderBy('createdAt', 'desc').get();
         this.products = snap.docs.map(d => ({
             id: d.id,
             ...d.data(),
-            deptDiscountRate: discountRates[d.id] ?? d.data().deptDiscountRate ?? 0
+            deptDiscountRate: d.data().deptDiscountRate ?? 0
         }));
         this.sortState = { column: null, direction: 'asc' };
         this.activeCategory = '전체';
@@ -876,21 +870,14 @@ window.ProductRatesModule = {
                 // finalPrice는 Firestore에 sizeAddFee 포함값으로 저장되어 있으므로
                 // calculate() 재호출 전 sizeAddFee를 빼서 정규화 (double-add 방지)
                 const calculated = this.calculate(this._buildRecalculationInput(data));
-                let savedId = productId;
                 if (productId) {
                     await window.firebaseDb.collection('prices').doc('productRates')
                         .collection('items').doc(productId)
                         .update({ ...calculated, updatedAt: new Date() });
                 } else {
-                    const ref = await window.firebaseDb.collection('prices').doc('productRates')
+                    await window.firebaseDb.collection('prices').doc('productRates')
                         .collection('items').add({ ...calculated, createdAt: new Date(), updatedAt: new Date() });
-                    savedId = ref.id;
                 }
-                // DI store management의 백화점가 메뉴가 읽는 것과 동일한 문서에
-                // 써서 두 화면의 할인율이 항상 같은 값을 가리키게 한다.
-                await window.firebaseDb.collection('adminSettings').doc('productDiscounts')
-                    .collection('items').doc(savedId)
-                    .set({ discountRate: calculated.deptDiscountRate || 0, updatedAt: new Date() }, { merge: true });
                 w.remove();
                 await this.load();
             }
