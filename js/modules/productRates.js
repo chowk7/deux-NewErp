@@ -37,9 +37,10 @@ window.ProductRatesModule = {
         { key: 'ownMallProfitRate',label: '자사몰이익률(%)', type: 'number', calc: true },
         { key: 'deptPrice',       label: '백화점가(자동)',  type: 'number', calc: true },
         { key: 'deptPriceManual', label: '백화점가(수동)',  type: 'number', calc: false },
+        { key: 'deptDiscountRate',label: '백화점 할인율(%)', type: 'number', calc: false },
+        { key: 'deptSellPrice',   label: '백화점 할인가',   type: 'number', calc: true },
         { key: 'deptProfit',      label: '백화점이익',      type: 'number', calc: true },
         { key: 'deptProfitRate',  label: '백화점이익률(%)', type: 'number', calc: true },
-        { key: 'deptDiscountRate',label: '백화점 할인율(%)', type: 'number', calc: false },
         { key: 'goldValue18k',    label: '18K금값(VAT별도)', type: 'number', calc: true },
         { key: 'marginPrice18k',  label: '18K마진포함가',   type: 'number', calc: true },
         { key: 'finalPrice18k',   label: '18K최종소비자가', type: 'number', calc: false },
@@ -48,6 +49,7 @@ window.ProductRatesModule = {
         { key: 'ownMallProfitRate18k', label: '18K자사몰이익률(%)', type: 'number', calc: true },
         { key: 'deptPrice18k',    label: '18K백화점가(자동)', type: 'number', calc: true },
         { key: 'deptPriceManual18k', label: '18K백화점가(수동)', type: 'number', calc: false },
+        { key: 'deptSellPrice18k', label: '18K백화점 할인가', type: 'number', calc: true },
         { key: 'deptProfit18k',   label: '18K백화점이익',   type: 'number', calc: true },
         { key: 'deptProfitRate18k',label: '18K백화점이익률(%)', type: 'number', calc: true },
     ],
@@ -310,7 +312,7 @@ window.ProductRatesModule = {
         const deptProfit = deptRevenue - (parseFloat(salesCost) || 0) - ((parseFloat(stoneW) || 0) * 0.8);
         const deptProfitRate = deptSellPrice > 0 ? (deptProfit / deptSellPrice) * 100 : 0;
 
-        return { deptPrice, deptPriceManual: deptPriceBasis, deptProfit, deptProfitRate, stoneRetailTotal };
+        return { deptPrice, deptPriceManual: deptPriceBasis, deptSellPrice, deptProfit, deptProfitRate, stoneRetailTotal };
     },
 
     async load() {
@@ -743,20 +745,22 @@ window.ProductRatesModule = {
         });
         const deptPrice = deptCalc14k.deptPrice;
         const deptPriceManual = deptCalc14k.deptPriceManual;
+        const deptSellPrice = deptCalc14k.deptSellPrice;
         const deptProfit = deptCalc14k.deptProfit;
         const deptProfitRate = deptCalc14k.deptProfitRate;
         const deptPrice18k = deptCalc18k.deptPrice;
         const deptPriceManual18k = deptCalc18k.deptPriceManual;
+        const deptSellPrice18k = deptCalc18k.deptSellPrice;
         const deptProfit18k = deptCalc18k.deptProfit;
         const deptProfitRate18k = deptCalc18k.deptProfitRate;
 
         return { ...data, goldValue, productCost, vatCost, salesCost, marginPrice, expectedPrice,
             stoneCost, stoneWarrantyFee,
             finalPrice, discountPrice, ownMallProfit, ownMallProfitRate,
-            deptPrice, deptPriceManual, deptProfit, deptProfitRate,
+            deptPrice, deptPriceManual, deptSellPrice, deptProfit, deptProfitRate,
             goldValue18k, marginPrice18k, finalPrice18k, discountPrice18k,
             ownMallProfit18k, ownMallProfitRate18k,
-            deptPrice18k, deptPriceManual18k, deptProfit18k, deptProfitRate18k };
+            deptPrice18k, deptPriceManual18k, deptSellPrice18k, deptProfit18k, deptProfitRate18k };
     },
 
     async showForm(productId = null) {
