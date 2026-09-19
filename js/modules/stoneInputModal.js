@@ -58,7 +58,7 @@ window.StoneInputModalModule = {
                         <!-- 개수 -->
                         <div class="form-group">
                             <label style="display:block; margin-bottom:6px; font-weight:500; font-size:0.9rem;">개수 *</label>
-                            <input type="number" id="stoneQtyInput" min="1" max="100" placeholder="예: 3"
+                            <input type="number" id="stoneQtyInput" min="1" max="500" placeholder="예: 3"
                                 style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px; font-size:0.9rem;">
                         </div>
 

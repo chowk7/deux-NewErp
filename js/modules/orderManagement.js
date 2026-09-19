@@ -267,7 +267,7 @@ window.OrderManagementModule = {
                             <input
                                 type="number"
                                 min="1"
-                                max="100"
+                                max="500"
                                 data-stone-qty-input
                                 data-stone-index="${index}"
                                 value="${this._escapeHtml(stone?.stoneQty || 1)}"
