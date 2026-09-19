@@ -390,7 +390,7 @@ window.ImwebIntegrationModule = {
                 // 선택 주문에 보정된 제품명 반영
                 this.selectedOrders = this.selectedOrders.map(order => {
                     const fixed = correctionMap[(order.productName || '').trim()];
-                    return fixed ? { ...order, productName: fixed } : order;
+                    return fixed ? { ...order, productName: fixed, _originalProductName: order.productName } : order;
                 });
             }
 
@@ -426,15 +426,39 @@ window.ImwebIntegrationModule = {
             // 저장된 주문 docRef 추적 (배치 커밋 후 나석정보 자동입력용)
             const savedDocRefs = [];
 
-            for (const order of this.selectedOrders) {
+            // 목록에 보이는 순서대로 입력 진행 (체크한 순서가 아니라 테이블 순서)
+            const orderIndex = (o) => this.orders.findIndex(
+                x => x.orderNumber === o.orderNumber && x.productName === (o._originalProductName || o.productName)
+            );
+            const ordered = [...this.selectedOrders].sort((a, b) => orderIndex(a) - orderIndex(b));
+            const total = ordered.length;
+
+            // 직전 입력값을 다음 건의 기본값으로 사용 (아임웹 = 자사몰이므로 첫 건은 온라인/공식몰 기본)
+            let lastInfo = { purchasePath: '온라인', purchasePathDetail: '듀인피니스 공식몰', commissionRate: 0, warranty: '' };
+            let applyToRest = false;
+
+            for (let i = 0; i < total; i++) {
+                const order = ordered[i];
                 // 옵션명 파싱 → 색상/사이즈 자동 기입
                 const { color, size } = this._parseOption(order.optionName);
 
-                // 추가 정보 입력 모달
-                const additionalInfo = await window.Utils.showAdditionalOrderModal(order);
-                if (!additionalInfo) {
-                    window.Utils.showNotification('가져오기가 취소되었습니다.', 'info');
-                    return;
+                // 추가 정보 입력 모달 (현재 몇 번째 / 어떤 주문인지 표시)
+                let additionalInfo;
+                if (applyToRest) {
+                    additionalInfo = lastInfo;
+                } else {
+                    additionalInfo = await window.Utils.showAdditionalOrderModal(lastInfo, {
+                        index: i + 1,
+                        total,
+                        order,
+                        allowApplyToRest: true
+                    });
+                    if (!additionalInfo) {
+                        window.Utils.showNotification(`가져오기가 중단되었습니다. (${i}/${total}건 입력, 저장된 주문 없음)`, 'info');
+                        return;
+                    }
+                    lastInfo = additionalInfo;
+                    applyToRest = !!additionalInfo.applyToRest;
                 }
 
                 const docRef = collection.doc();

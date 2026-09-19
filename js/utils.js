@@ -847,24 +847,74 @@ window.Utils = {
 
     /**
      * 주문의 추가 정보(구매경로, 수수료율, 보증서) 입력 모달
-     * @param {Object} orderData - 기존 주문 데이터
-     * @returns {Promise<{purchasePath, purchasePathDetail, commissionRate, warranty}>}
+     * @param {Object} orderData - 기존 주문 데이터 (purchasePath 등 초기값으로 사용)
+     * @param {Object} [context] - 다건 입력 시 진행 상황/주문 요약 표시용
+     * @param {number} [context.index]   - 현재 순번 (1부터)
+     * @param {number} [context.total]   - 전체 건수
+     * @param {Object} [context.order]   - 요약 표시할 주문 (customerName, productName, optionName, quantity, orderAmount, orderNumber, orderDate)
+     * @param {boolean} [context.allowApplyToRest] - "나머지 전부 동일 적용" 버튼 표시 여부
+     * @returns {Promise<{purchasePath, purchasePathDetail, commissionRate, warranty, applyToRest}|null>}
+     *          취소(또는 닫기) 시 null 반환
      */
-    showAdditionalOrderModal(orderData = {}) {
+    showAdditionalOrderModal(orderData = {}, context = {}) {
         return new Promise((resolve) => {
             const onlineOptions = ['듀인피니스 공식몰', '신세계V', 'SSG', '더현대하이'];
             const offlineOptions = ['현대백화점 압구정본점', '현대백화점 무역점', '현대백화점 킨텍스점', '현대백화점 목동점'];
             const warrantyOptions = ['없음', 'VS', 'VVS'];
 
+            const esc = (v) => String(v ?? '')
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+            const { index, total, order, allowApplyToRest } = context;
+            const isMulti   = Number.isFinite(index) && Number.isFinite(total) && total > 1;
+            const remaining = isMulti ? total - index : 0;
+            const titleText = isMulti ? `추가 정보 입력 (${index} / ${total})` : '추가 정보 입력';
+            const progressPct = isMulti ? Math.round(((index - 1) / total) * 100) : 0;
+
+            // 현재 입력 중인 주문 요약 (어떤 건을 입력 중인지 명확히 보여줌)
+            let summaryHtml = '';
+            if (order) {
+                const dateStr = order.orderDate ? new Date(order.orderDate).toLocaleDateString('ko-KR') : '';
+                const amount  = Number(order.orderAmount || 0).toLocaleString();
+                const rows = [
+                    ['고객명',  `${esc(order.customerName)}${order.recipient && order.recipient !== order.customerName ? ` <span style="color:#6b7280;">(수령인 ${esc(order.recipient)})</span>` : ''}`],
+                    ['주문번호', `${esc(order.orderNumber)}${dateStr ? ` <span style="color:#6b7280;">· ${dateStr}</span>` : ''}`],
+                    ['제품명',  `<strong>${esc(order.productName)}</strong>`],
+                    ['옵션',    esc(order.optionName || '-')],
+                    ['수량/금액', `${esc(order.quantity ?? '')}개 · ${amount}원`],
+                ];
+                summaryHtml = `
+                    <div style="margin:0 1.5rem;padding:0.75rem 1rem;background:#f0f9ff;border:1px solid #bae6fd;border-radius:0.5rem;font-size:13px;line-height:1.7;">
+                        <div style="font-weight:600;color:#0369a1;margin-bottom:0.25rem;">📦 현재 입력 중인 주문</div>
+                        <table style="border-collapse:collapse;width:100%;">
+                            ${rows.map(([k, v]) => `
+                                <tr>
+                                    <td style="color:#6b7280;white-space:nowrap;padding:0 0.75rem 0 0;vertical-align:top;width:70px;">${k}</td>
+                                    <td style="word-break:break-all;">${v}</td>
+                                </tr>`).join('')}
+                        </table>
+                    </div>`;
+            }
+
+            const progressHtml = isMulti ? `
+                <div style="margin:0.75rem 1.5rem 0;">
+                    <div style="height:6px;background:#e5e7eb;border-radius:3px;overflow:hidden;">
+                        <div style="height:100%;width:${progressPct}%;background:#3b82f6;transition:width .2s;"></div>
+                    </div>
+                    <div style="font-size:12px;color:#6b7280;margin-top:4px;">${index - 1}건 완료 · ${remaining}건 남음</div>
+                </div>` : '';
+
             const wrapper = document.createElement('div');
             wrapper.setAttribute('data-modal', '');
             wrapper.innerHTML = `
                 <div class="modal-overlay">
-                    <div class="modal-content" style="max-width:480px;">
+                    <div class="modal-content" style="max-width:520px;">
                         <div class="modal-header">
-                            <h3>추가 정보 입력</h3>
+                            <h3>${titleText}</h3>
                             <button type="button" class="modal-close-btn" aria-label="닫기">✕</button>
                         </div>
+                        ${progressHtml}
+                        ${summaryHtml ? `<div style="margin-top:0.75rem;">${summaryHtml}</div>` : ''}
                         <div style="padding:1.5rem; display:flex; flex-direction:column; gap:0.75rem;">
                             <div>
                                 <label style="display:block; font-weight:500; margin-bottom:0.25rem;">구매경로</label>
@@ -894,9 +944,14 @@ window.Utils = {
                                 </select>
                             </div>
                         </div>
-                        <div class="modal-footer">
-                            <button type="button" id="addl-confirm" class="btn btn-primary">저장</button>
-                            <button type="button" id="addl-cancel" class="btn btn-secondary">취소</button>
+                        <div class="modal-footer" style="flex-wrap:wrap;gap:0.5rem;">
+                            <button type="button" id="addl-confirm" class="btn btn-primary">
+                                ${isMulti && remaining > 0 ? '저장 후 다음 →' : '저장'}
+                            </button>
+                            ${isMulti && allowApplyToRest && remaining > 0
+                                ? `<button type="button" id="addl-apply-rest" class="btn" style="background:#16a34a;color:#fff;" title="현재 입력값을 남은 ${remaining}건에도 동일하게 적용합니다">나머지 ${remaining}건 동일 적용</button>`
+                                : ''}
+                            <button type="button" id="addl-cancel" class="btn btn-secondary">${isMulti ? '가져오기 중단' : '취소'}</button>
                         </div>
                     </div>
                 </div>
@@ -919,19 +974,33 @@ window.Utils = {
             pathSelect.addEventListener('change', updateDetailOptions);
             updateDetailOptions();
 
-            const finish = (useValues) => {
+            const readValues = (applyToRest) => ({
+                purchasePath:       pathSelect.value,
+                purchasePathDetail: detailSelect.value,
+                commissionRate:     commInput.value ? parseFloat(commInput.value) : 0,
+                warranty:           warrantySelect.value,
+                applyToRest:        !!applyToRest
+            });
+
+            const finish = (result) => {
+                document.removeEventListener('keydown', onKey);
                 wrapper.remove();
-                resolve(useValues ? {
-                    purchasePath:       pathSelect.value,
-                    purchasePathDetail: detailSelect.value,
-                    commissionRate:     commInput.value ? parseFloat(commInput.value) : 0,
-                    warranty:           warrantySelect.value
-                } : { purchasePath: '', purchasePathDetail: '', commissionRate: 0, warranty: '' });
+                resolve(result);
             };
 
-            wrapper.querySelector('#addl-confirm').addEventListener('click', () => finish(true));
-            wrapper.querySelector('#addl-cancel').addEventListener('click', () => finish(false));
-            wrapper.querySelector('.modal-close-btn').addEventListener('click', () => finish(false));
+            // Enter → 저장, Esc → 취소
+            const onKey = (e) => {
+                if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') { e.preventDefault(); finish(readValues(false)); }
+                if (e.key === 'Escape') { e.preventDefault(); finish(null); }
+            };
+            document.addEventListener('keydown', onKey);
+
+            wrapper.querySelector('#addl-confirm').addEventListener('click', () => finish(readValues(false)));
+            wrapper.querySelector('#addl-apply-rest')?.addEventListener('click', () => finish(readValues(true)));
+            wrapper.querySelector('#addl-cancel').addEventListener('click', () => finish(null));
+            wrapper.querySelector('.modal-close-btn').addEventListener('click', () => finish(null));
+
+            pathSelect.focus();
         });
     },
 };
