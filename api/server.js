@@ -736,14 +736,34 @@ async function getImwebAccessToken() {
     return json.access_token;
 }
 
+const imwebSleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * 아임웹 GET 호출 (429 대응: 1s → 2s → 4s 재시도)
+ */
+async function imwebGetJson(url, accessToken, maxRetries = 3) {
+    for (let attempt = 0; ; attempt++) {
+        const res  = await fetch(url, { headers: { 'access-token': accessToken } });
+        let json;
+        try { json = await res.json(); } catch (e) { json = { code: res.status, message: 'invalid json' }; }
+        const tooMany = res.status === 429 || json?.code === 429;
+        if (!tooMany || attempt >= maxRetries) return json;
+        const wait = 1000 * Math.pow(2, attempt);
+        console.warn(`[Imweb] 429 Too Many Requests → ${wait}ms 후 재시도 (${attempt + 1}/${maxRetries})`);
+        await imwebSleep(wait);
+    }
+}
+
 /**
  * 아임웹 prod-orders 조회 (단일 주문)
  */
 async function getImwebProdOrders(accessToken, orderNo) {
     const url = `https://api.imweb.me/v2/shop/prod-orders?order_version=v2&order_no[]=${encodeURIComponent(orderNo)}`;
-    const res  = await fetch(url, { headers: { 'access-token': accessToken } });
-    const json = await res.json();
-    if (json.code !== 200) return [];
+    const json = await imwebGetJson(url, accessToken);
+    if (json.code !== 200) {
+        console.warn(`[Imweb] prod-orders 조회 실패 order_no=${orderNo}: code=${json.code}, msg=${json.message}`);
+        return [];
+    }
 
     // data: { ORDER_NO: { PROD_ORDER_NO: prodOrder, ... }, ... }
     const flat = [];
@@ -774,13 +794,19 @@ app.get('/api/imweb/orders', verifyToken, async (req, res) => {
     try {
         const accessToken = await getImwebAccessToken();
 
-        // 최근 2주 이내 주문만
-        const timestampLimit = Math.floor((Date.now() - 14 * 24 * 60 * 60 * 1000) / 1000);
+        // 조회 시작일: ?from=YYYY-MM-DD (한국시간 0시 기준, 화면의 1주/2주/1개월 버튼). 없으면 기존처럼 최근 2주
+        // 너무 긴 기간 요청으로 prod-orders 연속 호출(429)이 늘지 않도록 최대 62일로 제한
+        const MAX_DAYS = 62;
+        let timestampLimit = Math.floor((Date.now() - 14 * 24 * 60 * 60 * 1000) / 1000);
+        const from = String(req.query.from || '');
+        if (/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+            const fromMs = Date.parse(`${from}T00:00:00+09:00`);
+            if (!Number.isNaN(fromMs)) {
+                timestampLimit = Math.floor(Math.max(fromMs, Date.now() - MAX_DAYS * 24 * 60 * 60 * 1000) / 1000);
+            }
+        }
 
-        const listRes  = await fetch('https://api.imweb.me/v2/shop/orders?limit=100', {
-            headers: { 'access-token': accessToken }
-        });
-        const listJson = await listRes.json();
+        const listJson = await imwebGetJson('https://api.imweb.me/v2/shop/orders?limit=100', accessToken);
 
         if (listJson.code !== 200) {
             return res.status(502).json({ success: false, error: `주문 조회 실패: ${listJson.message}` });
@@ -807,6 +833,8 @@ app.get('/api/imweb/orders', verifyToken, async (req, res) => {
                 console.log('[Imweb] delivery:', JSON.stringify(order.delivery));
             }
 
+            // 주문별 연속 호출 간격 (429 방지)
+            if (recentOrders.indexOf(order) > 0) await imwebSleep(200);
             const prodOrders = await getImwebProdOrders(accessToken, orderNo);
 
             for (const pGroup of prodOrders) {

@@ -273,7 +273,7 @@ window.SalesManagementModule = {
             return `
             <tr style="${imported ? 'background: #f3f4f6; color: #9ca3af;' : ''}">
                 <td style="padding: 6px; border: 1px solid #ddd; text-align: center; white-space: nowrap;">
-                    <input type="checkbox" class="order-checkbox" data-idx="${i}" ${imported ? 'disabled' : 'checked'}>
+                    <input type="checkbox" class="order-checkbox" data-idx="${i}" data-imported="${imported ? '1' : ''}" ${imported ? '' : 'checked'}>
                     ${imported ? '<div style="font-size: 11px; color: #6b7280; margin-top: 2px;">이미 가져옴</div>' : ''}
                 </td>
                 ${fields.map(f => `
@@ -320,7 +320,7 @@ window.SalesManagementModule = {
             const selectedOrders = orders
                 .map((order, i) => {
                     const checkbox = document.querySelector(`.order-checkbox[data-idx="${i}"]`);
-                    if (!checkbox?.checked || checkbox.disabled || order._alreadyImported) return null;
+                    if (!checkbox?.checked) return null; // 이미 가져온 주문도 직접 체크하면 포함 (확인창은 submit 전 단계에서)
 
                     const updated = { ...order };
                     delete updated._alreadyImported;
@@ -341,6 +341,21 @@ window.SalesManagementModule = {
             self.openDetailedSyncModal(selectedOrders);
         }, '상세수정하기');
 
+        // 이미 가져온 주문을 직접 체크한 채 진행하면 한 번 확인 (openModal 기본 submit 전에 capture 단계에서 가로챔)
+        const form = wrapper?.querySelector('#modalForm');
+        let dupConfirmed = false;
+        wrapper?.addEventListener('submit', async (e) => {
+            if (dupConfirmed || e.target !== form) return;
+            const dupCount = [...wrapper.querySelectorAll('.order-checkbox[data-imported="1"]')].filter(cb => cb.checked).length;
+            if (dupCount === 0) return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            const ok = await window.Utils.confirm(`이미 가져온 주문 ${dupCount}건이 포함되어 있습니다. 중복으로 추가됩니다.`, '계속');
+            if (!ok) return;
+            dupConfirmed = true;
+            form.requestSubmit();
+        }, true);
+
         // 기간 버튼: 다시 조회 후 목록 갱신
         const periodBar = wrapper?.querySelector('#popupSyncPeriodBar');
         periodBar?.addEventListener('click', async (e) => {
@@ -353,6 +368,7 @@ window.SalesManagementModule = {
             btn.textContent = '⏳';
             try {
                 current = await self._fetchPopupSyncOrders(key);
+                dupConfirmed = false;
                 periodBar.innerHTML = self._renderPopupSyncPeriodBar(current.period.key);
                 wrapper.querySelector('#popupSyncInfo').innerHTML = self._renderPopupSyncInfo(current);
                 wrapper.querySelector('#popupSyncTableBody').innerHTML = self._renderPopupSyncRows(current.orders);
@@ -371,8 +387,8 @@ window.SalesManagementModule = {
     toggleAllOrders(selectAllCheckbox) {
         const checkboxes = document.querySelectorAll('.order-checkbox');
         checkboxes.forEach(cb => {
-            if (cb.disabled) return; // 이미 가져온 주문은 선택 불가
-            cb.checked = selectAllCheckbox.checked;
+            // 전체선택은 신규 주문만 체크 (이미 가져온 주문은 직접 체크해야 함)
+            cb.checked = selectAllCheckbox.checked && cb.dataset.imported !== '1';
         });
     },
 

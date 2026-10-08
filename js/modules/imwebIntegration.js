@@ -6,48 +6,186 @@ window.ImwebIntegrationModule = {
     selectedOrders: [],
     recentOrderMap: new Map(),   // customerName → [productName, ...]
 
-    // 아임웹 주문 가져오기
-    async fetchImwebOrders() {
+    currentPeriodKey: '1w',
+    currentStartDate: '',
+    _periodCache: new Map(),     // periodKey → 서버 응답 orders (모달 1회 열기 동안 재사용, 429 방지)
+    _fetching: false,
+
+    _periods() {
+        return window.SalesManagementModule?.POPUP_SYNC_PERIODS || [
+            { key: '1w', label: '1주', days: 7 },
+            { key: '2w', label: '2주', days: 14 },
+            { key: '1m', label: '1개월', months: 1 },
+        ];
+    },
+
+    // 한국시간 기준 시작일 'YYYY-MM-DD' (매장관리 싱크와 같은 계산)
+    _kstStartDateStr(period) {
+        if (window.SalesManagementModule?._kstStartDateStr) {
+            return window.SalesManagementModule._kstStartDateStr(period);
+        }
+        const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+        if (period.months) {
+            const day = kst.getUTCDate();
+            kst.setUTCDate(1);
+            kst.setUTCMonth(kst.getUTCMonth() - period.months);
+            const lastDay = new Date(Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth() + 1, 0)).getUTCDate();
+            kst.setUTCDate(Math.min(day, lastDay));
+        } else {
+            kst.setUTCDate(kst.getUTCDate() - (period.days || 7));
+        }
+        return kst.toISOString().split('T')[0];
+    },
+
+    // 아임웹 주문 가져오기 (매출표 '아임웹 싱크' 버튼, 기본 1주)
+    async fetchImwebOrders(periodKey = '1w') {
+        this._periodCache = new Map();
+        await this.loadImwebPeriod(periodKey);
+    },
+
+    // 기간별 조회: 서버 프록시(/api/imweb/orders?from=YYYY-MM-DD) + ERP 중복 확인
+    async loadImwebPeriod(periodKey) {
+        if (this._fetching) return;
+        this._fetching = true;
+        this._setPeriodButtonsDisabled(true);
         try {
-            window.Utils.showNotification('아임웹에서 주문을 조회 중입니다...', 'info');
+            const period = this._periods().find(p => p.key === periodKey) || this._periods()[0];
+            const startDate = this._kstStartDateStr(period);
+            const startMs = new Date(`${startDate}T00:00:00+09:00`).getTime();
+
+            window.Utils.showNotification(`아임웹에서 주문을 조회 중입니다... (${period.label}, ${startDate}~)`, 'info');
 
             const user = firebase.auth().currentUser;
             if (!user) throw new Error('로그인이 필요합니다.');
 
-            const token = await user.getIdToken();
-            const [response, recentSnap] = await Promise.all([
-                fetch('/api/imweb/orders', { headers: { 'Authorization': `Bearer ${token}` } }),
+            let apiOrders = this._periodCache.get(period.key);
+            if (!apiOrders) {
+                const token = await user.getIdToken();
+                const response = await fetch(`/api/imweb/orders?from=${encodeURIComponent(startDate)}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || '주문 조회 실패');
+                }
+                apiOrders = data.orders || [];
+                this._periodCache.set(period.key, apiOrders);
+            }
+            // 서버가 이전 버전(고정 2주)이어도 화면은 선택 기간 기준으로 맞춤
+            const orders = apiOrders
+                .filter(o => !o.orderDate || Number(o.orderDate) >= startMs)
+                .map(o => ({ ...o }));
+
+            const [recentSnap, erpByOrderNo] = await Promise.all([
                 window.firebaseDb.collection('sales').doc('orders').collection('items')
-                    .where('orderDate', '>=', firebase.firestore.Timestamp.fromDate(
-                        new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-                    )).get()
+                    .where('orderDate', '>=', firebase.firestore.Timestamp.fromDate(new Date(startMs)))
+                    .get(),
+                this._findErpOrdersByOrderNumber(orders.map(o => o.orderNumber))
             ]);
 
-            const data = await response.json();
-            if (!response.ok || !data.success) {
-                throw new Error(data.error || '주문 조회 실패');
-            }
-
+            // 중복 의심(기존 로직): 같은 고객이 같은 상품을 기간 내 ERP에 가지고 있음
             this.recentOrderMap = new Map();
-            this.recentOrderNumbers = new Set();
             recentSnap.docs.forEach(d => {
                 const data = d.data();
                 const name = (data.customerName || '').trim();
                 const prod = (data.productName  || '').trim();
-                const orderNum = (data.orderNumber || '').trim();
-                if (orderNum) this.recentOrderNumbers.add(orderNum);
                 if (!name) return;
                 if (!this.recentOrderMap.has(name)) this.recentOrderMap.set(name, []);
                 this.recentOrderMap.get(name).push(prod);
             });
-            this.orders = data.orders || [];
-            this.selectedOrders = [];
+
+            this._markImportStatus(orders, erpByOrderNo);
+
+            this.orders = orders;
+            this.currentPeriodKey = period.key;
+            this.currentStartDate = startDate;
+            // 신규 주문만 기본 선택
+            this.selectedOrders = orders.filter(o => o._importStatus === 'new');
             this.showImwebModal();
             window.Utils.showNotification(`${this.orders.length}개의 주문을 조회했습니다.`, 'success');
         } catch (error) {
             console.error('[Imweb] fetch error:', error);
             window.Utils.showNotification(error.message || '아임웹 주문 조회 중 오류가 발생했습니다.', 'error');
+        } finally {
+            this._fetching = false;
+            this._setPeriodButtonsDisabled(false);
         }
+    },
+
+    // ERP sales/orders/items 에서 orderNumber(아임웹 order_no 그대로 저장됨)로 조회
+    // 반환: Map(orderNumber 문자열 → [ERP productName, ...])
+    async _findErpOrdersByOrderNumber(orderNumbers) {
+        const result = new Map();
+        const keys = [...new Set(orderNumbers.map(n => String(n ?? '').trim()).filter(Boolean))];
+        if (keys.length === 0) return result;
+        // 저장 타입이 문자열/숫자 어느 쪽이어도 잡히도록 두 형태 모두 조회
+        const values = [];
+        keys.forEach(k => {
+            values.push(k);
+            if (/^\d+$/.test(k) && Number.isSafeInteger(Number(k))) values.push(Number(k));
+        });
+        const col = window.firebaseDb.collection('sales').doc('orders').collection('items');
+        const chunks = [];
+        for (let i = 0; i < values.length; i += 30) chunks.push(values.slice(i, i + 30)); // 'in' 최대 30개
+        const snaps = await Promise.all(chunks.map(chunk => col.where('orderNumber', 'in', chunk).get()));
+        snaps.forEach(snap => snap.docs.forEach(d => {
+            const data = d.data();
+            const key = String(data.orderNumber ?? '').trim();
+            if (!result.has(key)) result.set(key, []);
+            result.get(key).push((data.productName || '').trim());
+        }));
+        return result;
+    },
+
+    // _importStatus: 'imported'(ERP에 같은 주문번호 존재) / 'suspect'(같은 고객·상품) / 'new'
+    // 한 주문번호에 상품이 여러 줄이면 ERP 건수만큼만 '이미 가져옴' 처리 (상품명 일치 우선)
+    _markImportStatus(orders, erpByOrderNo) {
+        const remaining = new Map([...erpByOrderNo].map(([k, v]) => [k, [...v]]));
+        orders.forEach(o => { o._importStatus = 'new'; });
+        // 1차: 주문번호 + 상품명 일치
+        orders.forEach(o => {
+            const list = remaining.get(String(o.orderNumber ?? '').trim());
+            if (!list) return;
+            const idx = list.indexOf((o.productName || '').trim());
+            if (idx >= 0) { list.splice(idx, 1); o._importStatus = 'imported'; }
+        });
+        // 2차: 주문번호만 일치 (가져올 때 상품명을 제품단가표 이름으로 보정한 경우)
+        orders.forEach(o => {
+            if (o._importStatus === 'imported') return;
+            const list = remaining.get(String(o.orderNumber ?? '').trim());
+            if (list && list.length > 0) { list.shift(); o._importStatus = 'imported'; }
+        });
+        // 3차: 기존 중복 의심 규칙
+        orders.forEach(o => {
+            if (o._importStatus !== 'new') return;
+            const existProds = this.recentOrderMap.get((o.customerName || '').trim()) || [];
+            const prod = (o.productName || '').trim();
+            if (prod && existProds.some(p => p.includes(prod))) o._importStatus = 'suspect';
+        });
+    },
+
+    _setPeriodButtonsDisabled(disabled) {
+        document.querySelectorAll('#imwebPeriodBar .imweb-period-btn').forEach(b => { b.disabled = disabled; });
+    },
+
+    _renderImwebPeriodBar() {
+        return this._periods().map(p => `
+            <button type="button" class="btn btn-sm ${p.key === this.currentPeriodKey ? 'btn-primary' : 'btn-outline'} imweb-period-btn"
+                data-period="${p.key}">${p.label}</button>
+        `).join('');
+    },
+
+    _renderImwebInfo() {
+        const period = this._periods().find(p => p.key === this.currentPeriodKey) || this._periods()[0];
+        const imported = this.orders.filter(o => o._importStatus === 'imported').length;
+        const suspect = this.orders.filter(o => o._importStatus === 'suspect').length;
+        const fresh = this.orders.length - imported - suspect;
+        let text = `조회 기간: <b>${period.label}</b> (${this.currentStartDate}~, 한국시간 기준) · 총 ${this.orders.length}건`;
+        if (this.orders.length > 0) {
+            text += ` · 신규 ${fresh}건 · 이미 가져옴 ${imported}건`;
+            if (suspect > 0) text += ` · 중복 의심 ${suspect}건`;
+        }
+        return text;
     },
 
     // 아임웹 모달 표시
@@ -69,6 +207,11 @@ window.ImwebIntegrationModule = {
                     <button class="close-modal" data-modal="imwebModal">&times;</button>
                 </div>
                 <div class="modal-body" style="display:flex;flex-direction:column;flex:1;overflow:hidden;padding:20px;">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+                        <span style="color:#666;font-size:13px;">가져오기 기간</span>
+                        <span id="imwebPeriodBar" style="display:inline-flex;gap:6px;"></span>
+                    </div>
+                    <p id="imwebPeriodInfo" style="margin-bottom:10px;color:#666;font-size:13px;"></p>
                     <div style="margin-bottom:10px;">
                         <label style="font-weight:bold;">
                             <input type="checkbox" id="imwebSelectAll" style="margin-right:8px;">
@@ -107,6 +250,11 @@ window.ImwebIntegrationModule = {
 
         document.body.appendChild(modal);
 
+        document.getElementById('imwebPeriodBar').addEventListener('click', e => {
+            const btn = e.target.closest('.imweb-period-btn');
+            if (!btn || btn.disabled || this._fetching) return;
+            this.loadImwebPeriod(btn.dataset.period);
+        });
         document.getElementById('imwebSelectAll').addEventListener('change', e => {
             this.toggleSelectAll(e.target.checked);
         });
@@ -128,24 +276,35 @@ window.ImwebIntegrationModule = {
     renderImwebTable() {
         const tbody = document.getElementById('imwebTableBody');
         tbody.innerHTML = '';
+        const periodBar = document.getElementById('imwebPeriodBar');
+        if (periodBar) periodBar.innerHTML = this._renderImwebPeriodBar();
+        const info = document.getElementById('imwebPeriodInfo');
+        if (info) info.innerHTML = this._renderImwebInfo();
+
+        if (this.orders.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="14" style="padding:16px;text-align:center;color:#999;">해당 기간 주문 없음 - 기간을 늘려 보세요.</td></tr>`;
+        }
 
         this.orders.forEach((order, index) => {
             const isSelected = this.selectedOrders.some(
                 o => o.orderNumber === order.orderNumber && o.productName === order.productName
             );
-            const custName   = (order.customerName || '').trim();
-            const imwebProd  = (order.productName  || '').trim();
-            const orderNum   = (order.orderNumber  || '').trim();
-            const existProds = this.recentOrderMap.get(custName) || [];
-            const isDuplicate = (orderNum && (this.recentOrderNumbers || new Set()).has(orderNum))
-                || existProds.some(p => p.includes(imwebProd));
+            const status = order._importStatus || 'new';
+            const isDuplicate = status !== 'new';
             const color = isDuplicate ? 'color:#aaa;' : 'color:#000;';
+            const badge = status === 'imported'
+                ? '<div style="font-size:11px;color:#6b7280;margin-top:2px;white-space:nowrap;">이미 가져옴</div>'
+                : status === 'suspect'
+                    ? '<div style="font-size:11px;color:#b45309;margin-top:2px;white-space:nowrap;">중복 의심</div>'
+                    : '';
             const tr = document.createElement('tr');
+            if (isDuplicate) tr.style.background = '#f3f4f6';
             tr.innerHTML = `
                 <td style="padding:8px;text-align:center;">
-                    <input type="checkbox" class="imweb-order-checkbox" data-index="${index}" ${isSelected ? 'checked' : ''}>
+                    <input type="checkbox" class="imweb-order-checkbox" data-index="${index}" data-status="${status}" ${isSelected ? 'checked' : ''}>
+                    ${badge}
                 </td>
-                <td style="padding:8px;${color}">${new Date(order.orderDate).toLocaleDateString('ko-KR')}</td>
+                <td style="padding:8px;${color}">${new Date(order.orderDate).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' })}</td>
                 <td style="padding:8px;${color}">${order.orderNumber}</td>
                 <td style="padding:8px;${color}">${order.customerName}</td>
                 <td style="padding:8px;${color}">${order.recipient || ''}</td>
@@ -166,6 +325,7 @@ window.ImwebIntegrationModule = {
         });
 
         document.getElementById('imwebTotalCount').textContent = this.orders.length;
+        this.updateSelectCount();
         this.updateSelectAllCheckbox();
     },
 
@@ -186,17 +346,25 @@ window.ImwebIntegrationModule = {
         this.updateSelectAllCheckbox();
     },
 
+    // 전체선택은 신규 주문만 체크 (이미 가져옴·중복 의심은 직접 체크)
     toggleSelectAll(checked) {
-        document.querySelectorAll('.imweb-order-checkbox').forEach((cb, index) => {
-            cb.checked = checked;
-            this.toggleOrder(index, checked);
+        document.querySelectorAll('.imweb-order-checkbox').forEach((cb) => {
+            const index = Number(cb.dataset.index);
+            const target = checked && (this.orders[index]?._importStatus || 'new') === 'new';
+            cb.checked = target;
+            this.toggleOrder(index, target);
         });
+        const selectAll = document.getElementById('imwebSelectAll');
+        if (selectAll) selectAll.checked = checked;
     },
 
     updateSelectAllCheckbox() {
         const selectAll = document.getElementById('imwebSelectAll');
         if (selectAll) {
-            selectAll.checked = this.orders.length > 0 && this.selectedOrders.length === this.orders.length;
+            const fresh = this.orders.filter(o => (o._importStatus || 'new') === 'new');
+            selectAll.checked = fresh.length > 0 && fresh.every(o => this.selectedOrders.some(
+                s => s.orderNumber === o.orderNumber && s.productName === o.productName
+            ));
         }
     },
 
@@ -360,6 +528,12 @@ window.ImwebIntegrationModule = {
     async importSelectedOrders() {
         if (this.selectedOrders.length === 0) {
             window.Utils.showNotification('선택한 주문이 없습니다.', 'warning');
+            return;
+        }
+
+        // 이미 가져온 주문을 직접 체크한 경우 한 번 확인
+        const dupCount = this.selectedOrders.filter(o => o._importStatus === 'imported').length;
+        if (dupCount > 0 && !(await window.Utils.confirm(`이미 가져온 주문 ${dupCount}건이 포함되어 있습니다. 중복으로 추가됩니다.`, '계속'))) {
             return;
         }
 
