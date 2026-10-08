@@ -165,47 +165,140 @@ window.SalesManagementModule = {
     },
 
     // ─── 매장관리 싱크 ───
-    async openPopupOrdersSync() {
-        // DI_store_mangement의 Firestore에서 주문 가져오기
-        const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        const sevenDaysStr = sevenDaysAgo.toISOString().split('T')[0];
+    POPUP_SYNC_PERIODS: [
+        { key: '1w', label: '1주', days: 7 },
+        { key: '2w', label: '2주', days: 14 },
+        { key: '1m', label: '1개월', months: 1 },
+    ],
 
+    // 한국시간(KST) 기준 오늘에서 기간만큼 뺀 날짜 'YYYY-MM-DD'
+    // toISOString()은 UTC 기준이라 KST 오전 9시 전에는 하루 밀리므로 +9h 보정 후 UTC 필드로 계산
+    _kstStartDateStr(period, now = new Date()) {
+        const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+        if (period.months) {
+            const day = kst.getUTCDate();
+            kst.setUTCDate(1);
+            kst.setUTCMonth(kst.getUTCMonth() - period.months);
+            const lastDay = new Date(Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth() + 1, 0)).getUTCDate();
+            kst.setUTCDate(Math.min(day, lastDay));
+        } else {
+            kst.setUTCDate(kst.getUTCDate() - (period.days || 7));
+        }
+        return kst.toISOString().split('T')[0];
+    },
+
+    // 기간별 popup_sales 조회 + 이미 ERP로 가져온 주문 표시
+    async _fetchPopupSyncOrders(periodKey) {
+        const period = this.POPUP_SYNC_PERIODS.find(p => p.key === periodKey) || this.POPUP_SYNC_PERIODS[0];
+        const startDate = this._kstStartDateStr(period);
+
+        const snap = await window.firebaseDb
+            .collection('popup_sales').doc('items').collection('items')
+            .where('orderDate', '>=', startDate)
+            .orderBy('orderDate', 'desc')
+            .get();
+        const orders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        // 중복 확인: 가져오기 저장 시 sales/orders/items 에 originalId = popup_sales 문서 id 로 저장됨
+        let dupCheckFailed = false;
         try {
-            const snap = await window.firebaseDb
-                .collection('popup_sales').doc('items').collection('items')
-                .where('orderDate', '>=', sevenDaysStr)
-                .orderBy('orderDate', 'desc')
-                .get();
+            const importedIds = await this._findImportedPopupIds(orders.map(o => o.id));
+            orders.forEach(o => { o._alreadyImported = importedIds.has(o.id); });
+        } catch (err) {
+            console.error('[SalesManagement] 매장관리 싱크 중복 확인 실패:', err);
+            dupCheckFailed = true;
+        }
 
-            const orders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        return { period, startDate, orders, dupCheckFailed };
+    },
 
-            if (orders.length === 0) {
-                window.Utils.showNotification(`최근 7일(${sevenDaysStr}~) 데이터 없음`, 'info');
-                return;
-            }
+    async _findImportedPopupIds(popupIds) {
+        const imported = new Set();
+        const ids = [...new Set(popupIds.filter(Boolean))];
+        const col = window.firebaseDb.collection('sales').doc('orders').collection('items');
+        const chunks = [];
+        for (let i = 0; i < ids.length; i += 30) chunks.push(ids.slice(i, i + 30)); // 'in' 최대 30개
+        const snaps = await Promise.all(chunks.map(chunk => col.where('originalId', 'in', chunk).get()));
+        snaps.forEach(snap => snap.docs.forEach(d => {
+            const data = d.data();
+            if (!data.importedFrom || data.importedFrom === 'popup_sales') imported.add(data.originalId);
+        }));
+        return imported;
+    },
 
-            this.showPopupSyncModal(orders);
+    async openPopupOrdersSync(periodKey = '1w') {
+        // DI_store_mangement의 Firestore에서 주문 가져오기 (기본 1주)
+        try {
+            const result = await this._fetchPopupSyncOrders(periodKey);
+            this.showPopupSyncModal(result);
         } catch (err) {
             console.error('[SalesManagement] 매장관리 싱크 실패:', err);
             window.Utils.showNotification('매장관리 데이터 가져오기 실패', 'error');
         }
     },
 
-    showPopupSyncModal(orders) {
+    _popupSyncFields: [
+        { key: 'orderDate', label: '주문일' },
+        { key: 'orderNumber', label: '주문번호' },
+        { key: 'customerName', label: '고객명' },
+        { key: 'productName', label: '상품명' },
+        { key: 'orderAmount', label: '최종주문금액' },
+        { key: 'salesAmount', label: '매출금액' },
+    ],
+
+    _renderPopupSyncPeriodBar(activeKey) {
+        return this.POPUP_SYNC_PERIODS.map(p => `
+            <button type="button" class="btn btn-sm ${p.key === activeKey ? 'btn-primary' : 'btn-outline'} popup-sync-period-btn"
+                data-period="${p.key}">${p.label}</button>
+        `).join('');
+    },
+
+    _renderPopupSyncInfo({ period, startDate, orders, dupCheckFailed }) {
+        const importedCount = orders.filter(o => o._alreadyImported).length;
+        const newCount = orders.length - importedCount;
+        let text = `조회 기간: <b>${period.label}</b> (${startDate}~, 한국시간 기준) · 총 ${orders.length}건`;
+        if (orders.length > 0) text += ` · 신규 ${newCount}건 · 이미 가져옴 ${importedCount}건`;
+        if (dupCheckFailed) text += ` <span style="color:#dc2626;">(이미 가져온 주문 확인 실패 - 중복 여부를 직접 확인하세요)</span>`;
+        return text;
+    },
+
+    _renderPopupSyncRows(orders) {
         const self = this;
-        const fields = [
-            { key: 'orderDate', label: '주문일' },
-            { key: 'orderNumber', label: '주문번호' },
-            { key: 'customerName', label: '고객명' },
-            { key: 'productName', label: '상품명' },
-            { key: 'orderAmount', label: '최종주문금액' },
-            { key: 'salesAmount', label: '매출금액' },
-        ];
+        const fields = this._popupSyncFields;
+        if (orders.length === 0) {
+            return `<tr><td colspan="${fields.length + 1}" style="padding: 16px; border: 1px solid #ddd; text-align: center; color: #999;">해당 기간 데이터 없음 - 기간을 늘려 보세요.</td></tr>`;
+        }
+        return orders.map((o, i) => {
+            const imported = !!o._alreadyImported;
+            return `
+            <tr style="${imported ? 'background: #f3f4f6; color: #9ca3af;' : ''}">
+                <td style="padding: 6px; border: 1px solid #ddd; text-align: center; white-space: nowrap;">
+                    <input type="checkbox" class="order-checkbox" data-idx="${i}" ${imported ? 'disabled' : 'checked'}>
+                    ${imported ? '<div style="font-size: 11px; color: #6b7280; margin-top: 2px;">이미 가져옴</div>' : ''}
+                </td>
+                ${fields.map(f => `
+                    <td style="padding: 6px; border: 1px solid #ddd;">
+                        ${self._makeSyncEditField(o, f, i)}
+                    </td>
+                `).join('')}
+            </tr>
+        `;
+        }).join('');
+    },
+
+    showPopupSyncModal(result) {
+        const self = this;
+        const fields = this._popupSyncFields;
+        // 기간 변경 시 갱신되는 현재 조회 결과
+        let current = result;
 
         const html = `
             <div style="padding: 16px; max-height: 70vh; overflow-y: auto;">
-                <p style="margin-bottom: 12px; color: #666;">가져온 주문 ${orders.length}건 - 가져올 주문을 선택하세요.</p>
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px;">
+                    <span style="color: #666; font-size: 13px;">가져오기 기간</span>
+                    <span id="popupSyncPeriodBar" style="display: inline-flex; gap: 6px;">${self._renderPopupSyncPeriodBar(result.period.key)}</span>
+                </div>
+                <p id="popupSyncInfo" style="margin-bottom: 12px; color: #666; font-size: 13px;">${self._renderPopupSyncInfo(result)}</p>
                 <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
                     <thead>
                         <tr style="background: #f5f5f5;">
@@ -214,32 +307,23 @@ window.SalesManagementModule = {
                         </tr>
                     </thead>
                     <tbody id="popupSyncTableBody">
-                        ${orders.map((o, i) => `
-                            <tr>
-                                <td style="padding: 6px; border: 1px solid #ddd; text-align: center;">
-                                    <input type="checkbox" class="order-checkbox" data-idx="${i}" checked>
-                                </td>
-                                ${fields.map(f => `
-                                    <td style="padding: 6px; border: 1px solid #ddd;">
-                                        ${self._makeSyncEditField(o, f, i)}
-                                    </td>
-                                `).join('')}
-                            </tr>
-                        `).join('')}
+                        ${self._renderPopupSyncRows(result.orders)}
                     </tbody>
                 </table>
             </div>
         `;
 
         // Modal callback will filter selected orders
-        window.Utils.openModal('🏪 매장관리 싱크', html, async () => {
-            // Get selected orders only
+        const wrapper = window.Utils.openModal('🏪 매장관리 싱크', html, async () => {
+            const orders = current.orders;
+            // Get selected orders only (이미 가져온 주문 제외)
             const selectedOrders = orders
                 .map((order, i) => {
                     const checkbox = document.querySelector(`.order-checkbox[data-idx="${i}"]`);
-                    if (!checkbox?.checked) return null;
+                    if (!checkbox?.checked || checkbox.disabled || order._alreadyImported) return null;
 
                     const updated = { ...order };
+                    delete updated._alreadyImported;
                     fields.forEach((field) => {
                         const input = document.getElementById(`sync_${i}_${field.key}`);
                         if (!input) return;
@@ -256,12 +340,38 @@ window.SalesManagementModule = {
             }
             self.openDetailedSyncModal(selectedOrders);
         }, '상세수정하기');
+
+        // 기간 버튼: 다시 조회 후 목록 갱신
+        const periodBar = wrapper?.querySelector('#popupSyncPeriodBar');
+        periodBar?.addEventListener('click', async (e) => {
+            const btn = e.target.closest('.popup-sync-period-btn');
+            if (!btn || btn.disabled) return;
+            const key = btn.dataset.period;
+            const buttons = periodBar.querySelectorAll('.popup-sync-period-btn');
+            buttons.forEach(b => { b.disabled = true; });
+            const origText = btn.textContent;
+            btn.textContent = '⏳';
+            try {
+                current = await self._fetchPopupSyncOrders(key);
+                periodBar.innerHTML = self._renderPopupSyncPeriodBar(current.period.key);
+                wrapper.querySelector('#popupSyncInfo').innerHTML = self._renderPopupSyncInfo(current);
+                wrapper.querySelector('#popupSyncTableBody').innerHTML = self._renderPopupSyncRows(current.orders);
+                const selectAll = wrapper.querySelector('#selectAllOrders');
+                if (selectAll) selectAll.checked = true;
+            } catch (err) {
+                console.error('[SalesManagement] 매장관리 싱크 기간 변경 실패:', err);
+                window.Utils.showNotification('매장관리 데이터 가져오기 실패', 'error');
+                btn.textContent = origText;
+                buttons.forEach(b => { b.disabled = false; });
+            }
+        });
     },
 
     // Toggle all order checkboxes
     toggleAllOrders(selectAllCheckbox) {
         const checkboxes = document.querySelectorAll('.order-checkbox');
         checkboxes.forEach(cb => {
+            if (cb.disabled) return; // 이미 가져온 주문은 선택 불가
             cb.checked = selectAllCheckbox.checked;
         });
     },
