@@ -32,6 +32,7 @@ window.InventoryManagementModule = {
     COL_COSTS: 'inventory_costs',
 
     allItems: [],
+    rates: [],          // 제조가격표 prices/productRates/items
     costs: {},          // itemId -> inventory_costs 문서
     legacyItems: [],    // 구 ERP 재고 (읽기 전용)
     legacyCostMap: {},  // 정규화 제품명|색상 -> Set(제조가격)
@@ -74,6 +75,9 @@ window.InventoryManagementModule = {
     profile() { return window.app?.currentUserProfile || {}; },
 
     // 매장관리 isAdmin()과 같은 기준: 관리자·매니저만 추가·수정 (상태변경은 전 직원)
+    // 제조가격표 다시 불러오기: 관리자만
+    isAdminRole() { return this.profile().role === 'admin'; },
+
     canManage() {
         const role = this.profile().role;
         return role === 'admin' || role === 'manager';
@@ -111,6 +115,8 @@ window.InventoryManagementModule = {
             ?.addEventListener('click', () => this.downloadData());
         document.getElementById('invCsvUploadBtn')
             ?.addEventListener('click', () => this.openCsvUpload());
+        document.getElementById('invReloadCostBtn')
+            ?.addEventListener('click', () => this.showReloadModal());
         document.getElementById('invLegacyBtn')
             ?.addEventListener('click', () => { this.showLegacy = !this.showLegacy; this.render(); });
     },
@@ -143,7 +149,8 @@ window.InventoryManagementModule = {
                 (this.legacyCostMap[key] = this.legacyCostMap[key] || new Set()).add(v);
             });
 
-            this.productNames = nameSnap ? nameSnap.docs.map(d => d.data().productName).filter(Boolean) : [];
+            this.rates = nameSnap ? nameSnap.docs.map(d => ({ id: d.id, ...d.data() })) : [];
+            this.productNames = this.rates.map(r => r.productName).filter(Boolean);
             if (this.productNames.length === 0) {
                 this.productNames = [...new Set(this.allItems.map(i => i.productName).filter(Boolean))].sort();
             }
@@ -190,6 +197,8 @@ window.InventoryManagementModule = {
             const b = document.getElementById(id);
             if (b) b.style.display = this.canManage() ? '' : 'none';
         });
+        const reloadBtn = document.getElementById('invReloadCostBtn');
+        if (reloadBtn) reloadBtn.style.display = this.isAdminRole() && !this.showLegacy ? '' : 'none';
 
         if (this.showLegacy) { this.renderLegacy(content); return; }
 
@@ -379,6 +388,109 @@ window.InventoryManagementModule = {
         return Number.isFinite(n) && n >= 0 ? Math.round(n) : NaN;
     },
 
+    // source 값: 'priceTable'(제조가격표) / 'manual'(직접 입력). 예전 값('제조가격표','수동')도 읽기 호환
+    sourceLabel(src) {
+        if (src === 'priceTable' || src === '제조가격표') return '제조가격표';
+        if (src === 'manual' || src === '수동') return '수동';
+        return src || '';
+    },
+    isManualSource(src) { return src === 'manual' || src === '수동'; },
+
+    // 제조가격표 매칭 (초기 이관과 같은 규칙): 공백 제거·대소문자 통일한 제품명이 1개와 정확히 일치,
+    // 제품원가 > 0. 색상이 18K로 시작하면 18K 원가, 그 외(빈칸 포함)는 14K 원가.
+    matchRate(item) {
+        const key = this.normName(item.productName);
+        if (!key) return null;
+        const cands = this.rates.filter(r => this.normName(r.productName) === key);
+        if (cands.length !== 1) return null;
+        const r = cands[0];
+        const pc = Number(r.productCost) || 0;
+        if (pc <= 0) return null;
+        const is18 = this.normColor(item.color).startsWith('18K');
+        const price = is18 ? Math.round(pc - (Number(r.goldValue) || 0) + (Number(r.goldValue18k) || 0)) : Math.round(pc);
+        return { price, karat: is18 ? '18K' : '14K', rateProductName: r.productName };
+    },
+
+    buildReloadPlan() {
+        const plan = { auto: [], manual: [], unmatched: 0, same: 0 };
+        this.allItems.forEach(item => {
+            const m = this.matchRate(item);
+            if (!m) { plan.unmatched++; return; }
+            const c = this.costs[item.id];
+            const cur = c ? Number(c.manufacturingPrice) : null;
+            if (cur === m.price) { plan.same++; return; }
+            const row = { item, cur, ...m };
+            if (c && this.isManualSource(c.source)) plan.manual.push(row); else plan.auto.push(row);
+        });
+        return plan;
+    },
+
+    showReloadModal() {
+        if (!this.isAdminRole()) { window.Utils.showNotification('관리자만 사용할 수 있습니다.', 'error'); return; }
+        const plan = this.buildReloadPlan();
+        const rowHtml = (r, manual) => `
+            <tr class="${manual ? 'inv-reload-manual' : ''}" ${manual ? 'style="background:#fffbeb;"' : ''}>
+                <td>${this.esc(r.item.productName)}</td>
+                <td style="font-size:12px;">${this.esc(r.item.color || '(빈칸)')}</td>
+                <td style="font-size:12px;">${this.esc(r.item.size || '-')}</td>
+                <td style="font-size:12px;">${this.esc(r.item.status || '')}</td>
+                <td style="text-align:right;">${r.cur === null ? '<span style="color:#b45309;">미입력</span>' : this.won(r.cur)}</td>
+                <td style="text-align:center;">→</td>
+                <td style="text-align:right;font-weight:600;">${this.won(r.price)}</td>
+                <td style="font-size:12px;">${r.karat}${manual ? ' · 수동값' : ''}</td>
+            </tr>`;
+        const body = `
+            <div id="invReloadSummary" style="font-size:0.9rem;margin-bottom:10px;line-height:1.7;">
+                바뀔 건수 <b id="invReloadCount">${plan.auto.length}</b>건
+                <span style="color:#6b7280;font-size:0.8rem;">(값 같음 ${plan.same}건 · 제조가격표 매칭 안 됨 ${plan.unmatched}건은 기존 값 유지)</span>
+            </div>
+            <label style="display:flex;gap:8px;align-items:center;margin-bottom:10px;font-size:0.875rem;${plan.manual.length ? '' : 'color:#9ca3af;'}">
+                <input type="checkbox" name="overwriteManual" id="invReloadOverwriteManual" ${plan.manual.length ? '' : 'disabled'}>
+                직접 입력한 값도 덮어쓰기 (${plan.manual.length}건, 기본: 덮어쓰지 않음)
+            </label>
+            <div style="max-height:50vh;overflow:auto;">
+                <table class="data-table" id="invReloadTable">
+                    <thead><tr><th>제품명</th><th>색상</th><th>사이즈</th><th>상태</th><th style="text-align:right;">현재값</th><th></th><th style="text-align:right;">새값</th><th>기준</th></tr></thead>
+                    <tbody>
+                        ${plan.auto.map(r => rowHtml(r, false)).join('')}
+                        ${plan.manual.map(r => rowHtml(r, true)).join('')}
+                        ${plan.auto.length + plan.manual.length === 0 ? '<tr><td colspan="8" style="text-align:center;color:#9ca3af;padding:16px;">바뀔 항목이 없습니다.</td></tr>' : ''}
+                    </tbody>
+                </table>
+            </div>`;
+        const w = window.Utils.openModal('제조가격표에서 다시 불러오기 (미리보기)', body, async (data, wrapper) => {
+            const overwrite = data.overwriteManual === 'on';
+            const targets = overwrite ? [...plan.auto, ...plan.manual] : plan.auto;
+            if (targets.length === 0) this.fail('바뀔 항목이 없습니다.');
+            const db = this.db();
+            const by = this.myName();
+            for (let i = 0; i < targets.length; i += 400) {
+                const batch = db.batch();
+                targets.slice(i, i + 400).forEach(r => {
+                    batch.set(db.collection(this.COL_COSTS).doc(r.item.id), {
+                        itemId: r.item.id, manufacturingPrice: r.price, source: 'priceTable',
+                        rateProductName: r.rateProductName, karat: r.karat,
+                        updatedAt: new Date(), updatedBy: by,
+                    });
+                });
+                await batch.commit();
+            }
+            wrapper.remove();
+            window.Utils.showNotification(`제조가격 ${targets.length}건을 제조가격표 값으로 바꿨습니다.`, 'success');
+            await this.load();
+        }, '확인 후 저장');
+        const cb = w.querySelector('#invReloadOverwriteManual');
+        const manualRows = w.querySelectorAll('.inv-reload-manual');
+        const sync = () => {
+            const on = cb?.checked;
+            manualRows.forEach(tr => { tr.style.opacity = on ? '1' : '0.4'; });
+            const cnt = w.querySelector('#invReloadCount');
+            if (cnt) cnt.textContent = plan.auto.length + (on ? plan.manual.length : 0);
+        };
+        cb?.addEventListener('change', sync);
+        sync();
+    },
+
     costDoc(itemId, price, source) {
         return { itemId, manufacturingPrice: price, source, updatedAt: new Date(), updatedBy: this.myName() };
     },
@@ -430,7 +542,7 @@ window.InventoryManagementModule = {
                 });
                 ops += 2;
                 if (e.price !== null && e.price !== undefined) {
-                    batch.set(db.collection(this.COL_COSTS).doc(id), this.costDoc(id, e.price, '수동'));
+                    batch.set(db.collection(this.COL_COSTS).doc(id), this.costDoc(id, e.price, 'manual'));
                     ops += 1;
                 }
                 if (ops >= 400) await flush();
@@ -483,7 +595,7 @@ window.InventoryManagementModule = {
             return;
         }
         if (prev && Number(prev.manufacturingPrice) === price) return;
-        await ref.set(this.costDoc(itemId, price, '수동'));
+        await ref.set(this.costDoc(itemId, price, 'manual'));
     },
 
     showCostModal(itemId) {
@@ -496,7 +608,7 @@ window.InventoryManagementModule = {
         const body = `
             <p style="font-size:13px;margin-bottom:6px;"><b>${this.esc(item.productName)}</b> ${meta ? `<span style="color:#6b7280;">${this.esc(meta)}</span>` : ''}</p>
             <p style="font-size:12px;color:#6b7280;margin-bottom:12px;">
-                ${c ? `현재: ${this.won(c.manufacturingPrice)}원 (${this.esc(c.source || '')}${c.rateProductName ? ' · ' + this.esc(c.rateProductName) : ''}${c.karat ? ' · ' + this.esc(c.karat) : ''})` : '현재: 미입력'}
+                ${c ? `현재: ${this.won(c.manufacturingPrice)}원 (${this.esc(this.sourceLabel(c.source))}${c.rateProductName ? ' · ' + this.esc(c.rateProductName) : ''}${c.karat ? ' · ' + this.esc(c.karat) : ''})` : '현재: 미입력'}
                 ${legacy.length ? `<br>구 ERP 제조가격(참고): ${legacy.map(v => this.won(v)).join(' / ')}원` : ''}
             </p>
             <div class="form-group"><label>제조가격 (원) <span style="font-size:11px;color:#6b7280;">비우면 미입력</span></label>
@@ -628,7 +740,7 @@ window.InventoryManagementModule = {
                 productName: i.productName || '', category: i.category || '기타', color: i.color || '', size: i.size || '',
                 status: i.status || '입고중', notes: i.notes || '',
                 manufacturingPrice: c ? Math.round(Number(c.manufacturingPrice) || 0) : '',
-                costSource: c ? (c.source || '') : '',
+                costSource: c ? this.sourceLabel(c.source) : '',
                 legacyCost: this.legacyCostFor(i).join(' / '),
                 updatedAt: fmt(i.updatedAt), updatedBy: i.updatedBy || '', id: i.id,
             };
