@@ -1,692 +1,668 @@
 /**
- * Inventory Management Module
- * 재고관리 — Firestore: inventory/items
+ * Inventory Management Module (매장관리 기준)
+ *
+ * 원본 데이터: 매장관리 프로그램(DI_store_mangement)의 재고 컬렉션을 그대로 사용한다.
+ *   - popup_inventory_items : 재고 1문서 = 실물 1개 (id, productName, category, color, size, status, notes,
+ *                             createdAt, updatedAt, updatedBy) — 매장관리 app.js와 같은 형식으로만 쓴다.
+ *   - popup_inventory_logs  : 등록·상태변경 이력 (매장관리와 같은 형식)
+ * ERP 전용 데이터:
+ *   - inventory_costs/{itemId} : 제조가격 (manufacturingPrice, updatedAt, updatedBy, source ...)
+ *     → 매장관리 문서에는 새 필드를 넣지 않는다.
+ * 보관 데이터:
+ *   - inventory/items/records : 구 ERP 재고. 읽기 전용(참고 비교·보관 보기)으로만 사용한다.
  */
 
 window.InventoryManagementModule = {
 
-    FIELDS: [
-        { key: 'productName',     label: '상품명',            type: 'text',   required: true  },
-        { key: 'remark',          label: '기타',              type: 'text'                    },
-        { key: 'color',           label: '색상',              type: 'select',
-          options: ['14K화이트','14K옐로우','14K로즈','18K화이트','18K옐로우','18K로즈']        },
-        { key: 'category',        label: '종류',              type: 'select',
-          options: ['R(반지)','N(목걸이)','B(팔찌)','E(귀걸이)','기타']                       },
-        { key: 'length',          label: '길이(cm)',          type: 'number'                  },
-        { key: 'size',            label: '사이즈',            type: 'text'                    },
-        { key: 'lockType',        label: '잠금장치',          type: 'select',
-          options: ['언더락','싱글고리형']                                                      },
-        { key: 'chainThickness',  label: '체인굵기',          type: 'text'                    },
-        { key: 'backSupport',     label: '뒷침',              type: 'select',
-          options: ['일반','프리미엄']                                                          },
-        { key: 'warranty',        label: '보증서',            type: 'select',
-          options: ['없음','VS','VVS']                                                         },
-        { key: 'productWeight',   label: '제품중량(g)',       type: 'number'                  },
-        { key: 'goldWeight14k',   label: '금중량14K(g)',      type: 'number'                  },
-        { key: 'goldWeightPure',  label: '금중량순금해리(g)', type: 'number'                  },
-        { key: 'goldMarketPrice', label: '금시세(순금1g)',    type: 'number'                  },
-        { key: 'goldValue',       label: '금값',              type: 'number', calc: true      },
-        { key: 'settingCost',     label: '물림비',            type: 'number'                  },
-        { key: 'laborCost',       label: '공임',              type: 'number'                  },
-        { key: 'platingCost',     label: '도금/각인',         type: 'number'                  },
-        { key: 'stoneCostManual', label: '나석가격(수동입력)',type: 'number'                   },
-        { key: 'stoneCostRef',    label: '나석가격(참조)',    type: 'number', calc: true      },
-        { key: 'manufacturingCost',label: '제조가격(자동)',   type: 'number', calc: true      },
-        { key: 'quantity',        label: '재고수량',          type: 'number'                  },
-        { key: 'entryDate',       label: '입고일',            type: 'date'                    },
-        { key: 'stockNote',       label: '재고처리',          type: 'text'                    },
-        { key: 'stockDone',       label: '재고처리완료',      type: 'checkbox'                },
-    ],
+    // ===== 매장관리 app.js와 같은 값 (바꾸면 매장관리 화면과 어긋나므로 함께 맞출 것) =====
+    COLOR_OPTIONS:    ['14K화이트', '14K옐로우', '14K로즈', '18K화이트', '18K옐로우', '18K로즈', '기타'],
+    CATEGORY_OPTIONS: ['반지', '팔찌', '목걸이', '귀걸이', '기타'],
+    STATUS_OPTIONS:   ['입고중', '출고중', '판매용재고', '재작업', '재판매'],
+    HIDDEN_STATUSES:  ['재작업', '재판매'],
+    STATUS_STYLE: {
+        '입고중':    { bg: '#dbeafe', color: '#1e40af' },
+        '출고중':    { bg: '#fef3c7', color: '#92400e' },
+        '판매용재고': { bg: '#dcfce7', color: '#166534' },
+        '재작업':   { bg: '#f3f4f6', color: '#6b7280' },
+        '재판매':   { bg: '#ede9fe', color: '#6d28d9' },
+    },
+
+    COL_ITEMS: 'popup_inventory_items',
+    COL_LOGS:  'popup_inventory_logs',
+    COL_COSTS: 'inventory_costs',
 
     allItems: [],
-    filteredItems: [],
-    items: [],
+    costs: {},          // itemId -> inventory_costs 문서
+    legacyItems: [],    // 구 ERP 재고 (읽기 전용)
+    legacyCostMap: {},  // 정규화 제품명|색상 -> Set(제조가격)
+    productNames: [],
+    employees: [],
     searchQuery: '',
-    sortState: { column: null, direction: 'asc' },
-    pageSize: 50,
-    currentPage: 1,
-    diamondRates: [],
-    productRates: [],
+    categoryFilter: '전체',
+    showLegacy: false,
+
+    // ===== 공통 도우미 =====
+
+    db() { return window.firebaseDb; },
+
+    esc(v) {
+        return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    },
+
+    won(n) {
+        const v = Number(n);
+        return Number.isFinite(v) ? Math.round(v).toLocaleString('ko-KR') : '';
+    },
+
+    // 매장관리 generateId()와 같은 형식: inv_<base36 시각><랜덤 6자>
+    generateId(prefix = '') {
+        const ts = Date.now().toString(36);
+        const rand = Math.random().toString(36).substring(2, 8);
+        return prefix ? `${prefix}_${ts}${rand}` : `${ts}${rand}`;
+    },
+
+    // 매장관리 getNow()와 같은 형식: 한국시간 'YYYY-MM-DD' / 'HH:MM'
+    getNow() {
+        const kstIso = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString();
+        return { date: kstIso.slice(0, 10), time: kstIso.slice(11, 16) };
+    },
+
+    normName(s)  { return String(s || '').replace(/\s+/g, '').toLowerCase(); },
+    normColor(s) { return String(s || '').replace(/\s+/g, '').toUpperCase(); },
+
+    profile() { return window.app?.currentUserProfile || {}; },
+
+    // 매장관리 isAdmin()과 같은 기준: 관리자·매니저만 추가·수정 (상태변경은 전 직원)
+    canManage() {
+        const role = this.profile().role;
+        return role === 'admin' || role === 'manager';
+    },
+
+    // 처리자 이름: 매장관리 직원 목록(popup_employees)에서 이메일로 찾고, 없으면 ERP 표시이름 → 이메일
+    myName() {
+        const p = this.profile();
+        const email = (p.email || window.app?.currentUser?.email || '').toLowerCase();
+        const emp = email ? this.employees.find(e => (e.email || '').toLowerCase() === email) : null;
+        return emp?.name || p.displayName || email || 'ERP';
+    },
+
+    // 입력 오류: openModal은 콜백이 정상 종료되면 모달을 닫으므로, 오류는 throw해서 모달을 유지한다
+    fail(msg) { throw new Error(msg); },
+
+    // ===== 초기화 =====
 
     async init() {
         document.getElementById('invAddBtn')
-            ?.addEventListener('click', () => this.showForm());
-        document.getElementById('invDisplaySettingsBtn')
-            ?.addEventListener('click', () => this.openDisplaySettings());
-        document.getElementById('invRequiredSettingsBtn')
-            ?.addEventListener('click', () => this.openRequiredSettings());
+            ?.addEventListener('click', () => this.showAddModal());
         document.getElementById('invRefreshBtn')
             ?.addEventListener('click', async (e) => {
-                e.currentTarget.disabled = true;
-                e.currentTarget.textContent = '⏳ 로딩중...';
+                const btn = e.currentTarget;
+                btn.disabled = true;
+                btn.textContent = '⏳ 로딩중...';
                 this.allItems = [];
                 await this.load();
-                e.currentTarget.disabled = false;
-                e.currentTarget.textContent = '🔄 새로고침';
+                btn.disabled = false;
+                btn.textContent = '🔄 새로고침';
             });
         document.getElementById('invDownloadTemplateBtn')
-            ?.addEventListener('click', () => this.downloadTemplate());
+            ?.addEventListener('click', () => window.Utils.downloadCsvTemplate(this.csvUploadFields(), '재고관리_양식.csv'));
         document.getElementById('invDownloadDataBtn')
             ?.addEventListener('click', () => this.downloadData());
         document.getElementById('invCsvUploadBtn')
             ?.addEventListener('click', () => this.openCsvUpload());
-
-        await this.loadDiamondRates();
-        await this.loadProductRates();
-    },
-
-    async loadDiamondRates() {
-        try {
-            const snap = await window.firebaseDb
-                .collection('prices').doc('diamondRates').collection('items').get();
-            this.diamondRates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        } catch (e) {
-            this.diamondRates = [];
-        }
-    },
-
-    async loadProductRates() {
-        try {
-            const snap = await window.firebaseDb
-                .collection('prices').doc('productRates').collection('items').get();
-            this.productRates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        } catch (e) {
-            this.productRates = [];
-        }
-    },
-
-    // ===== 계산 =====
-
-    calculate(data) {
-        const n = k => parseFloat(data[k]) || 0;
-
-        const goldValue = n('goldWeightPure') * n('goldMarketPrice');
-
-        let stoneCostRef = 0;
-        let stoneWarrantyFeeTotal = 0;
-        let stoneArray = [];
-        try { stoneArray = JSON.parse(data.stoneArray || '[]'); } catch (e) { stoneArray = []; }
-
-        if (stoneArray.length > 0) {
-            stoneCostRef = stoneArray.reduce((s, st) => s + (st.totalPrice || 0), 0);
-            stoneWarrantyFeeTotal = stoneArray.reduce((s, st) => s + (st.warrantyFee || 0), 0);
-        }
-
-        const stoneWarrantyCost = stoneWarrantyFeeTotal * 0.8;
-        const stoneUsed = n('stoneCostManual') > 0 ? n('stoneCostManual') : (stoneCostRef + stoneWarrantyCost);
-        const manufacturingCost = goldValue + n('settingCost') + n('laborCost') + n('platingCost') + stoneUsed;
-
-        return { ...data, goldValue, stoneCostRef, manufacturingCost };
-    },
-
-    // ===== 표시항목 =====
-
-    getDefaultDisplayFieldKeys() {
-        return ['productName', 'color', 'category', 'size', 'manufacturingCost', 'quantity', 'entryDate'];
-    },
-
-    getDisplayFieldDefs() {
-        const fieldMap = {};
-        this.FIELDS.forEach(f => { fieldMap[f.key] = f; });
-        return window.Utils
-            .getDisplayFields('inventory', this.getDefaultDisplayFieldKeys())
-            .map(k => fieldMap[k])
-            .filter(Boolean);
-    },
-
-    openDisplaySettings() {
-        window.Utils.openDisplayFieldsModal('inventory', this.FIELDS, () => this.renderTable(), this.getDefaultDisplayFieldKeys());
-    },
-
-    openRequiredSettings() {
-        const editable = this.FIELDS.filter(f => !f.calc);
-        window.Utils.openRequiredFieldsModal('inventory', editable);
-    },
-
-    // ===== 필터/검색 =====
-
-    applyFilters() {
-        let data = this.allItems;
-        if (this.searchQuery) {
-            const q = this.searchQuery.toLowerCase();
-            data = data.filter(o =>
-                (o.productName || '').toLowerCase().includes(q) ||
-                (o.category || '').toLowerCase().includes(q) ||
-                (o.color || '').toLowerCase().includes(q)
-            );
-        }
-        this.filteredItems = data;
-    },
-
-    renderFilterBar() {
-        const container = document.getElementById('invFilterBar');
-        if (!container) return;
-
-        const hasFilter = !!this.searchQuery;
-        container.innerHTML = `
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 0 12px;">
-                <input type="text" id="invSearchInput" placeholder="상품명 / 종류 / 색상 검색"
-                    value="${this.searchQuery.replace(/"/g, '&quot;')}"
-                    style="padding:6px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:0.875rem;width:240px;">
-                <button class="btn btn-sm btn-primary" id="invSearchBtn">검색</button>
-                ${hasFilter ? '<button class="btn btn-sm btn-outline" id="invClearBtn">초기화</button>' : ''}
-            </div>`;
-
-        document.getElementById('invSearchBtn')?.addEventListener('click', () => {
-            this.searchQuery = document.getElementById('invSearchInput')?.value?.trim() || '';
-            this.currentPage = 1;
-            this.applyFilters();
-            this.items = this.filteredItems.slice(0, this.pageSize);
-            this.renderTable();
-            this.renderPagination();
-            this.renderFilterBar();
-        });
-        document.getElementById('invSearchInput')?.addEventListener('keydown', e => {
-            if (e.key === 'Enter') document.getElementById('invSearchBtn')?.click();
-        });
-        document.getElementById('invClearBtn')?.addEventListener('click', () => {
-            this.searchQuery = '';
-            this.currentPage = 1;
-            this.applyFilters();
-            this.items = this.filteredItems.slice(0, this.pageSize);
-            this.renderTable();
-            this.renderPagination();
-            this.renderFilterBar();
-        });
+        document.getElementById('invLegacyBtn')
+            ?.addEventListener('click', () => { this.showLegacy = !this.showLegacy; this.render(); });
     },
 
     // ===== 로드 =====
 
     async load() {
+        const content = document.getElementById('invContent');
         try {
-            if (this.allItems.length === 0) {
-                const snap = await window.firebaseDb
-                    .collection('inventory').doc('items').collection('records')
-                    .orderBy('createdAt', 'desc')
-                    .get();
-                this.allItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            }
+            const db = this.db();
+            const [itemSnap, costSnap, legacySnap, nameSnap, empSnap] = await Promise.all([
+                db.collection(this.COL_ITEMS).orderBy('productName').get(),
+                db.collection(this.COL_COSTS).get(),
+                db.collection('inventory').doc('items').collection('records').get().catch(() => null),
+                db.collection('prices').doc('productRates').collection('items').orderBy('productName').get().catch(() => null),
+                db.collection('popup_employees').get().catch(() => null),
+            ]);
 
-            this.applyFilters();
-            const start = (this.currentPage - 1) * this.pageSize;
-            this.items = this.filteredItems.slice(start, start + this.pageSize);
-            this.renderTable();
-            this.renderPagination();
-            this.renderFilterBar();
+            this.allItems = itemSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            this.allItems.sort((a, b) => (a.productName || '').localeCompare(b.productName || '', 'ko'));
+
+            this.costs = {};
+            costSnap.docs.forEach(d => { this.costs[d.id] = { id: d.id, ...d.data() }; });
+
+            this.legacyItems = legacySnap ? legacySnap.docs.map(d => ({ id: d.id, ...d.data() })) : [];
+            this.legacyCostMap = {};
+            this.legacyItems.forEach(r => {
+                const key = `${this.normName(r.productName)}|${this.normColor(r.color)}`;
+                const v = Math.round(Number(r.manufacturingCost) || 0);
+                (this.legacyCostMap[key] = this.legacyCostMap[key] || new Set()).add(v);
+            });
+
+            this.productNames = nameSnap ? nameSnap.docs.map(d => d.data().productName).filter(Boolean) : [];
+            if (this.productNames.length === 0) {
+                this.productNames = [...new Set(this.allItems.map(i => i.productName).filter(Boolean))].sort();
+            }
+            this.employees = empSnap ? empSnap.docs.map(d => ({ id: d.id, ...d.data() })) : [];
+
+            this.render();
         } catch (e) {
             console.error('[Inventory] 로드 실패:', e);
             window.Utils.showNotification(`재고관리 로드 실패: ${e.message}`, 'error');
-            this.items = [];
-            this.renderTable();
+            if (content) content.innerHTML = `<p style="color:#dc2626;padding:16px;">재고를 불러오지 못했습니다: ${this.esc(e.message)}</p>`;
         }
     },
 
-    // ===== 테이블 렌더 =====
+    legacyCostFor(item) {
+        const set = this.legacyCostMap[`${this.normName(item.productName)}|${this.normColor(item.color)}`];
+        return set ? [...set].sort((a, b) => a - b) : [];
+    },
 
-    renderTable() {
-        const table = document.querySelector('#inventoryTable');
-        const tbody = table?.querySelector('tbody');
-        if (!tbody) return;
+    costFor(item) {
+        const c = this.costs[item.id];
+        const v = c ? Number(c.manufacturingPrice) : NaN;
+        return Number.isFinite(v) ? v : null;
+    },
 
-        const displayDefs = this.getDisplayFieldDefs();
-        const fieldMap = {};
-        displayDefs.forEach(f => { fieldMap[f.key] = f; });
+    // ===== 화면 =====
 
-        if (this.items.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="${displayDefs.length + 2}" style="text-align:center;color:#9ca3af;">데이터가 없습니다.</td></tr>`;
-            const thead = table.querySelector('thead tr');
-            if (thead) {
-                thead.innerHTML = '<th style="text-align:center;"><input type="checkbox" class="header-checkbox"></th>' +
-                    displayDefs.map(f => `<th>${f.label}</th>`).join('') + '<th>관리</th>';
+    matches(item) {
+        const catMatch = this.categoryFilter === '전체' || (item.category || '기타') === this.categoryFilter;
+        const q = this.searchQuery.trim().toLowerCase();
+        const textMatch = !q
+            || (item.productName || '').toLowerCase().includes(q)
+            || (item.color || '').toLowerCase().includes(q)
+            || (item.size || '').toLowerCase().includes(q);
+        return catMatch && textMatch;
+    },
+
+    render() {
+        const content = document.getElementById('invContent');
+        if (!content) return;
+        const legacyBtn = document.getElementById('invLegacyBtn');
+        if (legacyBtn) legacyBtn.textContent = this.showLegacy ? '↩ 재고 목록으로' : '🗄 구 ERP 재고(보관)';
+        // 추가·업로드 버튼은 관리자·매니저에게만 표시 (매장관리와 같은 권한)
+        ['invAddBtn', 'invCsvUploadBtn', 'invDownloadTemplateBtn'].forEach(id => {
+            const b = document.getElementById(id);
+            if (b) b.style.display = this.canManage() ? '' : 'none';
+        });
+
+        if (this.showLegacy) { this.renderLegacy(content); return; }
+
+        const items = this.allItems;
+        const visibleItems = items.filter(i => !this.HIDDEN_STATUSES.includes(i.status) && this.matches(i));
+        const hiddenItems  = items.filter(i =>  this.HIDDEN_STATUSES.includes(i.status) && this.matches(i));
+
+        const allVisible = items.filter(i => !this.HIDDEN_STATUSES.includes(i.status));
+        const catCounts = { '전체': allVisible.length };
+        this.CATEGORY_OPTIONS.forEach(c => { catCounts[c] = allVisible.filter(i => (i.category || '기타') === c).length; });
+
+        const catTabs = ['전체', ...this.CATEGORY_OPTIONS].map(c => `
+            <button type="button" class="btn btn-sm ${c === this.categoryFilter ? 'btn-primary' : 'btn-outline'} inv-cat-tab" data-cat="${this.esc(c)}" style="min-width:52px;">
+                ${this.esc(c)}<span style="margin-left:4px;font-size:11px;opacity:0.75;">${catCounts[c] ?? 0}</span>
+            </button>`).join('');
+
+        const priced = visibleItems.filter(i => this.costFor(i) !== null);
+        const costSum = priced.reduce((s, i) => s + this.costFor(i), 0);
+        const missing = visibleItems.length - priced.length;
+
+        const head = `
+            <tr>
+                <th>제품명</th><th>종류</th><th>색상</th><th>사이즈</th>
+                <th style="text-align:center;">상태</th><th>기타</th>
+                <th style="text-align:right;">제조가격</th>
+                <th style="text-align:right;color:#9ca3af;font-weight:500;">구 ERP 제조가격(참고)</th>
+                <th style="text-align:center;">관리</th>
+            </tr>`;
+
+        content.innerHTML = `
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0;">${catTabs}</div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+                <input type="text" id="invSearchInput" placeholder="제품명·색상·사이즈 검색"
+                    value="${this.esc(this.searchQuery)}"
+                    style="padding:6px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:0.875rem;width:240px;">
+                <button type="button" class="btn btn-sm btn-primary" id="invSearchBtn">검색</button>
+                ${this.searchQuery ? '<button type="button" class="btn btn-sm btn-outline" id="invClearBtn">초기화</button>' : ''}
+            </div>
+            <div id="invSummary" style="display:flex;gap:18px;flex-wrap:wrap;align-items:baseline;padding:10px 14px;margin-bottom:10px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;font-size:0.9rem;">
+                <span>보유 재고 <b id="invVisibleCount">${visibleItems.length}</b>개</span>
+                <span>제조가격 합계 <b id="invCostSum">${this.won(costSum)}</b>원</span>
+                <span style="color:${missing ? '#b45309' : '#6b7280'};">제조가격 미입력 <b id="invCostMissing">${missing}</b>개</span>
+                <span style="color:#9ca3af;font-size:0.8rem;">재작업·재판매 제외, 현재 탭·검색 기준</span>
+            </div>
+            <div style="overflow-x:auto;">
+                <table id="inventoryTable" class="data-table">
+                    <thead>${head}</thead>
+                    <tbody>
+                        ${visibleItems.length === 0
+                            ? `<tr><td colspan="9" style="text-align:center;color:#9ca3af;padding:20px;">${this.searchQuery || this.categoryFilter !== '전체' ? '검색 결과가 없습니다.' : '등록된 재고가 없습니다.'}</td></tr>`
+                            : visibleItems.map(i => this.renderRow(i)).join('')}
+                    </tbody>
+                </table>
+            </div>
+            ${hiddenItems.length > 0 ? `
+            <div style="margin-top:18px;border:1px solid #e5e7eb;border-radius:8px;padding:12px;">
+                <div id="invHiddenToggle" style="cursor:pointer;display:flex;align-items:center;gap:8px;">
+                    <b>🗂 숨김 항목 (재작업·재판매)</b>
+                    <span style="font-size:12px;color:#6b7280;">${hiddenItems.length}개 · 클릭하여 펼치기</span>
+                </div>
+                <div id="invHiddenBody" style="display:none;margin-top:12px;overflow-x:auto;">
+                    <table class="data-table"><thead>${head}</thead>
+                        <tbody>${hiddenItems.map(i => this.renderRow(i)).join('')}</tbody>
+                    </table>
+                </div>
+            </div>` : ''}
+        `;
+
+        this.bindListEvents(content);
+    },
+
+    renderRow(item) {
+        const st = item.status || '입고중';
+        const style = this.STATUS_STYLE[st] || { bg: '#f3f4f6', color: '#6b7280' };
+        const cost = this.costFor(item);
+        const legacy = this.legacyCostFor(item);
+        const manage = this.canManage();
+        return `
+            <tr data-id="${this.esc(item.id)}">
+                <td>${this.esc(item.productName || '-')}</td>
+                <td style="font-size:12px;">${this.esc(item.category || '기타')}</td>
+                <td style="font-size:12px;">${this.esc(item.color || '-')}</td>
+                <td style="font-size:12px;">${this.esc(item.size || '-')}</td>
+                <td style="text-align:center;">
+                    <span style="padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;background:${style.bg};color:${style.color};white-space:nowrap;">${this.esc(st)}</span>
+                </td>
+                <td style="font-size:12px;color:#6b7280;">${this.esc(item.notes || '-')}</td>
+                <td style="text-align:right;white-space:nowrap;">
+                    ${cost !== null ? this.won(cost) : '<span style="color:#b45309;">미입력</span>'}
+                    ${manage ? `<button type="button" class="btn btn-sm btn-outline inv-cost-btn" data-id="${this.esc(item.id)}" title="제조가격 입력" style="margin-left:4px;padding:1px 6px;">✎</button>` : ''}
+                </td>
+                <td style="text-align:right;font-size:12px;color:#9ca3af;white-space:nowrap;">${legacy.length ? legacy.map(v => this.won(v)).join(' / ') : '-'}</td>
+                <td style="text-align:center;">
+                    <div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;">
+                        <button type="button" class="btn btn-sm btn-secondary inv-status-btn" data-id="${this.esc(item.id)}">상태변경</button>
+                        <button type="button" class="btn btn-sm btn-outline inv-log-btn" data-id="${this.esc(item.id)}">기록</button>
+                        ${manage ? `<button type="button" class="btn btn-sm btn-outline inv-edit-btn" data-id="${this.esc(item.id)}">수정</button>` : ''}
+                    </div>
+                </td>
+            </tr>`;
+    },
+
+    bindListEvents(content) {
+        content.querySelectorAll('.inv-cat-tab').forEach(btn => btn.addEventListener('click', () => {
+            this.searchQuery = document.getElementById('invSearchInput')?.value?.trim() || '';
+            this.categoryFilter = btn.dataset.cat;
+            this.render();
+        }));
+        const doSearch = () => {
+            this.searchQuery = document.getElementById('invSearchInput')?.value?.trim() || '';
+            this.render();
+        };
+        document.getElementById('invSearchBtn')?.addEventListener('click', doSearch);
+        document.getElementById('invSearchInput')?.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+        document.getElementById('invClearBtn')?.addEventListener('click', () => { this.searchQuery = ''; this.render(); });
+        document.getElementById('invHiddenToggle')?.addEventListener('click', () => {
+            const b = document.getElementById('invHiddenBody');
+            if (b) b.style.display = b.style.display === 'none' ? 'block' : 'none';
+        });
+        content.querySelectorAll('.inv-status-btn').forEach(b => b.addEventListener('click', () => this.showStatusModal(b.dataset.id)));
+        content.querySelectorAll('.inv-log-btn').forEach(b => b.addEventListener('click', () => this.showLogsModal(b.dataset.id)));
+        content.querySelectorAll('.inv-edit-btn').forEach(b => b.addEventListener('click', () => this.showEditModal(b.dataset.id)));
+        content.querySelectorAll('.inv-cost-btn').forEach(b => b.addEventListener('click', () => this.showCostModal(b.dataset.id)));
+    },
+
+    // 구 ERP 재고 (읽기 전용 보관 보기)
+    renderLegacy(content) {
+        const rows = [...this.legacyItems].sort((a, b) => (a.productName || '').localeCompare(b.productName || '', 'ko'));
+        const sum = rows.reduce((s, r) => s + (Number(r.manufacturingCost) || 0) * (Number(r.quantity) || 0), 0);
+        content.innerHTML = `
+            <div style="padding:10px 14px;margin:10px 0;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;font-size:0.875rem;">
+                구 ERP 재고(inventory/items/records) 보관본입니다. <b>읽기 전용</b>이며 새 재고 화면과 연동되지 않습니다.
+                ${rows.length}건 · 제조가격×수량 합계 ${this.won(sum)}원
+            </div>
+            <div style="overflow-x:auto;">
+                <table class="data-table">
+                    <thead><tr><th>상품명</th><th>종류</th><th>색상</th><th>사이즈</th><th style="text-align:right;">수량</th>
+                        <th style="text-align:right;">제조가격</th><th>입고일</th><th>기타</th></tr></thead>
+                    <tbody>${rows.map(r => `<tr>
+                        <td>${this.esc(r.productName)}</td><td>${this.esc(r.category)}</td><td>${this.esc(r.color)}</td>
+                        <td>${this.esc(r.size)}</td><td style="text-align:right;">${this.esc(r.quantity)}</td>
+                        <td style="text-align:right;">${this.won(r.manufacturingCost)}</td>
+                        <td>${this.esc(String(r.entryDate || '').slice(0, 10))}</td>
+                        <td>${this.esc(r.remark || r.stockNote || '')}</td></tr>`).join('')}</tbody>
+                </table>
+            </div>`;
+    },
+
+    // ===== 폼 공통 =====
+
+    selectHtml(name, options, current, placeholder = null) {
+        const opts = [...options];
+        // 매장관리 표준 옵션에 없는 기존 값(예: '14K 화이트')은 지워지지 않도록 그대로 보존
+        if (current && !opts.includes(current)) opts.unshift(current);
+        return `<select name="${name}" id="invForm_${name}">
+            ${placeholder !== null ? `<option value="">${placeholder}</option>` : ''}
+            ${opts.map(o => `<option value="${this.esc(o)}" ${o === current ? 'selected' : ''}>${this.esc(o)}</option>`).join('')}
+        </select>`;
+    },
+
+    itemFormHtml(item = {}, { isNew = false } = {}) {
+        const statuses = isNew ? this.STATUS_OPTIONS.filter(s => !this.HIDDEN_STATUSES.includes(s)) : this.STATUS_OPTIONS;
+        const cost = item.id ? this.costFor(item) : null;
+        return `
+            <div class="form-group">
+                <label>제품명 *</label>
+                <input type="text" name="productName" id="invForm_productName" list="invProductNameList" autocomplete="off"
+                    value="${this.esc(item.productName || '')}" placeholder="제품명 검색 또는 직접 입력">
+                <datalist id="invProductNameList">${this.productNames.map(n => `<option value="${this.esc(n)}">`).join('')}</datalist>
+            </div>
+            <div class="form-group"><label>종류</label>${this.selectHtml('category', this.CATEGORY_OPTIONS, isNew ? '반지' : (item.category || '기타'))}</div>
+            <div class="form-group"><label>색상</label>${this.selectHtml('color', this.COLOR_OPTIONS, item.color || '', '-- 색상 선택 --')}</div>
+            <div class="form-group"><label>사이즈</label>
+                <input type="text" name="size" id="invForm_size" value="${this.esc(item.size || '')}" placeholder="예: 14, 15.5, Free"></div>
+            <div class="form-group"><label>상태</label>${this.selectHtml('status', statuses, item.status || '입고중')}</div>
+            <div class="form-group"><label>기타</label>
+                <input type="text" name="notes" id="invForm_notes" value="${this.esc(item.notes || '')}" placeholder="비고"></div>
+            <div class="form-group"><label>제조가격 (원, ERP 전용) <span style="font-size:11px;color:#6b7280;">비우면 미입력</span></label>
+                <input type="number" name="manufacturingPrice" id="invForm_manufacturingPrice" min="0" step="1" value="${cost !== null ? cost : ''}"></div>
+            ${isNew ? `<div class="form-group"><label>추가 개수 <span style="font-size:11px;color:#6b7280;">(같은 제품 여러 개 동시 등록)</span></label>
+                <input type="number" name="count" id="invForm_count" value="1" min="1" max="99"></div>` : ''}`;
+    },
+
+    parsePrice(v) {
+        if (v === undefined || v === null || String(v).trim() === '') return null;
+        const n = Number(String(v).replace(/[,\s원]/g, ''));
+        return Number.isFinite(n) && n >= 0 ? Math.round(n) : NaN;
+    },
+
+    costDoc(itemId, price, source) {
+        return { itemId, manufacturingPrice: price, source, updatedAt: new Date(), updatedBy: this.myName() };
+    },
+
+    // ===== 추가 (매장관리 doAddInventoryItem과 같은 문서·로그 형식) =====
+
+    showAddModal() {
+        if (!this.canManage()) { window.Utils.showNotification('관리자·매니저만 추가할 수 있습니다.', 'error'); return; }
+        window.Utils.openModal('+ 제품 추가', this.itemFormHtml({}, { isNew: true }), async (data, w) => {
+            const productName = (data.productName || '').trim();
+            if (!productName) this.fail('제품명을 입력해주세요.');
+            const price = this.parsePrice(data.manufacturingPrice);
+            if (Number.isNaN(price)) this.fail('제조가격은 0 이상의 숫자로 입력해주세요.');
+            const count = Math.max(1, Math.min(99, parseInt(data.count, 10) || 1));
+            await this.createItems([{
+                productName,
+                category: data.category || '기타',
+                color: (data.color || '').trim(),
+                size: (data.size || '').trim(),
+                status: data.status || '입고중',
+                notes: (data.notes || '').trim(),
+                price, count,
+            }]);
+            w.remove();
+            window.Utils.showNotification(`${count}개 추가 완료`, 'success');
+            await this.load();
+        }, '추가');
+    },
+
+    async createItems(entries) {
+        const db = this.db();
+        const { date, time } = this.getNow();
+        const performer = this.myName();
+        let batch = db.batch();
+        let ops = 0;
+        const flush = async () => { if (ops) { await batch.commit(); batch = db.batch(); ops = 0; } };
+        for (const e of entries) {
+            for (let i = 0; i < e.count; i++) {
+                const id = this.generateId('inv');
+                const now = new Date();
+                batch.set(db.collection(this.COL_ITEMS).doc(id), {
+                    id, productName: e.productName, category: e.category, color: e.color, size: e.size,
+                    status: e.status, notes: e.notes, createdAt: now, updatedAt: now, updatedBy: performer,
+                });
+                batch.set(db.collection(this.COL_LOGS).doc(), {
+                    inventoryId: id, productName: e.productName, color: e.color, size: e.size,
+                    fromStatus: null, toStatus: e.status, type: '등록', notes: '신규 등록',
+                    performer, date, time, createdAt: now,
+                });
+                ops += 2;
+                if (e.price !== null && e.price !== undefined) {
+                    batch.set(db.collection(this.COL_COSTS).doc(id), this.costDoc(id, e.price, '수동'));
+                    ops += 1;
+                }
+                if (ops >= 400) await flush();
             }
+        }
+        await flush();
+    },
+
+    // ===== 수정 (매장관리 doEditInventoryItem과 같은 필드만 갱신, 로그 없음 — 매장관리와 동일) =====
+
+    async showEditModal(itemId) {
+        if (!this.canManage()) { window.Utils.showNotification('관리자·매니저만 수정할 수 있습니다.', 'error'); return; }
+        let item;
+        try {
+            const doc = await this.db().collection(this.COL_ITEMS).doc(itemId).get();
+            if (!doc.exists) { window.Utils.showNotification('항목을 찾을 수 없습니다.', 'error'); return; }
+            item = { id: doc.id, ...doc.data() };
+        } catch (e) {
+            item = this.allItems.find(i => i.id === itemId);
+            if (!item) { window.Utils.showNotification('데이터 로드 실패', 'error'); return; }
+        }
+        window.Utils.openModal('재고 수정', this.itemFormHtml(item), async (data, w) => {
+            const productName = (data.productName || '').trim();
+            if (!productName) this.fail('제품명을 입력해주세요.');
+            const price = this.parsePrice(data.manufacturingPrice);
+            if (Number.isNaN(price)) this.fail('제조가격은 0 이상의 숫자로 입력해주세요.');
+            await this.db().collection(this.COL_ITEMS).doc(itemId).update({
+                productName,
+                category: data.category || '기타',
+                color: (data.color || '').trim(),
+                size: (data.size || '').trim(),
+                status: data.status || '입고중',
+                notes: (data.notes || '').trim(),
+                updatedAt: new Date(),
+                updatedBy: this.myName(),
+            });
+            await this.saveCost(itemId, price);
+            w.remove();
+            window.Utils.showNotification('수정되었습니다.', 'success');
+            await this.load();
+        }, '저장');
+    },
+
+    // 제조가격 저장: 값이 같으면 건너뜀, 비우면 문서 삭제(미입력 상태로) — inventory_costs만 건드린다
+    async saveCost(itemId, price) {
+        const prev = this.costs[itemId];
+        const ref = this.db().collection(this.COL_COSTS).doc(itemId);
+        if (price === null) {
+            if (prev) await ref.delete();
             return;
         }
-
-        tbody.innerHTML = this.items.map(item => {
-            const cells = displayDefs.map(f => {
-                let val = item[f.key];
-                if (f.type === 'checkbox') {
-                    const checked = val ? 'checked' : '';
-                    return `<td style="text-align:center;"><input type="checkbox" class="stockdone-checkbox" data-id="${item.id}" ${checked}></td>`;
-                }
-                if (f.type === 'number' && val !== undefined && val !== null && val !== '') {
-                    val = window.Utils.formatNumber(Math.round(Number(val)));
-                } else if (f.type === 'date' && val) {
-                    val = val.toDate ? new Date(val.toDate()).toLocaleDateString('ko-KR') : val;
-                } else if (val === undefined || val === null || val === '') {
-                    val = '-';
-                }
-                return `<td>${val}</td>`;
-            }).join('');
-
-            return `
-                <tr data-id="${item.id}">
-                    <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${item.id}"></td>
-                    ${cells}
-                    <td>
-                        <button class="btn btn-sm btn-primary" data-action="showForm" data-id="${item.id}">수정</button>
-                        <button class="btn btn-sm btn-danger" data-action="deleteItem" data-id="${item.id}" style="margin-left:4px;">삭제</button>
-                    </td>
-                </tr>`;
-        }).join('');
-
-        const thead = table.querySelector('thead tr');
-        if (thead) {
-            thead.innerHTML = '<th style="text-align:center;"><input type="checkbox" class="header-checkbox"></th>' +
-                displayDefs.map(f => {
-                    const isSorted = this.sortState.column === f.key;
-                    const ind = isSorted ? (this.sortState.direction === 'asc' ? ' ▲' : ' ▼') : '';
-                    return `<th data-column="${f.key}" style="cursor:pointer;user-select:none;">${f.label}${ind}</th>`;
-                }).join('') + '<th>관리</th>';
-
-            thead.querySelectorAll('th[data-column]').forEach(th => {
-                th.addEventListener('click', () => this.sortItems(th.dataset.column));
-            });
-            thead.querySelector('.header-checkbox')?.addEventListener('change', e => {
-                table.querySelectorAll('tbody .row-checkbox').forEach(cb => cb.checked = e.target.checked);
-            });
-        }
-
-        table.removeEventListener('click', this._tableHandler);
-        this._tableHandler = e => {
-            const btn = e.target.closest('[data-action]');
-            if (!btn) return;
-            const id = btn.dataset.id;
-            if (btn.dataset.action === 'showForm') this.showForm(id);
-            if (btn.dataset.action === 'deleteItem') this.deleteItem(id);
-        };
-        table.addEventListener('click', this._tableHandler);
-
-        // 재고처리완료 체크박스 즉시 저장
-        table.querySelectorAll('.stockdone-checkbox').forEach(cb => {
-            cb.addEventListener('change', async (e) => {
-                const id = e.target.dataset.id;
-                const done = e.target.checked;
-                try {
-                    await window.firebaseDb
-                        .collection('inventory').doc('items').collection('records')
-                        .doc(id).update({ stockDone: done, updatedAt: new Date() });
-                    const cached = this.allItems.find(i => i.id === id);
-                    if (cached) cached.stockDone = done;
-                } catch (err) {
-                    window.Utils.showNotification('저장 실패', 'error');
-                    e.target.checked = !done;
-                }
-            });
-        });
-
-        window.Utils.initResizableColumns?.(table);
+        if (prev && Number(prev.manufacturingPrice) === price) return;
+        await ref.set(this.costDoc(itemId, price, '수동'));
     },
 
-    sortItems(column) {
-        if (this.sortState.column === column) {
-            this.sortState.direction = this.sortState.direction === 'asc' ? 'desc' : 'asc';
+    showCostModal(itemId) {
+        if (!this.canManage()) return;
+        const item = this.allItems.find(i => i.id === itemId);
+        if (!item) return;
+        const c = this.costs[itemId];
+        const legacy = this.legacyCostFor(item);
+        const meta = [item.color, item.size].filter(Boolean).join(' / ');
+        const body = `
+            <p style="font-size:13px;margin-bottom:6px;"><b>${this.esc(item.productName)}</b> ${meta ? `<span style="color:#6b7280;">${this.esc(meta)}</span>` : ''}</p>
+            <p style="font-size:12px;color:#6b7280;margin-bottom:12px;">
+                ${c ? `현재: ${this.won(c.manufacturingPrice)}원 (${this.esc(c.source || '')}${c.rateProductName ? ' · ' + this.esc(c.rateProductName) : ''}${c.karat ? ' · ' + this.esc(c.karat) : ''})` : '현재: 미입력'}
+                ${legacy.length ? `<br>구 ERP 제조가격(참고): ${legacy.map(v => this.won(v)).join(' / ')}원` : ''}
+            </p>
+            <div class="form-group"><label>제조가격 (원) <span style="font-size:11px;color:#6b7280;">비우면 미입력</span></label>
+                <input type="number" name="manufacturingPrice" id="invCostInput" min="0" step="1" value="${c ? Number(c.manufacturingPrice) : ''}"></div>`;
+        window.Utils.openModal('제조가격 입력', body, async (data, w) => {
+            const price = this.parsePrice(data.manufacturingPrice);
+            if (Number.isNaN(price)) this.fail('제조가격은 0 이상의 숫자로 입력해주세요.');
+            await this.saveCost(itemId, price);
+            w.remove();
+            window.Utils.showNotification('제조가격이 저장되었습니다.', 'success');
+            await this.load();
+        }, '저장');
+        setTimeout(() => document.getElementById('invCostInput')?.focus(), 50);
+    },
+
+    // ===== 상태변경 (매장관리 doStatusChange와 같은 형식) =====
+
+    showStatusModal(itemId) {
+        const item = this.allItems.find(i => i.id === itemId);
+        if (!item) return;
+        const me = this.myName();
+        let performerField;
+        if (this.canManage() && this.employees.length) {
+            const names = [...new Set(this.employees.map(e => e.name).filter(Boolean))];
+            if (!names.includes(me)) names.unshift(me);
+            performerField = `<select name="performer" id="invStatusPerformer">${names.map(n => `<option value="${this.esc(n)}" ${n === me ? 'selected' : ''}>${this.esc(n)}</option>`).join('')}</select>`;
         } else {
-            this.sortState.column = column;
-            this.sortState.direction = 'asc';
+            performerField = `<input type="text" name="performer" id="invStatusPerformer" value="${this.esc(me)}" readonly style="background:#f3f4f6;color:#6b7280;">`;
         }
-        const dir = this.sortState.direction === 'asc' ? 1 : -1;
-        this.items.sort((a, b) => {
-            let av = a[column], bv = b[column];
-            if (av === undefined || av === null) av = '';
-            if (bv === undefined || bv === null) bv = '';
-            if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
-            return String(av).localeCompare(String(bv), 'ko') * dir;
-        });
-        this.renderTable();
+        const meta = [item.color, item.size].filter(Boolean).join(' / ');
+        const body = `
+            ${meta ? `<p style="font-size:12px;color:#6b7280;margin-bottom:8px;">${this.esc(meta)}</p>` : ''}
+            <p style="font-size:13px;margin-bottom:12px;">현재 상태: <strong>${this.esc(item.status || '입고중')}</strong></p>
+            <div class="form-group"><label>변경할 상태 *</label>
+                <select name="newStatus" id="invNewStatus">${this.STATUS_OPTIONS.map(s => `<option value="${s}" ${item.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
+            <div class="form-group"><label>처리자</label>${performerField}</div>
+            <div class="form-group"><label>기타</label><input type="text" name="notes" id="invStatusNotes" placeholder="비고"></div>`;
+        window.Utils.openModal(`상태 변경: ${this.esc(item.productName)}`, body, async (data, w) => {
+            const newStatus = data.newStatus;
+            if (!newStatus) this.fail('변경할 상태를 선택해주세요.');
+            const performer = (data.performer || '').trim();
+            const notes = (data.notes || '').trim();
+            const { date, time } = this.getNow();
+            const db = this.db();
+            await db.collection(this.COL_ITEMS).doc(itemId).update({
+                status: newStatus, updatedAt: new Date(), updatedBy: performer,
+            });
+            await db.collection(this.COL_LOGS).add({
+                inventoryId: itemId,
+                productName: item.productName, color: item.color || '', size: item.size || '',
+                type: '상태변경', fromStatus: item.status || '', toStatus: newStatus,
+                notes, performer, date, time, createdAt: new Date(),
+            });
+            w.remove();
+            window.Utils.showNotification(`상태 변경: ${item.status || '?'} → ${newStatus}`, 'success');
+            await this.load();
+        }, '변경');
     },
 
-    renderPagination() {
-        const container = document.getElementById('invPagination');
-        if (!container) return;
-        const total = this.filteredItems.length;
-        const totalPages = Math.max(1, Math.ceil(total / this.pageSize));
-        if (totalPages <= 1) { container.innerHTML = ''; return; }
+    // ===== 이력 =====
 
-        const btns = [];
-        for (let p = 1; p <= totalPages; p++) {
-            btns.push(`<button class="btn btn-sm ${p === this.currentPage ? 'btn-primary' : 'btn-outline'}" data-page="${p}">${p}</button>`);
+    async showLogsModal(itemId) {
+        const item = this.allItems.find(i => i.id === itemId);
+        if (!item) return;
+        let logs = [];
+        try {
+            const snap = await this.db().collection(this.COL_LOGS)
+                .where('inventoryId', '==', itemId).orderBy('createdAt', 'desc').limit(100).get();
+            logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        } catch (e) {
+            // 복합 인덱스가 없을 때: 조건만으로 조회 후 정렬
+            try {
+                const snap = await this.db().collection(this.COL_LOGS).where('inventoryId', '==', itemId).get();
+                const t = v => (v?.toDate ? v.toDate() : new Date(v || 0)).getTime();
+                logs = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => t(b.createdAt) - t(a.createdAt));
+            } catch (e2) {
+                window.Utils.showNotification(`기록 조회 실패: ${e2.message}`, 'error');
+            }
         }
-        container.innerHTML = `<div style="display:flex;gap:4px;padding:8px 0;">${btns.join('')}</div>`;
-        container.querySelectorAll('[data-page]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                this.currentPage = parseInt(btn.dataset.page);
-                const start = (this.currentPage - 1) * this.pageSize;
-                this.items = this.filteredItems.slice(start, start + this.pageSize);
-                this.renderTable();
-                this.renderPagination();
-            });
-        });
+        const rows = logs.length === 0
+            ? '<tr><td colspan="5" style="text-align:center;color:#9ca3af;padding:16px;">기록이 없습니다.</td></tr>'
+            : logs.map(log => {
+                const change = log.fromStatus && log.toStatus ? `${log.fromStatus} → ${log.toStatus}` : (log.toStatus || log.type || '-');
+                const st = this.STATUS_STYLE[log.toStatus] || { bg: '#e0f2fe', color: '#0369a1' };
+                return `<tr>
+                    <td style="font-size:12px;white-space:nowrap;">${this.esc(log.date || '')} ${this.esc(log.time || '')}</td>
+                    <td style="text-align:center;"><span style="padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;background:${st.bg};color:${st.color};">${this.esc(log.type || '-')}</span></td>
+                    <td style="font-size:12px;">${this.esc(change)}</td>
+                    <td style="font-size:12px;">${this.esc(log.performer || '-')}</td>
+                    <td style="font-size:12px;color:#6b7280;">${this.esc(log.notes || '-')}</td></tr>`;
+            }).join('');
+        const title = `📋 이력: ${this.esc(item.productName)}${item.color ? ' · ' + this.esc(item.color) : ''}${item.size ? ' · ' + this.esc(item.size) : ''}`;
+        window.Utils.openModal(title, `
+            <div id="invLogsBody" style="overflow-x:auto;max-height:60vh;overflow-y:auto;">
+                <table class="data-table"><thead><tr><th>날짜</th><th style="text-align:center;">구분</th><th>상태변경</th><th>처리자</th><th>기타</th></tr></thead>
+                <tbody>${rows}</tbody></table>
+            </div>`, null);
     },
 
     // ===== CSV =====
 
-    _csvFields() {
-        return this.FIELDS;
-    },
-
-    downloadTemplate() {
-        window.Utils.downloadCsvTemplate(this._csvFields(), '재고관리_양식.csv');
+    csvUploadFields() {
+        return [
+            { key: 'productName', label: '제품명', type: 'text' },
+            { key: 'category', label: '종류', type: 'text' },
+            { key: 'color', label: '색상', type: 'text' },
+            { key: 'size', label: '사이즈', type: 'text' },
+            { key: 'status', label: '상태', type: 'text' },
+            { key: 'notes', label: '기타', type: 'text' },
+            { key: 'manufacturingPrice', label: '제조가격', type: 'text' },
+            { key: 'count', label: '개수', type: 'text' },
+        ];
     },
 
     downloadData() {
-        const displayFields = this.getDisplayFieldDefs();
-        const rows = this.items.map(item => {
-            const row = {};
-            displayFields.forEach(f => {
-                let val = item[f.key];
-                if (f.type === 'checkbox') {
-                    val = val ? 'Y' : 'N';
-                } else if (f.type === 'date' && val) {
-                    val = val.toDate ? new Date(val.toDate()).toLocaleDateString('ko-KR') : val;
-                } else if (f.type === 'number' && val !== undefined && val !== null && val !== '') {
-                    val = Math.round(Number(val));
-                } else if (val === undefined || val === null) {
-                    val = '';
-                }
-                row[f.key] = val;
-            });
-            return row;
+        const fields = [
+            { key: 'productName', label: '제품명' }, { key: 'category', label: '종류' },
+            { key: 'color', label: '색상' }, { key: 'size', label: '사이즈' },
+            { key: 'status', label: '상태' }, { key: 'notes', label: '기타' },
+            { key: 'manufacturingPrice', label: '제조가격' }, { key: 'costSource', label: '제조가격 출처' },
+            { key: 'legacyCost', label: '구 ERP 제조가격(참고)' },
+            { key: 'updatedAt', label: '수정일' }, { key: 'updatedBy', label: '수정자' }, { key: 'id', label: '재고ID' },
+        ];
+        const fmt = v => { const d = v?.toDate ? v.toDate() : (v ? new Date(v) : null); return d && !isNaN(d) ? d.toLocaleDateString('ko-KR') : ''; };
+        // 현재 탭·검색 기준, 숨김(재작업·재판매)도 포함하고 상태 열로 구분
+        const rows = this.allItems.filter(i => this.matches(i)).map(i => {
+            const c = this.costs[i.id];
+            return {
+                productName: i.productName || '', category: i.category || '기타', color: i.color || '', size: i.size || '',
+                status: i.status || '입고중', notes: i.notes || '',
+                manufacturingPrice: c ? Math.round(Number(c.manufacturingPrice) || 0) : '',
+                costSource: c ? (c.source || '') : '',
+                legacyCost: this.legacyCostFor(i).join(' / '),
+                updatedAt: fmt(i.updatedAt), updatedBy: i.updatedBy || '', id: i.id,
+            };
         });
-        window.Utils.downloadCsvData(displayFields, rows, '재고관리.csv');
+        window.Utils.downloadCsvData(fields, rows, '재고관리.csv');
     },
 
+    // CSV 업로드는 "추가"만 지원 (전체 교체·삭제 없음 — 매장관리에 삭제 기능이 없으므로)
     openCsvUpload() {
-        window.Utils.openCsvUploadModal(
-            this._csvFields(),
-            async (rows, mode) => {
-                const col = window.firebaseDb
-                    .collection('inventory').doc('items').collection('records');
-
-                if (mode === 'replace') {
-                    const existing = await col.get();
-                    const delBatch = window.firebaseDb.batch();
-                    existing.docs.forEach(d => delBatch.delete(d.ref));
-                    await delBatch.commit();
-                    this.allItems = [];
-                }
-
-                const batch = window.firebaseDb.batch();
-                for (const row of rows) {
-                    this.FIELDS.forEach(f => {
-                        if (f.type === 'number' && row[f.key] !== undefined) {
-                            row[f.key] = parseFloat(row[f.key]) || 0;
-                        } else if (f.type === 'checkbox' && row[f.key] !== undefined) {
-                            const v = String(row[f.key]).trim().toUpperCase();
-                            row[f.key] = v === 'Y' || v === 'TRUE' || v === '1';
-                        }
-                    });
-                    // 수동 입력값이 있으면 우선 사용, 없으면 자동계산
-                    const calculated = this.calculate(row);
-                    const goldValue = (row.goldValue && row.goldValue !== 0) ? row.goldValue : calculated.goldValue;
-                    const stoneCostRef = (row.stoneCostRef && row.stoneCostRef !== 0) ? row.stoneCostRef : calculated.stoneCostRef;
-                    const manufacturingCost = (row.manufacturingCost && row.manufacturingCost !== 0) ? row.manufacturingCost : calculated.manufacturingCost;
-                    const docRef = col.doc();
-                    batch.set(docRef, { ...calculated, goldValue, stoneCostRef, manufacturingCost, createdAt: new Date(), updatedAt: new Date() });
-                }
-                await batch.commit();
-
-                this.allItems = [];
-                await this.load();
-                window.Utils.showNotification(`${rows.length}개 항목이 업로드되었습니다.`, 'success');
-            },
-            { importModeSelector: true }
-        );
-    },
-
-    // ===== 폼 모달 =====
-
-    async showForm(itemId = null) {
-        const item = itemId ? this.allItems.find(i => i.id === itemId) : null;
-        const required = await window.Utils.getRequiredFields('inventory');
-
-        // productRates가 비어있으면 다시 로드
-        if (!this.productRates || this.productRates.length === 0) await this.loadProductRates();
-
-        const defaultGoldPrice = (() => {
-            if (item?.goldMarketPrice) return item.goldMarketPrice;
-            return window.GoldInventoryModule?.getLatestAvgPrice?.() || null;
-        })();
-
-        const makeInput = (f) => {
-            let val = item?.[f.key] ?? '';
-            if (f.key === 'goldMarketPrice' && (!val || val === 0) && defaultGoldPrice) {
-                val = Math.round(defaultGoldPrice);
-            }
-            if (f.key === 'quantity' && val === '') val = 1;
-
-            const isCalc = !!f.calc;
-            const isRequired = !isCalc && required.includes(f.key);
-            const req = isRequired ? 'required' : '';
-            const readonlyAttr = isCalc ? 'readonly style="background:#f3f4f6;color:#6b7280;"' : '';
-            const calcLabel = isCalc ? ' <span style="font-size:0.75rem;color:#9ca3af;">(자동)</span>' : '';
-
-            // 체크박스 처리
-            if (f.type === 'checkbox') {
-                const checked = val === true || val === 'Y' ? 'checked' : '';
-                return `
-                    <div class="form-group">
-                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-                            <input type="checkbox" name="${f.key}" ${checked}>
-                            <span>${f.label}</span>
-                        </label>
-                    </div>`;
-            }
-
-            // 상품명: 검색 가능한 드롭다운으로 교체
-            if (f.key === 'productName') {
-                return `
-                    <div class="form-group">
-                        <label>${f.label}${isRequired ? ' <span style="color:#ef4444;">*</span>' : ''}</label>
-                        <div id="inv-product-select-container" data-current="${val.replace(/"/g, '&quot;')}"></div>
-                    </div>`;
-            }
-
-            if (f.type === 'select') {
-                const options = (f.options || []).map(o =>
-                    `<option value="${o}" ${val === o ? 'selected' : ''}>${o}</option>`
-                ).join('');
-                return `
-                    <div class="form-group">
-                        <label>${f.label}${isRequired ? ' <span style="color:#ef4444;">*</span>' : ''}</label>
-                        <select name="${f.key}" ${req}><option value="">선택</option>${options}</select>
-                    </div>`;
-            }
-
-            return `
-                <div class="form-group">
-                    <label>${f.label}${calcLabel}${isRequired ? ' <span style="color:#ef4444;">*</span>' : ''}</label>
-                    <input type="${f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}"
-                        name="${f.key}" value="${val}" ${req} ${readonlyAttr} step="any">
-                </div>`;
-        };
-
-        // 나석정보 버튼 + 숨겨진 stoneArray 필드
-        const stoneSection = `
-            <div class="form-group" style="grid-column:1/-1;">
-                <label>나석정보</label>
-                <div style="display:flex;gap:8px;align-items:center;">
-                    <button type="button" id="invStoneInfoBtn" class="btn btn-outline btn-sm">나석 정보 입력</button>
-                    <span id="invStoneInfoDisplay" style="font-size:0.85rem;color:#6b7280;">
-                        ${item?.stoneArray ? (() => {
-                            try {
-                                const arr = JSON.parse(item.stoneArray);
-                                return arr.length > 0 ? `${arr.length}종 입력됨` : '없음';
-                            } catch { return '없음'; }
-                        })() : '없음'}
-                    </span>
-                </div>
-                <input type="hidden" name="stoneArray" value="${(item?.stoneArray || '[]').replace(/"/g, '&quot;')}">
-            </div>`;
-
-        const body = `
-            <div id="invModalForm" style="display:grid;grid-template-columns:1fr 1fr;gap:12px 20px;overflow-y:auto;max-height:65vh;padding:4px 2px;">
-                ${this.FIELDS.map(makeInput).join('')}
-                ${stoneSection}
-            </div>`;
-
-        const wrapper = window.Utils.openModal(
-            itemId ? '재고 수정' : '재고 추가',
-            body,
-            async (data, w) => {
-                // 필수 항목 검증
-                for (const key of required) {
-                    if (!data[key] || String(data[key]).trim() === '') {
-                        const fieldDef = this.FIELDS.find(f => f.key === key);
-                        window.Utils.showNotification(`필수 항목 [${fieldDef?.label || key}]을(를) 입력해주세요.`, 'error');
-                        return;
-                    }
-                }
-                // 상품명 기본 필수
-                if (!data.productName || !data.productName.trim()) {
-                    window.Utils.showNotification('상품명은 필수 입력 항목입니다.', 'error');
-                    return;
-                }
-
-                // 타입 변환
-                this.FIELDS.forEach(f => {
-                    if (f.type === 'number' && data[f.key] !== undefined) {
-                        data[f.key] = parseFloat(data[f.key]) || 0;
-                    } else if (f.type === 'checkbox') {
-                        data[f.key] = data[f.key] === 'on' || data[f.key] === true;
-                    }
-                });
-
-                const calculated = this.calculate(data);
-                const col = window.firebaseDb.collection('inventory').doc('items').collection('records');
-
-                if (itemId) {
-                    await col.doc(itemId).update({ ...calculated, updatedAt: new Date() });
-                } else {
-                    await col.add({ ...calculated, createdAt: new Date(), updatedAt: new Date() });
-                }
-
-                w.remove();
-                this.allItems = [];
-                await this.load();
-                window.Utils.showNotification(itemId ? '재고가 수정되었습니다.' : '재고가 추가되었습니다.', 'success');
-            },
-            itemId ? '수정 저장' : '추가'
-        );
-
-        // ===== 상품명 검색 드롭다운 연결 =====
-        const productContainer = wrapper.querySelector('#inv-product-select-container');
-        if (productContainer) {
-            const currentVal = productContainer.dataset.current || '';
-            const productOptions = this.productRates.map(p => p.productName).filter(Boolean);
-
-            const searchableSelect = window.Utils.createSearchableSelect(
-                productOptions,
-                currentVal,
-                (selectedName) => this._onProductSelected(selectedName, wrapper),
-                '상품명 검색...',
-                'productName'
-            );
-            productContainer.replaceWith(searchableSelect);
-        }
-
-        // 나석정보 버튼
-        wrapper.querySelector('#invStoneInfoBtn')?.addEventListener('click', async () => {
-            if (!this.diamondRates || this.diamondRates.length === 0) await this.loadDiamondRates();
-
-            let existingStones = [];
-            const stoneInput = wrapper.querySelector('[name="stoneArray"]');
-            try { existingStones = JSON.parse(stoneInput?.value || '[]'); } catch { existingStones = []; }
-
-            if (existingStones.length === 0 && item?.productName) {
-                const product = this.productRates.find(p => p.productName === item.productName);
-                if (product?.stones?.length > 0) {
-                    const pw = product.stoneWarranty || '없음';
-                    existingStones = product.stones.map(s => {
-                        const d = this.diamondRates.find(dr => dr.diamondType === (s.stoneType || s.type || ''));
-                        const qty = s.stoneQty || s.qty || 0;
-                        const price = d?.costWithVat || 0;
-                        const wf = (pw === 'VS' ? (d?.vsWarrantyFee || 0) : pw === 'VVS' ? (d?.vvsWarrantyFee || 0) : 0) * qty;
-                        return { stoneType: s.stoneType || s.type || '', stoneQty: qty, stonePrice: price, totalPrice: price * qty, warrantyFee: wf };
-                    });
-                }
-            }
-
-            window.StoneInputModalModule.open(this.diamondRates, existingStones, (stoneArray) => {
-                if (stoneInput) stoneInput.value = JSON.stringify(stoneArray);
-                const display = wrapper.querySelector('#invStoneInfoDisplay');
-                if (display) display.textContent = stoneArray.length > 0 ? `${stoneArray.length}종 입력됨` : '없음';
-                // 자동계산 갱신
-                const fd = new FormData(wrapper.querySelector('form') || wrapper.querySelector('#modalForm') || wrapper);
-                const fdata = Object.fromEntries(fd);
-                fdata.stoneArray = JSON.stringify(stoneArray);
-                const calc = this.calculate(fdata);
-                ['goldValue','stoneCostRef','manufacturingCost'].forEach(k => {
-                    const el = wrapper.querySelector(`[name="${k}"]`);
-                    if (el) el.value = Math.round(calc[k] || 0);
+        if (!this.canManage()) { window.Utils.showNotification('관리자·매니저만 업로드할 수 있습니다.', 'error'); return; }
+        window.Utils.openCsvUploadModal(this.csvUploadFields(), async (rows) => {
+            const entries = [];
+            const errors = [];
+            rows.forEach((r, idx) => {
+                const productName = String(r.productName || '').trim();
+                if (!productName) { errors.push(`${idx + 2}행: 제품명 없음`); return; }
+                const status = String(r.status || '').trim() || '입고중';
+                if (!this.STATUS_OPTIONS.includes(status)) { errors.push(`${idx + 2}행: 상태 값 오류(${status})`); return; }
+                const category = String(r.category || '').trim() || '기타';
+                const price = this.parsePrice(r.manufacturingPrice);
+                if (Number.isNaN(price)) { errors.push(`${idx + 2}행: 제조가격 숫자 오류`); return; }
+                const count = Math.max(1, Math.min(99, parseInt(r.count, 10) || 1));
+                entries.push({
+                    productName,
+                    category: this.CATEGORY_OPTIONS.includes(category) ? category : '기타',
+                    color: String(r.color || '').trim(), size: String(r.size || '').trim(),
+                    status, notes: String(r.notes || '').trim(), price, count,
                 });
             });
-        });
-
-        // 실시간 자동계산
-        const updateCalc = () => {
-            const form = wrapper.querySelector('#modalForm') || wrapper.querySelector('form');
-            if (!form) return;
-            const fd = new FormData(form);
-            const data = Object.fromEntries(fd);
-            const calc = this.calculate(data);
-            ['goldValue','stoneCostRef','manufacturingCost'].forEach(k => {
-                const el = wrapper.querySelector(`[name="${k}"]`);
-                if (el) el.value = Math.round(calc[k] || 0);
-            });
-        };
-        // form 요소 찾기 — Utils.openModal이 생성하는 구조에 맞게 이벤트 연결
-        setTimeout(() => {
-            const form = wrapper.querySelector('#modalForm') || wrapper.querySelector('form') || wrapper;
-            form?.addEventListener('input', updateCalc);
-            updateCalc();
-        }, 50);
-    },
-
-    // 상품명 선택 시 제품단가표에서 관련 필드 자동 채우기
-    _onProductSelected(productName, wrapper) {
-        const product = this.productRates.find(p => p.productName === productName);
-        if (!product) return;
-
-        // 제품코드 → 종류 자동 추출
-        if (product.productCode) {
-            const codeChars = product.productCode.match(/[A-Za-z]/g);
-            if (codeChars && codeChars.length >= 3) {
-                const categoryChar = codeChars[2].toUpperCase();
-                const categoryMap = { 'E': 'E(귀걸이)', 'R': 'R(반지)', 'N': 'N(목걸이)', 'B': 'B(팔찌)' };
-                const categorySelect = wrapper.querySelector('[name="category"]');
-                if (categorySelect) categorySelect.value = categoryMap[categoryChar] || '기타';
-            }
-        }
-
-        // 색상 자동 채우기 (제품단가표에 color 필드가 있는 경우)
-        if (product.color) {
-            const colorSelect = wrapper.querySelector('[name="color"]');
-            if (colorSelect) colorSelect.value = product.color;
-        }
-
-        // 보증서 자동 채우기
-        if (product.stoneWarranty) {
-            const warrantySelect = wrapper.querySelector('[name="warranty"]');
-            if (warrantySelect) warrantySelect.value = product.stoneWarranty;
-        }
-    },
-
-    async deleteItem(itemId) {
-        if (!confirm('이 재고 항목을 삭제하시겠습니까?')) return;
-        try {
-            await window.firebaseDb
-                .collection('inventory').doc('items').collection('records')
-                .doc(itemId).delete();
-            this.allItems = this.allItems.filter(i => i.id !== itemId);
-            this.applyFilters();
-            const start = (this.currentPage - 1) * this.pageSize;
-            this.items = this.filteredItems.slice(start, start + this.pageSize);
-            this.renderTable();
-            this.renderPagination();
-            window.Utils.showNotification('삭제되었습니다.', 'success');
-        } catch (e) {
-            window.Utils.showNotification(`삭제 실패: ${e.message}`, 'error');
-        }
+            if (errors.length) throw new Error(errors.slice(0, 5).join(', ') + (errors.length > 5 ? ` 외 ${errors.length - 5}건` : ''));
+            await this.createItems(entries);
+            const total = entries.reduce((s, e) => s + e.count, 0);
+            window.Utils.showNotification(`${total}개 항목이 추가되었습니다.`, 'success');
+            await this.load();
+        }, { importModeSelector: false });
     },
 };

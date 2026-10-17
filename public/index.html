@@ -641,24 +641,16 @@
 
                     <!-- 재고관리 섹션 -->
                     <section id="inventoryContent" class="content-section hidden">
-                        <h2>재고관리</h2>
+                        <h2>재고관리 <span style="font-size:0.8rem;font-weight:400;color:#6b7280;">매장관리 프로그램과 같은 데이터</span></h2>
                         <div class="button-group">
-                            <button id="invAddBtn" class="btn btn-primary">+ 재고 추가</button>
-                            <button id="invCsvUploadBtn" class="btn btn-secondary">📤 CSV 업로드</button>
+                            <button id="invAddBtn" class="btn btn-primary">+ 제품 추가</button>
+                            <button id="invCsvUploadBtn" class="btn btn-secondary">📤 CSV 업로드(추가)</button>
                             <button id="invDownloadTemplateBtn" class="btn btn-secondary">📥 양식 다운로드</button>
                             <button id="invDownloadDataBtn" class="btn btn-secondary">📊 데이터 다운로드</button>
-                            <button id="invDisplaySettingsBtn" class="btn btn-outline">📋 표시항목 설정</button>
-                            <button id="invRequiredSettingsBtn" class="btn btn-outline">⚙️ 필수항목 설정</button>
                             <button id="invRefreshBtn" class="btn btn-outline">🔄 새로고침</button>
+                            <button id="invLegacyBtn" class="btn btn-outline">🗄 구 ERP 재고(보관)</button>
                         </div>
-                        <div id="invFilterBar"></div>
-                        <div style="overflow-x:auto;">
-                            <table id="inventoryTable" class="data-table">
-                                <thead><tr></tr></thead>
-                                <tbody></tbody>
-                            </table>
-                        </div>
-                        <div id="invPagination"></div>
+                        <div id="invContent"></div>
                     </section>
 
                     <!-- 양식 관리 섹션 -->
