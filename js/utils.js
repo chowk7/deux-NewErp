@@ -858,7 +858,7 @@ window.Utils = {
      */
     showAdditionalOrderModal(orderData = {}, context = {}) {
         return new Promise((resolve) => {
-            const onlineOptions = ['듀인피니스 공식몰', '신세계V', 'SSG', '더현대하이'];
+            const onlineOptions = ['공식 온라인 스토어', '신세계V', 'SSG', '더현대하이'];
             const offlineOptions = ['현대백화점 압구정본점', '현대백화점 무역점', '현대백화점 킨텍스점', '현대백화점 목동점'];
             const warrantyOptions = ['없음', 'VS', 'VVS'];
 
