@@ -66,7 +66,7 @@ window.SalesManagementModule = {
     showUndeliveredOnly: false,
     orderSortState: { column: 'orderDate', direction: 'desc' },
     PURCHASE_PATH_DETAIL_OPTIONS: {
-        온라인: ['듀인피니스 공식몰', '신세계V', 'SSG', '더현대닷컴'],
+        온라인: ['공식 온라인 스토어', '신세계V', 'SSG', '더현대닷컴'],
         오프라인: ['현대백화점 압구정본점', '현대백화점 무역점', '현대백화점 킨텍스점', '현대백화점 목동점']
     },
 

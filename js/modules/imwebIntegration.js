@@ -607,8 +607,8 @@ window.ImwebIntegrationModule = {
             const ordered = [...this.selectedOrders].sort((a, b) => orderIndex(a) - orderIndex(b));
             const total = ordered.length;
 
-            // 직전 입력값을 다음 건의 기본값으로 사용 (아임웹 = 자사몰이므로 첫 건은 온라인/공식몰 기본)
-            let lastInfo = { purchasePath: '온라인', purchasePathDetail: '듀인피니스 공식몰', commissionRate: 0, warranty: '' };
+            // 직전 입력값을 다음 건의 기본값으로 사용 (아임웹 = 자사몰이므로 첫 건은 온라인/공식 온라인 스토어 기본)
+            let lastInfo = { purchasePath: '온라인', purchasePathDetail: '공식 온라인 스토어', commissionRate: 0, warranty: '' };
             let applyToRest = false;
 
             for (let i = 0; i < total; i++) {
