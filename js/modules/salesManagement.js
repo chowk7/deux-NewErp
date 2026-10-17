@@ -411,7 +411,7 @@ window.SalesManagementModule = {
                     ${orders.map((order, idx) => `
                         <div style="border: 1px solid #ddd; border-radius: 8px; padding: 16px; background: #fafafa;">
                             <div style="font-weight: bold; margin-bottom: 12px; color: #333;">주문 ${idx + 1}</div>
-                            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
+                            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px;">
                                 ${self.ORDER_FIELDS.filter(f => f.type !== 'status' && f.type !== 'computed').map(f => {
                                     const val = order[f.key] || '';
                                     const isRequired = f.defaultRequired;
@@ -496,6 +496,13 @@ window.SalesManagementModule = {
         const wrapper = window.Utils.openModal('📝 상세 수정 - 모든 필드', html, async () => {
             await self.saveDetailedSyncOrders(orders, productOptions);
         }, '저장');
+
+        // 모든 필드를 한 화면에 보도록 기본 모달(600px)보다 넓게 연다.
+        const content = wrapper.querySelector('.modal-content');
+        if (content) {
+            content.style.maxWidth = '1400px';
+            content.style.width = '96vw';
+        }
 
         this.initDetailedSyncPurchasePathFields(wrapper, orders);
     },
