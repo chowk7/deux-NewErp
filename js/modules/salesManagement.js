@@ -2238,6 +2238,10 @@ window.SalesManagementModule = {
             printValexBtn.textContent = `📦 발렉스 (${checkedCount})`;
             printValexBtn.onclick = () => this.printValexForm();
 
+            const printPostBtn = mkBtn('printPostOfficeFormBtn', 'btn-success');
+            printPostBtn.textContent = `📮 우체국 (${checkedCount})`;
+            printPostBtn.onclick = () => this.printPostOfficeForm();
+
             const shippingDocBtn = mkBtn('shippingDocOrderBtn', 'btn-secondary');
             shippingDocBtn.textContent = `📦 배송표 (${checkedCount})`;
             shippingDocBtn.onclick = () => this.generateShippingDocument();
@@ -2256,6 +2260,7 @@ window.SalesManagementModule = {
         } else {
             document.getElementById('printOrderBtn')?.remove();
             document.getElementById('printValexFormBtn')?.remove();
+            document.getElementById('printPostOfficeFormBtn')?.remove();
             document.getElementById('shippingDocOrderBtn')?.remove();
             document.getElementById('warrantyCardBtn')?.remove();
             document.getElementById('invoiceBtn')?.remove();
@@ -2976,6 +2981,114 @@ window.SalesManagementModule = {
         } catch (error) {
             console.error('Failed to generate Valex Excel file:', error);
             window.Utils.showNotification('발렉스 양식 출력에 실패했습니다.', 'error');
+        }
+    },
+
+    // 우체국 창구소포 파일접수양식(.xls, BIFF8) 출력
+    // A~F: 주문 데이터, G~I: 기본값(3kg / 80cm / 의류/패션잡화), 나머지 빈칸
+    printPostOfficeForm() {
+        if (typeof XLSX === 'undefined') {
+            window.Utils.showNotification('라이브러리를 로드하는 중입니다...', 'warning');
+            window.Utils.ensureXLSX(() => this.printPostOfficeForm());
+            return;
+        }
+
+        const table = document.querySelector('#ordersTable');
+        const checkedIds = Array.from(table.querySelectorAll('tbody .row-checkbox:checked'))
+            .map(cb => cb.dataset.id);
+
+        if (checkedIds.length === 0) {
+            window.Utils.showNotification('선택된 주문이 없습니다.', 'warning');
+            return;
+        }
+
+        const selectedOrders = this.orders.filter(o => checkedIds.includes(o.id));
+
+        const headers = [
+            '받는 분',
+            '우편번호',
+            '주소(시도+시군구+도로명+건물번호)',
+            '상세주소(동, 호수, 洞명칭, 아파트, 건물명 등)',
+            '일반전화(02-1234-5678)',
+            '휴대전화(010-1234-5678)',
+            '중량(kg)',
+            '부피(cm)=가로+세로+높이',
+            '내용품코드',
+            '내용물',
+            '배달방식',
+            '배송시요청사항',
+            '분할접수 여부(Y/N)',
+            '분할접수 첫번째 중량(kg)',
+            '분할접수 첫번째 부피(cm)',
+            '분할접수 두번째 중량(kg)',
+            '분할접수 두번째 부피(cm)'
+        ];
+
+        // 전화번호 → { mobile, landline } (하이픈 형식). 휴대폰(01x)은 F열, 그 외 0으로 시작하면 E열
+        const splitPhone = (raw) => {
+            const str = String(raw || '').trim();
+            const d = str.replace(/\D/g, '');
+            if (/^01\d{9}$/.test(d)) return { mobile: `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`, landline: '' };
+            if (/^01\d{8}$/.test(d)) return { mobile: `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`, landline: '' };
+            if (/^02\d{7,8}$/.test(d)) return { mobile: '', landline: `02-${d.slice(2, d.length - 4)}-${d.slice(-4)}` };
+            if (/^0[3-9]\d{8,9}$/.test(d)) return { mobile: '', landline: `${d.slice(0, 3)}-${d.slice(3, d.length - 4)}-${d.slice(-4)}` };
+            return { mobile: str, landline: '' };
+        };
+
+        // 우편번호: 문자열 유지, 4자리로 저장된 경우 앞자리 0 복원
+        const formatPostal = (raw) => {
+            const d = String(raw ?? '').replace(/\D/g, '');
+            if (!d) return '';
+            return d.length === 4 ? '0' + d : d;
+        };
+
+        const rows = selectedOrders.map(order => {
+            const { mobile, landline } = splitPhone(order.phone);
+            return [
+                String(order.recipient || order.customerName || '').trim(),
+                formatPostal(order.postalCode),
+                String(order.address || '').trim(),
+                String(order.addressDetail || '').trim(),
+                landline,
+                mobile,
+                '3',
+                '80',
+                '의류/패션잡화',
+                '', '', '', '', '', '', '', ''
+            ];
+        });
+
+        try {
+            const workbook = XLSX.utils.book_new();
+            const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+
+            // 우편번호·전화번호 등 모든 데이터 셀을 텍스트(@)로 고정 (앞자리 0 보존)
+            const range = XLSX.utils.decode_range(worksheet['!ref']);
+            for (let R = 1; R <= range.e.r; ++R) {
+                for (let C = 0; C <= range.e.c; ++C) {
+                    const cell = worksheet[XLSX.utils.encode_cell({ r: R, c: C })];
+                    if (cell && cell.t === 's') cell.z = '@';
+                }
+            }
+
+            worksheet['!cols'] = [
+                { wch: 10 }, { wch: 8 }, { wch: 50 }, { wch: 33 }, { wch: 20 }, { wch: 20 },
+                { wch: 7 }, { wch: 20 }, { wch: 25 }, { wch: 25 }, { wch: 9 }, { wch: 38 },
+                { wch: 14 }, { wch: 18 }, { wch: 20 }, { wch: 18 }, { wch: 20 }
+            ];
+
+            XLSX.utils.book_append_sheet(workbook, worksheet, '창구소포 파일접수양식');
+
+            const now = new Date();
+            const yymmdd = String(now.getFullYear()).slice(2) +
+                String(now.getMonth() + 1).padStart(2, '0') +
+                String(now.getDate()).padStart(2, '0');
+
+            XLSX.writeFile(workbook, `우체국택배_${yymmdd}.xls`, { bookType: 'biff8' });
+            window.Utils.showNotification(`${selectedOrders.length}건 우체국 양식이 다운로드되었습니다.`, 'success');
+        } catch (error) {
+            console.error('Failed to generate Post Office Excel file:', error);
+            window.Utils.showNotification('우체국 양식 출력에 실패했습니다.', 'error');
         }
     },
 
