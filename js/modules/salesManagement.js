@@ -1262,11 +1262,12 @@ window.SalesManagementModule = {
                     <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${o.id}"></td>
                     ${cells}
                     <td style="font-size:0.8rem;">${imageCell}</td>
-                    <td>
+                    <td style="white-space:nowrap;">
                         <button class="btn btn-sm btn-primary"
                             data-action="showOrderForm" data-id="${o.id}">수정</button>
                         <button class="btn btn-sm btn-outline"
                             data-action="openStatusForm" data-id="${o.id}">상태</button>
+                        ${this._renderAsButton(o)}
                     </td>
                 </tr>`;
         }).join('');
@@ -2784,6 +2785,335 @@ window.SalesManagementModule = {
                 this.loadOrders();
             });
         }
+    },
+
+    // ===== A/S(수선) 이력 =====
+    // 저장 위치: sales/orders/items/{orderId}/asRecords/{recordId}
+    // 주문 문서에는 목록 표시용 요약(asCount, asOpenCount, lastAsStatus, lastAsRequestDate)만 갱신한다.
+
+    AS_STATUS_OPTIONS: ['접수', '진행중', '완료'],
+    AS_SHIPPING_BEARER_OPTIONS: ['없음', '고객', '회사'],
+
+    _asCollection(orderId) {
+        return window.firebaseDb.collection('sales').doc('orders')
+            .collection('items').doc(orderId).collection('asRecords');
+    },
+
+    _escAs(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    },
+
+    _todayAsDate() {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    },
+
+    // 완료일이 있으면 무조건 '완료', 없는데 '완료'로 선택했으면 '진행중'으로 되돌린다.
+    _resolveAsStatus(status, completedDate) {
+        if (completedDate) return '완료';
+        return status === '접수' ? '접수' : '진행중';
+    },
+
+    _renderAsButton(order) {
+        const count = Number(order.asCount) || 0;
+        const openCount = Number(order.asOpenCount) || 0;
+        if (count === 0) {
+            return `<button class="btn btn-sm btn-outline" data-action="openAsHistory" data-id="${order.id}">A/S</button>`;
+        }
+        // 진행 중인 수선이 있으면 강조 색상으로 표시
+        const style = openCount > 0
+            ? 'background:#fef3c7;color:#b45309;border-color:#f59e0b;'
+            : 'background:#f3f4f6;color:#374151;border-color:#9ca3af;';
+        const title = openCount > 0 ? `A/S ${count}건 (진행중 ${openCount}건)` : `A/S ${count}건 (모두 완료)`;
+        return `<button class="btn btn-sm btn-outline" style="${style}" title="${title}"
+                    data-action="openAsHistory" data-id="${order.id}">A/S(${count})</button>`;
+    },
+
+    async _loadAsRecords(orderId) {
+        const snap = await this._asCollection(orderId).get();
+        const records = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        // 시계열: 요청일 오름차순, 같은 날이면 등록순
+        records.sort((a, b) => {
+            const byDate = String(a.requestDate || '').localeCompare(String(b.requestDate || ''));
+            if (byDate !== 0) return byDate;
+            const ta = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt || 0).getTime();
+            const tb = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.createdAt || 0).getTime();
+            return ta - tb;
+        });
+        return records;
+    },
+
+    // 하위 컬렉션 기준으로 주문 문서의 요약 필드를 다시 계산해 저장
+    async _syncAsSummary(orderId, records) {
+        const last = records[records.length - 1] || null;
+        const summary = {
+            asCount: records.length,
+            asOpenCount: records.filter(r => r.status !== '완료').length,
+            lastAsStatus: last ? last.status : null,
+            lastAsRequestDate: last ? last.requestDate : null,
+            asUpdatedAt: new Date(),
+        };
+        await window.firebaseDb.collection('sales').doc('orders')
+            .collection('items').doc(orderId).update(summary);
+        [this.allOrders, this.orders, this.filteredOrders].forEach(list => {
+            const target = (list || []).find(o => o.id === orderId);
+            if (target) Object.assign(target, summary);
+        });
+        // 매출표 버튼의 건수 표시만 갱신
+        const btn = document.querySelector(`#ordersTable button[data-action="openAsHistory"][data-id="${orderId}"]`);
+        const order = this.orders.find(o => o.id === orderId);
+        if (btn && order) btn.outerHTML = this._renderAsButton(order);
+    },
+
+    _formatAsOrderDate(val) {
+        if (!val) return '-';
+        const d = val.toDate ? val.toDate() : new Date(val);
+        return Number.isNaN(d.getTime()) ? '-' : d.toLocaleDateString('ko-KR');
+    },
+
+    _renderAsTimeline(records) {
+        if (records.length === 0) {
+            return '<div style="padding:16px;text-align:center;color:#9ca3af;font-size:0.85rem;">등록된 A/S 이력이 없습니다.</div>';
+        }
+        const statusColor = { '접수': '#6b7280', '진행중': '#d97706', '완료': '#059669' };
+        return records.map((r, idx) => {
+            const color = statusColor[r.status] || '#6b7280';
+            const extra = Number(r.extraCharge) || 0;
+            const fee = Number(r.shippingFee) || 0;
+            const bearer = r.shippingFeeBearer || '없음';
+            const feeText = bearer === '없음'
+                ? '없음'
+                : `${this._escAs(bearer)} 부담${fee ? ` (${window.Utils.formatNumber(fee)}원)` : ''}`;
+            return `
+                <div class="as-record" data-record-id="${r.id}"
+                    style="position:relative;padding:10px 12px 10px 20px;margin-left:8px;border-left:2px solid ${color};">
+                    <span style="position:absolute;left:-7px;top:14px;width:12px;height:12px;border-radius:50%;background:${color};"></span>
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+                        <div style="font-weight:600;">
+                            ${idx + 1}회차
+                            <span style="margin-left:6px;padding:1px 8px;border-radius:10px;font-size:0.75rem;color:#fff;background:${color};">${this._escAs(r.status)}</span>
+                            <span style="margin-left:6px;font-weight:400;color:#374151;font-size:0.85rem;">
+                                ${this._escAs(r.requestDate || '-')} → ${r.completedDate ? this._escAs(r.completedDate) : '<span style="color:#d97706;">미완료</span>'}
+                            </span>
+                        </div>
+                        <div>
+                            <button type="button" class="btn btn-sm btn-outline" data-as-edit="${r.id}">수정</button>
+                            <button type="button" class="btn btn-sm btn-danger" data-as-delete="${r.id}">삭제</button>
+                        </div>
+                    </div>
+                    <div style="margin-top:6px;font-size:0.875rem;white-space:pre-wrap;">${this._escAs(r.repairContent || '-')}</div>
+                    <div style="margin-top:4px;font-size:0.8rem;color:#6b7280;">
+                        추가금 ${extra ? `${window.Utils.formatNumber(extra)}원` : '없음'} · 배송비 ${feeText}
+                        ${r.memo ? ` · 메모: ${this._escAs(r.memo)}` : ''}
+                    </div>
+                </div>`;
+        }).join('');
+    },
+
+    _renderAsForm(record = null) {
+        const r = record || {};
+        const statusOpts = this.AS_STATUS_OPTIONS.map(s =>
+            `<option value="${s}" ${(r.status || '접수') === s ? 'selected' : ''}>${s}</option>`).join('');
+        const bearerOpts = this.AS_SHIPPING_BEARER_OPTIONS.map(s =>
+            `<option value="${s}" ${(r.shippingFeeBearer || '없음') === s ? 'selected' : ''}>${s === '없음' ? '없음' : `${s} 부담`}</option>`).join('');
+        return `
+            <div class="as-form" style="margin-top:16px;padding:12px;border:1px solid #e5e7eb;border-radius:8px;background:#fafafa;">
+                <div style="font-weight:600;margin-bottom:10px;">${record ? 'A/S 기록 수정' : '새 A/S 기록 추가'}</div>
+                <input type="hidden" name="asRecordId" value="${record ? record.id : ''}">
+                <div class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:10px;">
+                    <div class="form-group">
+                        <label>요청일 *</label>
+                        <input type="date" name="asRequestDate" value="${this._escAs(r.requestDate || this._todayAsDate())}">
+                    </div>
+                    <div class="form-group">
+                        <label>수선완료일</label>
+                        <input type="date" name="asCompletedDate" value="${this._escAs(r.completedDate || '')}">
+                    </div>
+                    <div class="form-group">
+                        <label>상태</label>
+                        <select name="asStatus">${statusOpts}</select>
+                    </div>
+                    <div class="form-group">
+                        <label>추가금(원)</label>
+                        <input type="number" name="asExtraCharge" min="0" step="1000" value="${Number(r.extraCharge) || ''}" placeholder="0">
+                    </div>
+                    <div class="form-group">
+                        <label>배송비 부담</label>
+                        <select name="asShippingFeeBearer">${bearerOpts}</select>
+                    </div>
+                    <div class="form-group">
+                        <label>배송비(원)</label>
+                        <input type="number" name="asShippingFee" min="0" step="500" value="${Number(r.shippingFee) || ''}" placeholder="0">
+                    </div>
+                </div>
+                <div class="form-group" style="margin-bottom:10px;">
+                    <label>수선 내용 *</label>
+                    <textarea name="asRepairContent" rows="3" placeholder="예: 반지 사이즈 12호 → 13호 조정, 스톤 재세팅">${this._escAs(r.repairContent || '')}</textarea>
+                </div>
+                <div class="form-group" style="margin-bottom:10px;">
+                    <label>메모</label>
+                    <input type="text" name="asMemo" value="${this._escAs(r.memo || '')}" placeholder="택배 송장번호, 고객 요청사항 등">
+                </div>
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    ${record ? '<button type="button" class="btn btn-secondary" data-as-cancel>수정 취소</button>' : ''}
+                    <button type="button" class="btn btn-primary" data-as-save>${record ? '수정 저장' : '기록 추가'}</button>
+                </div>
+            </div>`;
+    },
+
+    async openAsHistory(orderId) {
+        const order = this.orders.find(o => o.id === orderId) || this.allOrders.find(o => o.id === orderId);
+        if (!order) return;
+
+        const body = `
+            <div style="padding:10px 12px;margin-bottom:12px;background:#f9fafb;border-radius:8px;font-size:0.875rem;display:flex;gap:18px;flex-wrap:wrap;">
+                <div><span style="color:#6b7280;">고객명</span> <strong>${this._escAs(order.customerName || '-')}</strong></div>
+                <div><span style="color:#6b7280;">제품명</span> <strong>${this._escAs(order.productName || '-')}</strong></div>
+                <div><span style="color:#6b7280;">주문일</span> <strong>${this._formatAsOrderDate(order.orderDate)}</strong></div>
+                ${order.orderNumber ? `<div><span style="color:#6b7280;">주문번호</span> ${this._escAs(order.orderNumber)}</div>` : ''}
+            </div>
+            <div style="font-weight:600;margin-bottom:6px;">A/S 이력 <span class="as-count" style="color:#6b7280;font-weight:400;"></span></div>
+            <div class="as-timeline" style="max-height:340px;overflow-y:auto;padding:4px 0;">
+                <div style="padding:16px;text-align:center;color:#9ca3af;">불러오는 중...</div>
+            </div>
+            <div class="as-form-slot"></div>`;
+
+        const wrapper = window.Utils.openModal('🔧 A/S 이력', body);
+        const content = wrapper.querySelector('.modal-content');
+        if (content) {
+            content.style.maxWidth = '820px';
+            content.style.width = '94vw';
+        }
+        // 모달 바디가 <form> 안에 있으므로 Enter 키로 인한 페이지 새로고침 방지
+        wrapper.querySelector('#modalForm')?.addEventListener('submit', e => e.preventDefault());
+
+        let records = [];
+        const timelineEl = wrapper.querySelector('.as-timeline');
+        const formSlot = wrapper.querySelector('.as-form-slot');
+        const countEl = wrapper.querySelector('.as-count');
+
+        const render = (editing = null) => {
+            timelineEl.innerHTML = this._renderAsTimeline(records);
+            countEl.textContent = records.length ? `(${records.length}건)` : '';
+            formSlot.innerHTML = this._renderAsForm(editing);
+            // 완료일 입력 시 상태를 자동으로 '완료'로 맞춘다
+            const completedInput = formSlot.querySelector('[name="asCompletedDate"]');
+            const statusSelect = formSlot.querySelector('[name="asStatus"]');
+            completedInput.addEventListener('change', () => {
+                statusSelect.value = this._resolveAsStatus(statusSelect.value, completedInput.value);
+            });
+        };
+
+        const reload = async (editing = null) => {
+            records = await this._loadAsRecords(orderId);
+            render(editing);
+        };
+
+        try {
+            await reload();
+        } catch (err) {
+            console.error('[SalesManagement] A/S 이력 조회 실패:', err);
+            timelineEl.innerHTML = `<div style="padding:16px;color:#dc2626;">A/S 이력을 불러오지 못했습니다: ${this._escAs(err?.message || err)}</div>`;
+            return;
+        }
+
+        wrapper.addEventListener('click', async (e) => {
+            const editBtn = e.target.closest('[data-as-edit]');
+            const deleteBtn = e.target.closest('[data-as-delete]');
+            const saveBtn = e.target.closest('[data-as-save]');
+            const cancelBtn = e.target.closest('[data-as-cancel]');
+
+            if (editBtn) {
+                const rec = records.find(r => r.id === editBtn.dataset.asEdit);
+                if (rec) {
+                    render(rec);
+                    formSlot.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+                return;
+            }
+
+            if (cancelBtn) {
+                render();
+                return;
+            }
+
+            if (deleteBtn) {
+                const idx = records.findIndex(r => r.id === deleteBtn.dataset.asDelete);
+                if (idx < 0) return;
+                const ok = await window.Utils.confirm(`${idx + 1}회차 A/S 기록을 삭제하시겠습니까?<br>삭제 후에는 복구할 수 없습니다.`);
+                if (!ok) return;
+                try {
+                    await this._asCollection(orderId).doc(records[idx].id).delete();
+                    await reload();
+                    await this._syncAsSummary(orderId, records);
+                    window.Utils.showNotification('A/S 기록을 삭제했습니다.', 'success');
+                } catch (err) {
+                    console.error('[SalesManagement] A/S 삭제 실패:', err);
+                    window.Utils.showNotification('A/S 삭제 실패: ' + (err?.message || err), 'error', 6000);
+                }
+                return;
+            }
+
+            if (saveBtn) {
+                const get = name => formSlot.querySelector(`[name="${name}"]`)?.value ?? '';
+                const recordId = get('asRecordId');
+                const requestDate = get('asRequestDate');
+                const completedDate = get('asCompletedDate');
+                const repairContent = get('asRepairContent').trim();
+
+                if (!requestDate) {
+                    window.Utils.showNotification('요청일을 입력해주세요.', 'error');
+                    return;
+                }
+                if (!repairContent) {
+                    window.Utils.showNotification('수선 내용을 입력해주세요.', 'error');
+                    return;
+                }
+                if (completedDate && completedDate < requestDate) {
+                    window.Utils.showNotification('수선완료일이 요청일보다 빠릅니다.', 'error');
+                    return;
+                }
+
+                const shippingFeeBearer = get('asShippingFeeBearer') || '없음';
+                const data = {
+                    requestDate,
+                    completedDate: completedDate || null,
+                    status: this._resolveAsStatus(get('asStatus'), completedDate),
+                    repairContent,
+                    extraCharge: Number(get('asExtraCharge')) || 0,
+                    shippingFeeBearer,
+                    shippingFee: shippingFeeBearer === '없음' ? 0 : (Number(get('asShippingFee')) || 0),
+                    memo: get('asMemo').trim(),
+                    updatedAt: new Date(),
+                };
+
+                saveBtn.disabled = true;
+                saveBtn.textContent = '저장 중...';
+                try {
+                    if (recordId) {
+                        await this._asCollection(orderId).doc(recordId).update(data);
+                    } else {
+                        await this._asCollection(orderId).add({
+                            ...data,
+                            createdAt: new Date(),
+                            createdBy: window.firebaseAuth?.currentUser?.email || '',
+                        });
+                    }
+                    await reload();
+                    await this._syncAsSummary(orderId, records);
+                    window.Utils.showNotification(recordId ? 'A/S 기록을 수정했습니다.' : 'A/S 기록을 추가했습니다.', 'success');
+                } catch (err) {
+                    console.error('[SalesManagement] A/S 저장 실패:', err);
+                    window.Utils.showNotification('A/S 저장 실패: ' + (err?.message || err), 'error', 6000);
+                    if (saveBtn.isConnected) {
+                        saveBtn.disabled = false;
+                        saveBtn.textContent = recordId ? '수정 저장' : '기록 추가';
+                    }
+                }
+            }
+        });
     },
 
     async viewOrderImage(orderId, imageType) {
