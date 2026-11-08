@@ -4,10 +4,15 @@
  * 원본 데이터: 매장관리 프로그램(DI_store_mangement)의 재고 컬렉션을 그대로 사용한다.
  *   - popup_inventory_items : 재고 1문서 = 실물 1개 (id, productName, category, color, size, status, notes,
  *                             createdAt, updatedAt, updatedBy) — 매장관리 app.js와 같은 형식으로만 쓴다.
- *   - popup_inventory_logs  : 등록·상태변경 이력 (매장관리와 같은 형식)
+ *     숨김·삭제 필드 (2026-11-08, 매장관리도 같은 규칙):
+ *       hiddenAt       : 숨김 상태(재작업·재판매·삭제)로 바뀐 일시. 숨김끼리 이동할 때는 유지, 숨김 해제 시 제거
+ *       hiddenAtManual : 숨김일을 사람이 직접 고친 경우 true
+ *       deletedAt / deletedBy / prevStatus : 소프트 삭제(status='삭제') 일시·처리자 이메일·삭제 직전 상태.
+ *                        문서는 지우지 않으며, 복원하면 prevStatus로 되돌리고 세 필드를 제거한다.
+ *   - popup_inventory_logs  : 등록·상태변경 이력 (매장관리와 같은 형식). 삭제·복원·숨김일수정도 같은 형식으로 남긴다.
  * ERP 전용 데이터:
  *   - inventory_costs/{itemId} : 제조가격 (manufacturingPrice, updatedAt, updatedBy, source ...)
- *     → 매장관리 문서에는 새 필드를 넣지 않는다.
+ *     → 제조가격은 매장관리 문서에 넣지 않는다. 삭제해도 지우지 않는다(복원 대비, 집계에서만 제외).
  * 보관 데이터:
  *   - inventory/items/records : 구 ERP 재고. 읽기 전용(참고 비교·보관 보기)으로만 사용한다.
  */
@@ -17,14 +22,16 @@ window.InventoryManagementModule = {
     // ===== 매장관리 app.js와 같은 값 (바꾸면 매장관리 화면과 어긋나므로 함께 맞출 것) =====
     COLOR_OPTIONS:    ['14K화이트', '14K옐로우', '14K로즈', '18K화이트', '18K옐로우', '18K로즈', '기타'],
     CATEGORY_OPTIONS: ['반지', '팔찌', '목걸이', '귀걸이', '기타'],
-    STATUS_OPTIONS:   ['입고중', '출고중', '판매용재고', '재작업', '재판매'],
-    HIDDEN_STATUSES:  ['재작업', '재판매'],
+    STATUS_OPTIONS:   ['입고중', '출고중', '판매용재고', '재작업', '재판매'],   // 선택 가능한 상태 ('삭제'는 삭제 버튼으로만)
+    DELETED_STATUS:   '삭제',
+    HIDDEN_STATUSES:  ['재작업', '재판매', '삭제'],
     STATUS_STYLE: {
         '입고중':    { bg: '#dbeafe', color: '#1e40af' },
         '출고중':    { bg: '#fef3c7', color: '#92400e' },
         '판매용재고': { bg: '#dcfce7', color: '#166534' },
         '재작업':   { bg: '#f3f4f6', color: '#6b7280' },
         '재판매':   { bg: '#ede9fe', color: '#6d28d9' },
+        '삭제':     { bg: '#fee2e2', color: '#b91c1c' },
     },
 
     COL_ITEMS: 'popup_inventory_items',
@@ -41,6 +48,7 @@ window.InventoryManagementModule = {
     searchQuery: '',
     categoryFilter: '전체',
     showLegacy: false,
+    hiddenOpen: false,
 
     // ===== 공통 도우미 =====
 
@@ -67,6 +75,43 @@ window.InventoryManagementModule = {
     getNow() {
         const kstIso = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString();
         return { date: kstIso.slice(0, 10), time: kstIso.slice(11, 16) };
+    },
+
+    isHidden(status) { return this.HIDDEN_STATUSES.includes(status); },
+
+    toDate(v) {
+        if (!v) return null;
+        const d = v.toDate ? v.toDate() : new Date(v);
+        return isNaN(d) ? null : d;
+    },
+
+    // 한국시간 'YYYY-MM-DD' (숨김일·삭제일 표시용)
+    kstDate(v) {
+        const d = this.toDate(v);
+        return d ? new Date(d.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10) : '';
+    },
+
+    fieldDelete() { return firebase.firestore.FieldValue.delete(); },
+
+    // 상태가 바뀔 때 함께 쓸 숨김 필드: 보유 → 숨김이면 hiddenAt 기록, 숨김 → 보유면 숨김·삭제 필드 제거.
+    // 숨김끼리 이동(재작업 → 재판매)은 처음 제외된 날짜를 유지한다.
+    hiddenFieldsFor(fromStatus, toStatus, now = new Date()) {
+        const wasHidden = this.isHidden(fromStatus);
+        const willHide = this.isHidden(toStatus);
+        if (!wasHidden && willHide) return { hiddenAt: now, hiddenAtManual: false };
+        const del = this.fieldDelete();
+        if (wasHidden && !willHide) {
+            return { hiddenAt: del, hiddenAtManual: del, deletedAt: del, deletedBy: del, prevStatus: del };
+        }
+        // 삭제 → 다른 숨김 상태: 숨김일은 유지하고 삭제 표시만 제거
+        if (fromStatus === this.DELETED_STATUS && toStatus !== this.DELETED_STATUS) {
+            return { deletedAt: del, deletedBy: del, prevStatus: del };
+        }
+        return {};
+    },
+
+    myEmail() {
+        return (this.profile().email || window.app?.currentUser?.email || '').toLowerCase();
     },
 
     normName(s)  { return String(s || '').replace(/\s+/g, '').toLowerCase(); },
@@ -203,10 +248,12 @@ window.InventoryManagementModule = {
         if (this.showLegacy) { this.renderLegacy(content); return; }
 
         const items = this.allItems;
-        const visibleItems = items.filter(i => !this.HIDDEN_STATUSES.includes(i.status) && this.matches(i));
-        const hiddenItems  = items.filter(i =>  this.HIDDEN_STATUSES.includes(i.status) && this.matches(i));
+        const visibleItems = items.filter(i => !this.isHidden(i.status) && this.matches(i));
+        const hiddenItems  = items.filter(i =>  this.isHidden(i.status) && this.matches(i));
+        const hiddenCounts = this.HIDDEN_STATUSES.map(st => [st, hiddenItems.filter(i => i.status === st).length])
+            .filter(([, n]) => n > 0).map(([st, n]) => `${st} ${n}`).join(' · ');
 
-        const allVisible = items.filter(i => !this.HIDDEN_STATUSES.includes(i.status));
+        const allVisible = items.filter(i => !this.isHidden(i.status));
         const catCounts = { '전체': allVisible.length };
         this.CATEGORY_OPTIONS.forEach(c => { catCounts[c] = allVisible.filter(i => (i.category || '기타') === c).length; });
 
@@ -241,7 +288,7 @@ window.InventoryManagementModule = {
                 <span>보유 재고 <b id="invVisibleCount">${visibleItems.length}</b>개</span>
                 <span>제조가격 합계 <b id="invCostSum">${this.won(costSum)}</b>원</span>
                 <span style="color:${missing ? '#b45309' : '#6b7280'};">제조가격 미입력 <b id="invCostMissing">${missing}</b>개</span>
-                <span style="color:#9ca3af;font-size:0.8rem;">재작업·재판매 제외, 현재 탭·검색 기준</span>
+                <span style="color:#9ca3af;font-size:0.8rem;">재작업·재판매·삭제 제외, 현재 탭·검색 기준</span>
             </div>
             <div style="overflow-x:auto;">
                 <table id="inventoryTable" class="data-table">
@@ -256,12 +303,19 @@ window.InventoryManagementModule = {
             ${hiddenItems.length > 0 ? `
             <div style="margin-top:18px;border:1px solid #e5e7eb;border-radius:8px;padding:12px;">
                 <div id="invHiddenToggle" style="cursor:pointer;display:flex;align-items:center;gap:8px;">
-                    <b>🗂 숨김 항목 (재작업·재판매)</b>
-                    <span style="font-size:12px;color:#6b7280;">${hiddenItems.length}개 · 클릭하여 펼치기</span>
+                    <b>🗂 숨김 항목 (재작업·재판매·삭제)</b>
+                    <span style="font-size:12px;color:#6b7280;">${hiddenItems.length}개 (${hiddenCounts}) · 클릭하여 펼치기</span>
                 </div>
-                <div id="invHiddenBody" style="display:none;margin-top:12px;overflow-x:auto;">
-                    <table class="data-table"><thead>${head}</thead>
-                        <tbody>${hiddenItems.map(i => this.renderRow(i)).join('')}</tbody>
+                <div id="invHiddenBody" style="display:${this.hiddenOpen ? 'block' : 'none'};margin-top:12px;overflow-x:auto;">
+                    <table id="inventoryHiddenTable" class="data-table"><thead>
+                        <tr>
+                            <th>제품명</th><th>종류</th><th>색상</th><th>사이즈</th>
+                            <th style="text-align:center;">상태</th>
+                            <th style="text-align:center;">숨김일</th><th style="text-align:center;">삭제일</th>
+                            <th>기타</th><th style="text-align:right;">제조가격</th>
+                            <th style="text-align:center;">관리</th>
+                        </tr></thead>
+                        <tbody>${this.sortHidden(hiddenItems).map(i => this.renderHiddenRow(i)).join('')}</tbody>
                     </table>
                 </div>
             </div>` : ''}
@@ -296,6 +350,57 @@ window.InventoryManagementModule = {
                         <button type="button" class="btn btn-sm btn-secondary inv-status-btn" data-id="${this.esc(item.id)}">상태변경</button>
                         <button type="button" class="btn btn-sm btn-outline inv-log-btn" data-id="${this.esc(item.id)}">기록</button>
                         ${manage ? `<button type="button" class="btn btn-sm btn-outline inv-edit-btn" data-id="${this.esc(item.id)}">수정</button>` : ''}
+                        ${manage ? `<button type="button" class="btn btn-sm btn-outline inv-delete-btn" data-id="${this.esc(item.id)}" style="color:#b91c1c;border-color:#fca5a5;">삭제</button>` : ''}
+                    </div>
+                </td>
+            </tr>`;
+    },
+
+    // 숨김 목록: 최근 숨김일 순 (숨김일 미기록은 맨 뒤)
+    sortHidden(items) {
+        const t = i => this.toDate(i.hiddenAt)?.getTime() ?? -Infinity;
+        return [...items].sort((a, b) => t(b) - t(a) || (a.productName || '').localeCompare(b.productName || '', 'ko'));
+    },
+
+    // 숨김 항목 행: 숨김일(수동 수정 가능)·삭제일 표시. 삭제 항목은 상태변경·수정 대신 복원만 제공
+    renderHiddenRow(item) {
+        const st = item.status || '입고중';
+        const style = this.STATUS_STYLE[st] || { bg: '#f3f4f6', color: '#6b7280' };
+        const cost = this.costFor(item);
+        const manage = this.canManage();
+        const isDeleted = st === this.DELETED_STATUS;
+        const hiddenDate = this.kstDate(item.hiddenAt);
+        const deletedDate = this.kstDate(item.deletedAt);
+        const id = this.esc(item.id);
+        return `
+            <tr data-id="${id}">
+                <td>${this.esc(item.productName || '-')}</td>
+                <td style="font-size:12px;">${this.esc(item.category || '기타')}</td>
+                <td style="font-size:12px;">${this.esc(item.color || '-')}</td>
+                <td style="font-size:12px;">${this.esc(item.size || '-')}</td>
+                <td style="text-align:center;">
+                    <span style="padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;background:${style.bg};color:${style.color};white-space:nowrap;">${this.esc(st)}</span>
+                    ${isDeleted && item.prevStatus ? `<div style="font-size:11px;color:#9ca3af;margin-top:2px;">이전: ${this.esc(item.prevStatus)}</div>` : ''}
+                </td>
+                <td class="inv-hidden-date" style="text-align:center;white-space:nowrap;font-size:12px;">
+                    ${hiddenDate
+                        ? `${this.esc(hiddenDate)}${item.hiddenAtManual ? ' <span title="직접 수정한 날짜" style="color:#9ca3af;">(수동)</span>' : ''}`
+                        : '<span style="color:#b45309;">미기록</span>'}
+                    ${manage ? `<button type="button" class="btn btn-sm btn-outline inv-hidden-date-btn" data-id="${id}" title="숨김일 수정" style="margin-left:4px;padding:1px 6px;">✎</button>` : ''}
+                </td>
+                <td class="inv-deleted-date" style="text-align:center;white-space:nowrap;font-size:12px;color:#b91c1c;">
+                    ${isDeleted ? (this.esc(deletedDate) || '<span style="color:#b45309;">미기록</span>') : '<span style="color:#d1d5db;">-</span>'}
+                </td>
+                <td style="font-size:12px;color:#6b7280;">${this.esc(item.notes || '-')}</td>
+                <td style="text-align:right;white-space:nowrap;font-size:12px;color:#6b7280;">${cost !== null ? this.won(cost) : '-'}</td>
+                <td style="text-align:center;">
+                    <div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;">
+                        ${isDeleted
+                            ? (manage ? `<button type="button" class="btn btn-sm btn-primary inv-restore-btn" data-id="${id}">복원</button>` : '')
+                            : `<button type="button" class="btn btn-sm btn-secondary inv-status-btn" data-id="${id}">상태변경</button>`}
+                        <button type="button" class="btn btn-sm btn-outline inv-log-btn" data-id="${id}">기록</button>
+                        ${manage && !isDeleted ? `<button type="button" class="btn btn-sm btn-outline inv-edit-btn" data-id="${id}">수정</button>` : ''}
+                        ${manage && !isDeleted ? `<button type="button" class="btn btn-sm btn-outline inv-delete-btn" data-id="${id}" style="color:#b91c1c;border-color:#fca5a5;">삭제</button>` : ''}
                     </div>
                 </td>
             </tr>`;
@@ -316,12 +421,17 @@ window.InventoryManagementModule = {
         document.getElementById('invClearBtn')?.addEventListener('click', () => { this.searchQuery = ''; this.render(); });
         document.getElementById('invHiddenToggle')?.addEventListener('click', () => {
             const b = document.getElementById('invHiddenBody');
-            if (b) b.style.display = b.style.display === 'none' ? 'block' : 'none';
+            if (!b) return;
+            this.hiddenOpen = b.style.display === 'none';   // 다시 그려도 펼침 상태 유지
+            b.style.display = this.hiddenOpen ? 'block' : 'none';
         });
         content.querySelectorAll('.inv-status-btn').forEach(b => b.addEventListener('click', () => this.showStatusModal(b.dataset.id)));
         content.querySelectorAll('.inv-log-btn').forEach(b => b.addEventListener('click', () => this.showLogsModal(b.dataset.id)));
         content.querySelectorAll('.inv-edit-btn').forEach(b => b.addEventListener('click', () => this.showEditModal(b.dataset.id)));
         content.querySelectorAll('.inv-cost-btn').forEach(b => b.addEventListener('click', () => this.showCostModal(b.dataset.id)));
+        content.querySelectorAll('.inv-delete-btn').forEach(b => b.addEventListener('click', () => this.showDeleteModal(b.dataset.id)));
+        content.querySelectorAll('.inv-restore-btn').forEach(b => b.addEventListener('click', () => this.showRestoreModal(b.dataset.id)));
+        content.querySelectorAll('.inv-hidden-date-btn').forEach(b => b.addEventListener('click', () => this.showHiddenDateModal(b.dataset.id)));
     },
 
     // 구 ERP 재고 (읽기 전용 보관 보기)
@@ -534,6 +644,7 @@ window.InventoryManagementModule = {
                 batch.set(db.collection(this.COL_ITEMS).doc(id), {
                     id, productName: e.productName, category: e.category, color: e.color, size: e.size,
                     status: e.status, notes: e.notes, createdAt: now, updatedAt: now, updatedBy: performer,
+                    ...(this.isHidden(e.status) ? { hiddenAt: now, hiddenAtManual: false } : {}),
                 });
                 batch.set(db.collection(this.COL_LOGS).doc(), {
                     inventoryId: id, productName: e.productName, color: e.color, size: e.size,
@@ -551,7 +662,7 @@ window.InventoryManagementModule = {
         await flush();
     },
 
-    // ===== 수정 (매장관리 doEditInventoryItem과 같은 필드만 갱신, 로그 없음 — 매장관리와 동일) =====
+    // ===== 수정 (매장관리 doEditInventoryItem과 같은 필드 갱신. 상태가 바뀌면 숨김일 처리 + 상태변경 로그) =====
 
     async showEditModal(itemId) {
         if (!this.canManage()) { window.Utils.showNotification('관리자·매니저만 수정할 수 있습니다.', 'error'); return; }
@@ -569,16 +680,32 @@ window.InventoryManagementModule = {
             if (!productName) this.fail('제품명을 입력해주세요.');
             const price = this.parsePrice(data.manufacturingPrice);
             if (Number.isNaN(price)) this.fail('제조가격은 0 이상의 숫자로 입력해주세요.');
-            await this.db().collection(this.COL_ITEMS).doc(itemId).update({
+            const newStatus = data.status || '입고중';
+            const fromStatus = item.status || '입고중';
+            const now = new Date();
+            const performer = this.myName();
+            const db = this.db();
+            const batch = db.batch();
+            batch.update(db.collection(this.COL_ITEMS).doc(itemId), {
                 productName,
                 category: data.category || '기타',
                 color: (data.color || '').trim(),
                 size: (data.size || '').trim(),
-                status: data.status || '입고중',
+                status: newStatus,
                 notes: (data.notes || '').trim(),
-                updatedAt: new Date(),
-                updatedBy: this.myName(),
+                updatedAt: now,
+                updatedBy: performer,
+                ...(newStatus !== fromStatus ? this.hiddenFieldsFor(fromStatus, newStatus, now) : {}),
             });
+            if (newStatus !== fromStatus) {
+                const { date, time } = this.getNow();
+                batch.set(db.collection(this.COL_LOGS).doc(), {
+                    inventoryId: itemId, productName, color: (data.color || '').trim(), size: (data.size || '').trim(),
+                    type: '상태변경', fromStatus, toStatus: newStatus,
+                    notes: '수정 화면에서 변경', performer, date, time, createdAt: now,
+                });
+            }
+            await batch.commit();
             await this.saveCost(itemId, price);
             w.remove();
             window.Utils.showNotification('수정되었습니다.', 'success');
@@ -653,19 +780,155 @@ window.InventoryManagementModule = {
             const notes = (data.notes || '').trim();
             const { date, time } = this.getNow();
             const db = this.db();
+            const now = new Date();
+            const fromStatus = item.status || '입고중';
             await db.collection(this.COL_ITEMS).doc(itemId).update({
-                status: newStatus, updatedAt: new Date(), updatedBy: performer,
+                status: newStatus, updatedAt: now, updatedBy: performer,
+                ...(newStatus !== fromStatus ? this.hiddenFieldsFor(fromStatus, newStatus, now) : {}),
             });
             await db.collection(this.COL_LOGS).add({
                 inventoryId: itemId,
                 productName: item.productName, color: item.color || '', size: item.size || '',
                 type: '상태변경', fromStatus: item.status || '', toStatus: newStatus,
-                notes, performer, date, time, createdAt: new Date(),
+                notes, performer, date, time, createdAt: now,
             });
             w.remove();
             window.Utils.showNotification(`상태 변경: ${item.status || '?'} → ${newStatus}`, 'success');
             await this.load();
         }, '변경');
+    },
+
+    // ===== 삭제 · 복원 · 숨김일 수정 =====
+    // 삭제는 소프트 삭제: 문서를 지우지 않고 status='삭제'로 숨긴다 (매장관리 화면에서도 숨김 목록으로 이동).
+
+    itemLabel(item) {
+        const meta = [item.color, item.size].filter(Boolean).join(' / ');
+        return `<b>${this.esc(item.productName || '-')}</b>${meta ? ` <span style="color:#6b7280;">${this.esc(meta)}</span>` : ''}`;
+    },
+
+    showDeleteModal(itemId) {
+        if (!this.canManage()) { window.Utils.showNotification('관리자·매니저만 삭제할 수 있습니다.', 'error'); return; }
+        const item = this.allItems.find(i => i.id === itemId);
+        if (!item || item.status === this.DELETED_STATUS) return;
+        const body = `
+            <p style="font-size:13px;margin-bottom:8px;">${this.itemLabel(item)}</p>
+            <p style="font-size:13px;margin-bottom:12px;">현재 상태: <strong>${this.esc(item.status || '입고중')}</strong></p>
+            <div style="padding:10px 12px;margin-bottom:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:12px;color:#991b1b;line-height:1.6;">
+                이 재고를 삭제하시겠습니까?<br>
+                보유 재고·제조가격 합계에서 빠지고 <b>숨김 항목</b>에 삭제일과 함께 표시됩니다.<br>
+                매장관리 프로그램에서도 같이 숨겨지며, 숨김 항목에서 <b>복원</b>할 수 있습니다.
+            </div>
+            <div class="form-group"><label>삭제 사유</label>
+                <input type="text" name="notes" id="invDeleteNotes" placeholder="예: 중복 등록, 분실"></div>`;
+        window.Utils.openModal(`재고 삭제: ${this.esc(item.productName)}`, body, async (data, w) => {
+            const db = this.db();
+            const now = new Date();
+            const { date, time } = this.getNow();
+            const performer = this.myName();
+            const fromStatus = item.status || '입고중';
+            const batch = db.batch();
+            batch.update(db.collection(this.COL_ITEMS).doc(itemId), {
+                status: this.DELETED_STATUS,
+                prevStatus: fromStatus,
+                deletedAt: now,
+                deletedBy: this.myEmail() || performer,
+                // 이미 숨김(재작업·재판매)이던 항목은 처음 숨긴 날짜를 유지
+                ...(this.isHidden(fromStatus) ? {} : { hiddenAt: now, hiddenAtManual: false }),
+                updatedAt: now,
+                updatedBy: performer,
+            });
+            batch.set(db.collection(this.COL_LOGS).doc(), {
+                inventoryId: itemId,
+                productName: item.productName, color: item.color || '', size: item.size || '',
+                type: '삭제', fromStatus, toStatus: this.DELETED_STATUS,
+                notes: (data.notes || '').trim(), performer, date, time, createdAt: now,
+            });
+            await batch.commit();
+            w.remove();
+            window.Utils.showNotification('삭제되었습니다. 숨김 항목에서 복원할 수 있습니다.', 'success');
+            await this.load();
+        }, '삭제');
+        setTimeout(() => document.getElementById('invDeleteNotes')?.focus(), 50);
+    },
+
+    showRestoreModal(itemId) {
+        if (!this.canManage()) { window.Utils.showNotification('관리자·매니저만 복원할 수 있습니다.', 'error'); return; }
+        const item = this.allItems.find(i => i.id === itemId);
+        if (!item || item.status !== this.DELETED_STATUS) return;
+        const prev = item.prevStatus;
+        const target = prev && prev !== this.DELETED_STATUS && this.STATUS_OPTIONS.includes(prev) ? prev : '입고중';
+        const body = `
+            <p style="font-size:13px;margin-bottom:8px;">${this.itemLabel(item)}</p>
+            <p style="font-size:13px;margin-bottom:12px;">삭제일: <strong>${this.esc(this.kstDate(item.deletedAt) || '미기록')}</strong>
+                ${item.deletedBy ? `<span style="color:#6b7280;">(${this.esc(item.deletedBy)})</span>` : ''}</p>
+            <div class="form-group"><label>되돌릴 상태</label>
+                <select name="newStatus" id="invRestoreStatus">${this.STATUS_OPTIONS.map(s => `<option value="${s}" ${s === target ? 'selected' : ''}>${s}${s === prev ? ' (삭제 전 상태)' : ''}</option>`).join('')}</select></div>
+            <div class="form-group"><label>기타</label><input type="text" name="notes" id="invRestoreNotes" placeholder="비고"></div>`;
+        window.Utils.openModal(`재고 복원: ${this.esc(item.productName)}`, body, async (data, w) => {
+            const newStatus = data.newStatus || target;
+            const db = this.db();
+            const now = new Date();
+            const { date, time } = this.getNow();
+            const performer = this.myName();
+            const batch = db.batch();
+            batch.update(db.collection(this.COL_ITEMS).doc(itemId), {
+                status: newStatus,
+                ...this.hiddenFieldsFor(this.DELETED_STATUS, newStatus, now),
+                updatedAt: now,
+                updatedBy: performer,
+            });
+            batch.set(db.collection(this.COL_LOGS).doc(), {
+                inventoryId: itemId,
+                productName: item.productName, color: item.color || '', size: item.size || '',
+                type: '복원', fromStatus: this.DELETED_STATUS, toStatus: newStatus,
+                notes: (data.notes || '').trim() || `삭제일 ${this.kstDate(item.deletedAt) || '미기록'}`,
+                performer, date, time, createdAt: now,
+            });
+            await batch.commit();
+            w.remove();
+            window.Utils.showNotification(`복원되었습니다: ${newStatus}`, 'success');
+            await this.load();
+        }, '복원');
+    },
+
+    // 숨김일 수동 수정: 날짜만 고르면 한국시간 그날 00:00으로 저장, hiddenAtManual=true + 로그
+    showHiddenDateModal(itemId) {
+        if (!this.canManage()) return;
+        const item = this.allItems.find(i => i.id === itemId);
+        if (!item || !this.isHidden(item.status)) return;
+        const cur = this.kstDate(item.hiddenAt);
+        const body = `
+            <p style="font-size:13px;margin-bottom:8px;">${this.itemLabel(item)}</p>
+            <p style="font-size:12px;color:#6b7280;margin-bottom:12px;">현재 숨김일: ${cur ? this.esc(cur) + (item.hiddenAtManual ? ' (수동)' : ' (자동)') : '미기록'} · 상태 ${this.esc(item.status)}</p>
+            <div class="form-group"><label>숨김일 *</label>
+                <input type="date" name="hiddenDate" id="invHiddenDateInput" value="${this.esc(cur)}" max="${this.getNow().date}"></div>`;
+        window.Utils.openModal('숨김일 수정', body, async (data, w) => {
+            const d = String(data.hiddenDate || '').trim();
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) this.fail('날짜를 선택해주세요.');
+            if (d > this.getNow().date) this.fail('오늘 이후 날짜는 입력할 수 없습니다.');
+            if (d === cur) { w.remove(); return; }
+            const db = this.db();
+            const now = new Date();
+            const { date, time } = this.getNow();
+            const performer = this.myName();
+            const batch = db.batch();
+            batch.update(db.collection(this.COL_ITEMS).doc(itemId), {
+                hiddenAt: new Date(`${d}T00:00:00+09:00`),
+                hiddenAtManual: true,
+                updatedAt: now,
+                updatedBy: performer,
+            });
+            batch.set(db.collection(this.COL_LOGS).doc(), {
+                inventoryId: itemId,
+                productName: item.productName, color: item.color || '', size: item.size || '',
+                type: '숨김일수정', fromStatus: item.status, toStatus: item.status,
+                notes: `숨김일 ${cur || '미기록'} → ${d}`, performer, date, time, createdAt: now,
+            });
+            await batch.commit();
+            w.remove();
+            window.Utils.showNotification(`숨김일이 ${d}(으)로 저장되었습니다.`, 'success');
+            await this.load();
+        }, '저장');
     },
 
     // ===== 이력 =====
@@ -691,8 +954,10 @@ window.InventoryManagementModule = {
         const rows = logs.length === 0
             ? '<tr><td colspan="5" style="text-align:center;color:#9ca3af;padding:16px;">기록이 없습니다.</td></tr>'
             : logs.map(log => {
-                const change = log.fromStatus && log.toStatus ? `${log.fromStatus} → ${log.toStatus}` : (log.toStatus || log.type || '-');
-                const st = this.STATUS_STYLE[log.toStatus] || { bg: '#e0f2fe', color: '#0369a1' };
+                const change = log.fromStatus && log.toStatus && log.fromStatus !== log.toStatus
+                    ? `${log.fromStatus} → ${log.toStatus}` : (log.toStatus || log.type || '-');
+                const st = log.type === '숨김일수정' ? { bg: '#e0f2fe', color: '#0369a1' }
+                    : (this.STATUS_STYLE[log.toStatus] || { bg: '#e0f2fe', color: '#0369a1' });
                 return `<tr>
                     <td style="font-size:12px;white-space:nowrap;">${this.esc(log.date || '')} ${this.esc(log.time || '')}</td>
                     <td style="text-align:center;"><span style="padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;background:${st.bg};color:${st.color};">${this.esc(log.type || '-')}</span></td>
@@ -728,17 +993,19 @@ window.InventoryManagementModule = {
             { key: 'productName', label: '제품명' }, { key: 'category', label: '종류' },
             { key: 'color', label: '색상' }, { key: 'size', label: '사이즈' },
             { key: 'status', label: '상태' }, { key: 'notes', label: '기타' },
+            { key: 'hiddenDate', label: '숨김일' }, { key: 'deletedDate', label: '삭제일' },
             { key: 'manufacturingPrice', label: '제조가격' }, { key: 'costSource', label: '제조가격 출처' },
             { key: 'legacyCost', label: '구 ERP 제조가격(참고)' },
             { key: 'updatedAt', label: '수정일' }, { key: 'updatedBy', label: '수정자' }, { key: 'id', label: '재고ID' },
         ];
         const fmt = v => { const d = v?.toDate ? v.toDate() : (v ? new Date(v) : null); return d && !isNaN(d) ? d.toLocaleDateString('ko-KR') : ''; };
-        // 현재 탭·검색 기준, 숨김(재작업·재판매)도 포함하고 상태 열로 구분
+        // 현재 탭·검색 기준, 숨김(재작업·재판매·삭제)도 포함하고 상태·숨김일·삭제일 열로 구분
         const rows = this.allItems.filter(i => this.matches(i)).map(i => {
             const c = this.costs[i.id];
             return {
                 productName: i.productName || '', category: i.category || '기타', color: i.color || '', size: i.size || '',
                 status: i.status || '입고중', notes: i.notes || '',
+                hiddenDate: this.kstDate(i.hiddenAt), deletedDate: this.kstDate(i.deletedAt),
                 manufacturingPrice: c ? Math.round(Number(c.manufacturingPrice) || 0) : '',
                 costSource: c ? this.sourceLabel(c.source) : '',
                 legacyCost: this.legacyCostFor(i).join(' / '),
@@ -748,7 +1015,7 @@ window.InventoryManagementModule = {
         window.Utils.downloadCsvData(fields, rows, '재고관리.csv');
     },
 
-    // CSV 업로드는 "추가"만 지원 (전체 교체·삭제 없음 — 매장관리에 삭제 기능이 없으므로)
+    // CSV 업로드는 "추가"만 지원 (전체 교체·삭제 없음 — 삭제는 행 단위 삭제 버튼으로만, '삭제' 상태 업로드 불가)
     openCsvUpload() {
         if (!this.canManage()) { window.Utils.showNotification('관리자·매니저만 업로드할 수 있습니다.', 'error'); return; }
         window.Utils.openCsvUploadModal(this.csvUploadFields(), async (rows) => {
