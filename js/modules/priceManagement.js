@@ -3,7 +3,7 @@
  */
 
 window.PriceManagementModule = {
-    DEPARTMENT_STONE_TIERS: ['1', '1.5', '2', '3', '4'],
+    DEPARTMENT_STONE_TIERS: ['1', '1.5', '2', '3', '4', '5'], // 매장관리 앱과 동일
     DEPARTMENT_STONE_ROWS: [
         { key: 'generalRound', label: '일반 라운드컷' },
         { key: 'generalFancy', label: '일반 팬시컷' },
@@ -527,19 +527,13 @@ window.PriceManagementModule = {
         ['goldPrice','ownMallCommission','weightAdjustment18K','ownMargin']
             .forEach(k => { data[k] = parseFloat(data[k]) || 0; });
         data.departmentCommission = parseFloat(data.departmentCommission) || 25;
-        data.departmentStoneMargin = parseFloat(data.departmentStoneMargin) || 15;
-        const stonePrices = this.collectDepartmentStonePrices();
+        // 나석 백화점 가격표(stonePrices)·나석 수수료율(departmentStoneMargin)은
+        // '나석 결제가 설정' 메뉴(deptStoneCommission.js)에서만 adminSettings/discount 에 저장한다.
+        // 여기서 다시 쓰면 두 화면이 서로 덮어쓰므로 저장하지 않는다.
+        delete data.departmentStoneMargin;
 
-        await Promise.all([
-            window.firebaseDb.collection('prices').doc('settings')
-                .set({ ...data, updatedAt: new Date() }, { merge: true }),
-            window.firebaseDb.collection('adminSettings').doc('discount')
-                .set({
-                    stonePrices,
-                    departmentStoneMargin: data.departmentStoneMargin,
-                    updatedAt: new Date()
-                }, { merge: true })
-        ]);
+        await window.firebaseDb.collection('prices').doc('settings')
+            .set({ ...data, updatedAt: new Date() }, { merge: true });
 
         await this._syncProductRatesForPriceSettings();
 

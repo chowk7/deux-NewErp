@@ -207,6 +207,11 @@ window.ProfitLossModule = {
     },
 
     getOrderCommissionCost(order = {}) {
+        // 백화점 나석 결제 분리 수수료가 적용된 주문(deptStoneApplied)은
+        // 나석결제액 × 나석수수료율 + 나머지 × 수수료율, 그 외는 매출금액 × 수수료율
+        if (window.DeptStoneCommission) {
+            return window.DeptStoneCommission.getOrderCommission(order).total;
+        }
         const salesAmount = parseFloat(order.salesAmount) || 0;
         const commissionRate = parseFloat(order.commissionRate) || 0;
         return salesAmount * (commissionRate / 100);

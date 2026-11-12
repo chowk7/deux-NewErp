@@ -112,6 +112,7 @@ const MENU_DEFINITIONS = [
     { id: 'customers', label: '고객목록표', section: '가격관리' },
     { id: 'option-charges', label: '각줄추가금액', section: '가격관리' },
     { id: 'price-settings', label: '가격옵션', section: '가격관리' },
+    { id: 'stone-payment-settings', label: '나석 결제가 설정', section: '가격관리' },
     { id: 'orders', label: '매출표', section: '매출관리' },
     { id: 'manufacturing-costs', label: '제조원가표', section: '매출관리' },
     { id: 'admin-expenses', label: '판관비', section: '매출관리' },
