@@ -19,6 +19,7 @@ class DiamonJewelryApp {
             { id: 'customers', label: '고객목록표', section: '가격관리' },
             { id: 'option-charges', label: '각줄추가금액', section: '가격관리' },
             { id: 'price-settings', label: '가격옵션', section: '가격관리' },
+            { id: 'stone-payment-settings', label: '나석 결제가 설정', section: '가격관리' },
             { id: 'orders', label: '매출표', section: '매출관리' },
             { id: 'manufacturing-costs', label: '제조원가표', section: '매출관리' },
             { id: 'admin-expenses', label: '판관비', section: '매출관리' },
@@ -186,6 +187,7 @@ class DiamonJewelryApp {
             'customers': 'customersContent',
             'option-charges': 'optionChargesContent',
             'price-settings': 'priceSettingsContent',
+            'stone-payment-settings': 'stonePaymentSettingsContent',
             'orders': 'ordersContent',
             'manufacturing-costs': 'manufacturingCostsContent',
             'admin-expenses': 'adminExpensesContent',
@@ -216,6 +218,8 @@ class DiamonJewelryApp {
                         await this.loadDashboard();
                     } else if (window.PriceManagementModule && (menuId === 'diamond-rates' || menuId === 'option-charges' || menuId === 'price-settings')) {
                         window.PriceManagementModule.loadData(menuId);
+                    } else if (window.DeptStoneCommission && menuId === 'stone-payment-settings') {
+                        await window.DeptStoneCommission.loadSettingsMenu();
                     } else if (window.SalesManagementModule && menuId === 'orders') {
                         await window.SalesManagementModule.loadOrders();
                     } else if (window.ProductRatesModule && menuId === 'product-rates') {
@@ -464,6 +468,7 @@ class DiamonJewelryApp {
      * 신규 모듈 설정
      */
     setupNewModules() {
+        if (window.DeptStoneCommission) window.DeptStoneCommission.initSettingsMenu();
         if (window.ProductRatesModule) window.ProductRatesModule.init();
         if (window.CustomerManagementModule) window.CustomerManagementModule.init();
         if (window.ManufacturingCostsModule) window.ManufacturingCostsModule.init();

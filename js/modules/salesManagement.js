@@ -29,6 +29,8 @@ window.SalesManagementModule = {
         { key: 'orderAmount',     label: '최종주문금액',  type: 'number', defaultRequired: true  },
         { key: 'salesAmount',     label: '매출금액',      type: 'number', defaultRequired: true  },
         { key: 'expectedProfit',  label: '예상 수익금',   type: 'computed', defaultRequired: false },
+        { key: 'stonePaymentAmount', label: '나석결제액(백화점)', type: 'computed', defaultRequired: false },
+        { key: 'commissionAmount',   label: '수수료(나석분리 반영)', type: 'computed', defaultRequired: false },
         { key: 'purchasePath',    label: '구매경로',      type: 'select', defaultRequired: false,
           options: ['온라인','오프라인'] },
         { key: 'purchasePathDetail', label: '구매경로상세', type: 'select', defaultRequired: false,
@@ -606,6 +608,10 @@ window.SalesManagementModule = {
                 if (window.ManufacturingCostsModule) {
                     await window.ManufacturingCostsModule.autoFillFromProductRates(docId);
                 }
+                // 백화점 나석 결제 수수료 (나석정보 자동입력 이후 계산)
+                if (window.DeptStoneCommission) {
+                    await window.DeptStoneCommission.applyToSavedOrder(docId);
+                }
             }
 
             // 신규 고객 자동 추가 (고객목록에 없는 경우)
@@ -1137,14 +1143,20 @@ window.SalesManagementModule = {
             const productRate = findProductRate(order);
             const salesAmount = parseFloat(order.salesAmount) || 0;
             const commissionRate = parseFloat(order.commissionRate) || 0;
+            const commission = window.DeptStoneCommission
+                ? window.DeptStoneCommission.getOrderCommission(order).total
+                : salesAmount * (commissionRate / 100);
             const salesCost = parseFloat(productRate?.salesCost);
             const expectedProfit = Number.isFinite(salesCost)
-                ? Math.round(salesAmount * (1 - commissionRate / 100) - salesCost)
+                ? Math.round(salesAmount - commission - salesCost)
                 : null;
 
+            const breakdown = window.DeptStoneCommission ? window.DeptStoneCommission.getOrderCommission(order) : null;
             return {
                 ...order,
-                expectedProfit
+                expectedProfit,
+                stonePaymentAmount: breakdown?.applied ? breakdown.stonePayment : null,
+                commissionAmount: Math.round(commission)
             };
         });
     },
@@ -1543,6 +1555,16 @@ window.SalesManagementModule = {
             // 주문 데이터 없음 무시
         }
 
+        // 백화점 나석 결제 수수료 설정 (adminSettings/discount, 매장관리 앱과 공유)
+        let deptStoneSettings = null;
+        try {
+            deptStoneSettings = window.DeptStoneCommission ? await window.DeptStoneCommission.loadSettings() : null;
+        } catch (e) {
+            console.error('[SalesManagement] 나석 결제가 설정 로드 실패:', e);
+        }
+        const deptStoneManualVal = window.DeptStoneCommission?.hasManual(order?.deptStonePaymentManual)
+            ? Math.round(parseFloat(order.deptStonePaymentManual)) : '';
+
         const body = `<div class="form-grid">` +
             this.ORDER_FIELDS.filter(f => f.type !== 'status' && f.type !== 'computed').map(f => {
                 const isRequired = req.includes(f.key);
@@ -1634,6 +1656,16 @@ window.SalesManagementModule = {
                         ${input}
                     </div>`;
             }).join('') + `
+            ${deptStoneSettings ? `
+            <div id="deptStoneBox" style="grid-column:1/-1; border-top:1px solid #e5e7eb; padding-top:16px; margin-top:16px;">
+                <p style="font-weight:600;margin-bottom:8px;">💠 백화점 나석 결제 · 수수료</p>
+                <div id="deptStoneSummary" style="color:#6b7280;font-size:0.875rem;">계산 중...</div>
+                <div class="form-group" style="margin-top:10px;max-width:340px;">
+                    <label>나석결제액 수동입력 <span style="color:#9ca3af;font-size:0.75rem;">(비우면 자동계산 · 백화점 주문만 적용)</span></label>
+                    <input type="number" name="deptStonePaymentManual" id="deptStonePaymentManualInput"
+                        value="${deptStoneManualVal}" step="1" min="0" placeholder="자동">
+                </div>
+            </div>` : ''}
             <div style="grid-column:1/-1; border-top:1px solid #e5e7eb; padding-top:16px; margin-top:16px;">
                 <p style="font-weight:600;margin-bottom:12px;">영수증/주문서 이미지 첨부</p>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
@@ -1799,6 +1831,26 @@ window.SalesManagementModule = {
                     data.backSupport = '';
                 }
 
+                // 백화점 나석 결제 분리 수수료 (1ct 이상 나석 → 나석결제액 × 나석수수료율 + 나머지 × 수수료율)
+                const deptStoneManual = data.deptStonePaymentManual;
+                delete data.deptStonePaymentManual;
+                if (window.DeptStoneCommission && deptStoneSettings) {
+                    const DSC = window.DeptStoneCommission;
+                    if (orderId) {
+                        const merged = { ...(order || {}), ...data };
+                        const stonePatch = DSC.buildOrderFields(merged, deptStoneSettings, {
+                            productRates: this.productRates,
+                            manual: deptStoneManual
+                        });
+                        if (stonePatch) {
+                            Object.assign(data, stonePatch, DSC.buildProfitPatch({ ...merged, ...stonePatch }));
+                        }
+                    } else if (DSC.hasManual(deptStoneManual)) {
+                        // 신규 주문: 수동값만 넣어 두고, 저장·나석 자동입력 후 applyToSavedOrder 에서 계산
+                        data.deptStonePaymentManual = Math.round(parseFloat(deptStoneManual));
+                    }
+                }
+
                 if (orderId) {
                     await window.firebaseDb
                         .collection('sales').doc('orders').collection('items').doc(orderId)
@@ -1858,6 +1910,10 @@ window.SalesManagementModule = {
                     if (window.ManufacturingCostsModule) {
                         await window.ManufacturingCostsModule.autoFillFromProductRates(docRef.id);
                     }
+                    // 백화점 나석 결제 수수료 (나석정보 자동입력 이후 계산)
+                    if (window.DeptStoneCommission) {
+                        await window.DeptStoneCommission.applyToSavedOrder(docRef.id);
+                    }
                 }
                 w.remove();
                 this.allOrders = [];
@@ -1894,9 +1950,42 @@ window.SalesManagementModule = {
                     const stoneArrayInput = wrapper.querySelector('#stoneArrayInput');
                     if (stoneInfoDisplay) stoneInfoDisplay.value = stoneQtyText;
                     if (stoneArrayInput) stoneArrayInput.value = JSON.stringify(stoneArray);
+                    updateDeptStoneSummary();
                 });
             });
         }
+
+        // 백화점 나석 결제 · 수수료 실시간 표시
+        function updateDeptStoneSummary() {
+            const box = wrapper.querySelector('#deptStoneSummary');
+            const DSC = window.DeptStoneCommission;
+            if (!box || !DSC || !deptStoneSettings) return;
+            try {
+                const form = wrapper.querySelector('#modalForm');
+                const fd = Object.fromEntries(new FormData(form));
+                const manual = fd.deptStonePaymentManual;
+                delete fd.deptStonePaymentManual;
+                ['orderAmount', 'salesAmount', 'commissionRate'].forEach(k => { fd[k] = parseFloat(fd[k]) || 0; });
+                const merged = { ...(order || {}), ...fd };
+                if (!merged.productCode && merged.productName) {
+                    const p = products.find(pp => pp.name === merged.productName);
+                    if (p) merged.productCode = p.code;
+                }
+                const patch = DSC.buildOrderFields({ ...merged, deptStoneApplied: merged.deptStoneApplied ?? false }, deptStoneSettings, {
+                    productRates: self.productRates,
+                    manual
+                });
+                box.innerHTML = DSC.renderOrderBreakdownHtml(merged, patch, deptStoneSettings);
+            } catch (err) {
+                console.error('[SalesManagement] 나석 수수료 미리보기 실패:', err);
+                box.textContent = '나석 수수료 미리보기 계산 실패';
+            }
+        }
+        const self = this;
+        const deptForm = wrapper.querySelector('#modalForm');
+        deptForm?.addEventListener('input', updateDeptStoneSummary);
+        deptForm?.addEventListener('change', updateDeptStoneSummary);
+        updateDeptStoneSummary();
 
         // 고객명 검색 드롭다운 설정
         const customerContainer = wrapper.querySelector('#customer-select-container');
@@ -2613,6 +2702,8 @@ window.SalesManagementModule = {
                 ['orderAmount','salesAmount','commissionRate'].forEach(k => {
                     if (row[k] !== undefined) row[k] = parseFloat(String(row[k]).replace(/,/g, '')) || 0;
                 });
+                // 화면 계산 전용(computed) 열은 저장하지 않는다
+                this.ORDER_FIELDS.filter(f => f.type === 'computed').forEach(f => { delete row[f.key]; });
                 batch.set(ref, { ...row, createdAt: new Date(), updatedAt: new Date() });
             });
             await batch.commit();
@@ -2742,6 +2833,8 @@ window.SalesManagementModule = {
                             row[k] = toBool(row[k]);
                         });
                         row['inputCompleted'] = toBool(row['inputCompleted']);
+                        // 화면 계산 전용(computed) 열은 저장하지 않는다
+                        this.ORDER_FIELDS.filter(f => f.type === 'computed').forEach(f => { delete row[f.key]; });
 
                         addBatch.set(ref, { ...row, createdAt: new Date(), updatedAt: new Date() });
                         if ((idx + 1) % 500 === 0) {

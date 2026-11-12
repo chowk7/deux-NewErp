@@ -734,7 +734,7 @@ window.ManufacturingCostsModule = {
 
         data.stoneArray = JSON.stringify(stoneArray);
 
-        const calc = this.calculate(data);
+        const calc = this.calculate({ ...this._stoneCommissionFields(wrapper._costRef), ...data });
 
         const calcFields = ['goldValue_auto', 'stoneCostRef', 'manufacturingCost', 'salesProfit', 'salesProfitRate'];
         calcFields.forEach(k => {
@@ -747,6 +747,15 @@ window.ManufacturingCostsModule = {
         });
 
         window.Utils.showNotification(`${stoneArray.length}개의 나석이 추가되었습니다`, 'success');
+    },
+
+    // 주문의 백화점 나석 결제 수수료 스냅샷 필드만 골라낸다 (폼·CSV 계산용)
+    _stoneCommissionFields(order) {
+        if (!window.DeptStoneCommission || !order || order.deptStoneApplied === undefined) return {};
+        const fields = window.DeptStoneCommission.pickOrderFields(order);
+        // 나석결제액 상한(최종주문금액) 계산용
+        if (order.orderAmount !== undefined) fields.orderAmount = order.orderAmount;
+        return fields;
     },
 
     calculate(data) {
@@ -820,8 +829,12 @@ window.ManufacturingCostsModule = {
         const manufacturingCost = manufacturingCostExVat * 1.1;
 
         // 3️⃣ 매출이익 = 매출 × (1 - 수수료율(%)/100) - 제조가격(VAT포함)
+        // 백화점 나석 결제 분리 수수료(deptStoneApplied) 주문은 나석결제액 × 나석수수료율 + 나머지 × 수수료율
         const commissionRate = n('commissionRate') || 0;
-        const netSalesAmount = n('salesAmount') * (1 - commissionRate / 100);
+        const commissionCost = window.DeptStoneCommission
+            ? window.DeptStoneCommission.getOrderCommission(data).total
+            : n('salesAmount') * (commissionRate / 100);
+        const netSalesAmount = n('salesAmount') - commissionCost;
         const salesProfit = netSalesAmount - manufacturingCost;
 
         // 4️⃣ 매출이익률(%) = 매출이익 / 매출 × 100
@@ -960,11 +973,16 @@ window.ManufacturingCostsModule = {
                         data[k] = parseFloat(data[k]) || 0;
                     }
                 });
-                const calculated = this.calculate(data);
+                // 나석 결제 분리 수수료 필드는 폼에 없으므로 기존 주문 값을 넣어 계산한다
+                const calculated = this.calculate({ ...this._stoneCommissionFields(cost), ...data });
                 // 수정만 가능 (신규 입력은 매출표에서만)
                 await window.firebaseDb.collection('sales').doc('orders')
                     .collection('items').doc(costId)
                     .update({ ...calculated, updatedAt: new Date() });
+                // 나석중량·나석정보 변경 시 백화점 나석 결제 수수료 재계산 (적용 시작일 이후·기적용 주문만)
+                if (window.DeptStoneCommission) {
+                    await window.DeptStoneCommission.applyToSavedOrder(costId);
+                }
                 w.remove();
                 const savedPage = this.currentPage;
                 this.allCosts = [];  // 캐시 비우기
@@ -1050,7 +1068,7 @@ window.ManufacturingCostsModule = {
         const updateCalculatedFields = () => {
             const fd = new FormData(wrapper.querySelector('#modalForm'));
             const data = Object.fromEntries(fd);
-            const calc = this.calculate(data);
+            const calc = this.calculate({ ...this._stoneCommissionFields(cost), ...data });
             ['goldValue_auto','stoneCostRef','manufacturingCost','salesProfit','salesProfitRate'].forEach(k => {
                 const el = wrapper.querySelector(`[name="${k}"]`);
                 if (el) el.value = Math.round(calc[k] || 0);
@@ -1143,7 +1161,9 @@ window.ManufacturingCostsModule = {
 
                 for (const row of rows) {
                     // ✅ 각 행에 대해 calculate() 호출하여 자동 계산 필드 채우기
-                    const calculatedRow = this.calculate(row);
+                    const existingOrder = (this.allCosts || []).find(c => c.id === row.orderId)
+                        || (this.costs || []).find(c => c.id === row.orderId);
+                    const calculatedRow = this.calculate({ ...this._stoneCommissionFields(existingOrder), ...row });
 
                     // orderId를 문서 ID로 사용하거나, 새 ID 생성
                     const docId = row.orderId || window.firebaseDb.collection('_').doc().id;

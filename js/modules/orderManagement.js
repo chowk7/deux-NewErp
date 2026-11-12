@@ -792,6 +792,10 @@ window.OrderManagementModule = {
                     await window.firebaseDb.collection('sales').doc('orders')
                         .collection('items').doc(resolvedItemId).update({ images, updatedAt: new Date() });
                 }
+                // 나석 변경 시 백화점 나석 결제 수수료 재계산 (수동입력 값은 유지, 미적용 기존 주문은 건드리지 않음)
+                if (window.DeptStoneCommission) {
+                    await window.DeptStoneCommission.applyToSavedOrder(resolvedItemId);
+                }
                 w.remove();
                 if (onComplete) {
                     await onComplete();

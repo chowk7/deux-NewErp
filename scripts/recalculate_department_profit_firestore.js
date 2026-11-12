@@ -14,7 +14,7 @@ const db = admin.firestore();
 const APPLY = process.argv.includes('--apply');
 const BATCH_LIMIT = 400;
 
-const DEPT_STONE_CARAT_TIERS = ['1', '1.5', '2', '3', '4'];
+const DEPT_STONE_CARAT_TIERS = ['1', '1.5', '2', '3', '4', '5']; // 매장관리 앱과 동일
 const DEPT_STONE_GROUPS = {
   generalRound: '일반 라운드컷',
   generalFancy: '일반 팬시컷',
@@ -28,10 +28,10 @@ function n(value) {
 
 function getDefaultDeptStonePrices() {
   return {
-    generalRound: { '1': 700000, '1.5': 1050000, '2': 1400000, '3': 2100000, '4': 2800000 },
-    generalFancy: { '1': 800000, '1.5': 1200000, '2': 1600000, '3': 2400000, '4': 3200000 },
-    earringRound: { '1': 550000, '1.5': 825000, '2': 1100000, '3': 1650000, '4': 2200000 },
-    earringFancy: { '1': 600000, '1.5': 900000, '2': 1200000, '3': 1800000, '4': 2400000 }
+    generalRound: { '1': 700000, '1.5': 1050000, '2': 1400000, '3': 2100000, '4': 2800000, '5': 3500000 },
+    generalFancy: { '1': 800000, '1.5': 1200000, '2': 1600000, '3': 2400000, '4': 3200000, '5': 4000000 },
+    earringRound: { '1': 550000, '1.5': 825000, '2': 1100000, '3': 1650000, '4': 2200000, '5': 2750000 },
+    earringFancy: { '1': 600000, '1.5': 900000, '2': 1200000, '3': 1800000, '4': 2400000, '5': 3000000 }
   };
 }
 
