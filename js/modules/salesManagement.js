@@ -52,6 +52,26 @@ window.SalesManagementModule = {
     // 통합 CSV 필드 (매출 + 제조원가 + 주문관리)
     INTEGRATED_CSV_FIELDS: null, // init에서 동적 생성
 
+    // 구매취소 필드 (2026-11-20) — CSV 내보내기·통합 CSV 왕복 시 취소 상태가 사라지지 않도록 포함
+    CANCEL_CSV_FIELDS: [
+        { key: 'canceled',          label: '구매취소(Y/N)',   type: 'text' },
+        { key: 'cancelType',        label: '취소유형',        type: 'text' },
+        { key: 'canceledAt',        label: '취소일',          type: 'date' },
+        { key: 'refundAmount',      label: '환불액',          type: 'number' },
+        { key: 'cancelLoss',        label: '취소손실',        type: 'number' },
+        { key: 'canceledBy',        label: '취소처리자',      type: 'text' },
+        { key: 'linkedInventoryId', label: '취소재입고_재고ID', type: 'text' },
+        { key: 'cancelNote',        label: '취소메모',        type: 'text' },
+        { key: 'penaltyAmount',     label: '위약금',          type: 'number' },
+        { key: 'cancelSpentCost',   label: '취소_이미쓴비용', type: 'number' },
+        { key: 'cancelRecoveredCost', label: '취소_회수재고원가', type: 'number' },
+        { key: 'cancelRecoveredStones', label: '회수나석(JSON)', type: 'text' },
+        { key: 'cancelRecoveredGoldG', label: '회수금중량(g)',  type: 'number' },
+        { key: 'cancelRecoveredGoldValue', label: '회수금평가액', type: 'number' },
+        { key: 'linkedStoneInventoryIds', label: '회수나석_재고ID', type: 'text' },
+        { key: 'linkedRecoveredGoldId', label: '회수금_기록ID',  type: 'text' },
+    ],
+
     orders: [],
     allOrders: [], // 필터링 전 전체 데이터
     filteredOrders: [], // 연도+검색 필터 적용 데이터
@@ -66,6 +86,7 @@ window.SalesManagementModule = {
     columnFilterApplyTimer: null,
     isOrderFilterComposing: false,
     showUndeliveredOnly: false,
+    cancelFilter: 'all', // 'all' 전체 | 'active' 정상 주문만 | 'canceled' 구매취소 내역
     orderSortState: { column: 'orderDate', direction: 'desc' },
     PURCHASE_PATH_DETAIL_OPTIONS: {
         온라인: ['공식 온라인 스토어', '신세계V', 'SSG', '더현대닷컴'],
@@ -113,6 +134,7 @@ window.SalesManagementModule = {
             { key: 'completionDate',         label: '제작완료일',        type: 'date' },
             { key: 'shippingReadyDate',      label: '배송준비일',        type: 'date' },
             { key: 'deliveryRemarks',        label: '배송비고',          type: 'text' },
+            ...this.CANCEL_CSV_FIELDS,
         ];
         this.setupEventListeners();
     },
@@ -831,6 +853,11 @@ window.SalesManagementModule = {
         if (this.showUndeliveredOnly) {
             data = data.filter(o => !o.delivered);
         }
+        if (this.cancelFilter === 'canceled') {
+            data = data.filter(o => window.Utils.isOrderCanceled(o));
+        } else if (this.cancelFilter === 'active') {
+            data = window.Utils.excludeCanceledOrders(data);
+        }
         if (this.searchQuery) {
             const q = this.searchQuery.toLowerCase();
             data = data.filter(o =>
@@ -920,7 +947,25 @@ window.SalesManagementModule = {
         ).join('');
 
         const hasColumnFilter = Object.values(this.columnFilters || {}).some(value => String(value || '').trim() !== '');
-        const hasFilter = this.searchQuery || this.selectedYear !== 'all' || this.showUndeliveredOnly || hasColumnFilter;
+        const hasFilter = this.searchQuery || this.selectedYear !== 'all' || this.showUndeliveredOnly || hasColumnFilter || this.cancelFilter !== 'all';
+        const canceledAll = this.allOrders.filter(o => window.Utils.isOrderCanceled(o));
+        const cancelBtns = [['all', '전체'], ['active', '정상 주문만'], ['canceled', `구매취소 내역 (${canceledAll.length})`]]
+            .map(([k, label]) => `<button class="btn btn-sm orders-cancel-filter-btn ${this.cancelFilter === k ? 'btn-primary' : 'btn-outline'}" data-cancel-filter="${k}">${label}</button>`)
+            .join('');
+        let cancelSummaryHtml = '';
+        if (this.cancelFilter === 'canceled') {
+            const list = this.filteredOrders || [];
+            const sum = (k) => list.reduce((s, o) => s + (parseFloat(o[k]) || 0), 0);
+            cancelSummaryHtml = `
+            <div style="padding:8px 12px;margin-bottom:8px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:0.85rem;color:#991b1b;">
+                구매취소 <b>${list.length}</b>건 · 원 매출금액 ${window.Utils.formatNumber(Math.round(sum('salesAmount')))}원
+                · 환불액 ${window.Utils.formatNumber(Math.round(sum('refundAmount')))}원
+                · 위약금(매출 유지) ${window.Utils.formatNumber(Math.round(list.reduce((s, o) => s + window.Utils.getCancelPenalty(o), 0)))}원
+                · 회수 재고 ${window.Utils.formatNumber(Math.round(sum('cancelRecoveredCost')))}원
+                · 취소손실(제작 전) ${window.Utils.formatNumber(Math.round(sum('cancelLoss')))}원
+                <span style="color:#6b7280;">— 매출·손익 집계에서는 원래 판매한 달에서 제외됩니다.</span>
+            </div>`;
+        }
         container.innerHTML = `
             <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:10px 0 12px;">
                 <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
@@ -931,6 +976,10 @@ window.SalesManagementModule = {
                     <button class="btn btn-sm ${this.showUndeliveredOnly ? 'btn-primary' : 'btn-outline'}" id="undeliveredFilterBtn">
                         🚚 배송완료 전만 보기
                     </button>
+                </div>
+                <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+                    <span style="font-size:0.85rem;color:#6b7280;white-space:nowrap;">구매취소</span>
+                    ${cancelBtns}
                 </div>
                 <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
                     <button class="btn btn-sm btn-outline" id="batchRefillStoneBtn" title="제품단가표 기준으로 전체 주문의 나석정보를 다시 채웁니다">
@@ -944,7 +993,14 @@ window.SalesManagementModule = {
                     <button class="btn btn-sm btn-primary" id="ordersSearchBtn">검색</button>
                     ${hasFilter ? '<button class="btn btn-sm btn-outline" id="ordersClearBtn">초기화</button>' : ''}
                 </div>
-            </div>`;
+            </div>${cancelSummaryHtml}`;
+
+        container.querySelectorAll('.orders-cancel-filter-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.cancelFilter = btn.dataset.cancelFilter || 'all';
+                this.applyOrderColumnFiltersNow();
+            });
+        });
 
         container.querySelectorAll('.orders-year-btn').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -1021,6 +1077,7 @@ window.SalesManagementModule = {
             this.searchQuery = '';
             this.columnFilters = {};
             this.showUndeliveredOnly = false;
+            this.cancelFilter = 'all';
             this.currentPage = 1;
             this.applyOrderFilters();
             this.filteredOrders = this.getSortedOrders(this.filteredOrders);
@@ -1227,12 +1284,37 @@ window.SalesManagementModule = {
         const fieldMap = {};
         this.ORDER_FIELDS.forEach(f => fieldMap[f.key] = f);
 
+        // 구매취소 내역 보기에서는 취소 정보 열을 뒤에 덧붙인다
+        const showCancelCols = this.cancelFilter === 'canceled';
+        const OC = window.OrderCancelModule;
+        const cancelCols = [
+            { label: '취소유형', render: o => o.cancelType || '-' },
+            { label: '취소일',   render: o => (OC ? OC.kstDateStr(o.canceledAt) : '') || '-' },
+            { label: '환불액',   render: o => (o.refundAmount ?? '') !== '' ? window.Utils.formatNumber(o.refundAmount) : '-' },
+            { label: '위약금',   render: o => window.Utils.formatNumber(Math.round(window.Utils.getCancelPenalty(o))) },
+            { label: '이미 쓴 비용', render: o => o.cancelType === '제작 전 취소' ? window.Utils.formatNumber(o.cancelSpentCost ?? o.cancelLoss ?? 0) : '-' },
+            { label: '회수 재고', render: o => {
+                if (o.cancelType !== '제작 전 취소') return '-';
+                const parts = (o.cancelRecoveredStones || []).map(x => `${x.stoneType}×${x.qty}`);
+                if (o.cancelRecoveredGoldG) parts.push(`금 ${o.cancelRecoveredGoldG}g`);
+                return `${window.Utils.formatNumber(o.cancelRecoveredCost || 0)}${parts.length ? ' (' + parts.join(', ') + ')' : ''}`;
+            } },
+            { label: '취소손실', render: o => o.cancelType === '제작 전 취소' ? window.Utils.formatNumber(o.cancelLoss || 0) : '-' },
+            { label: '연결재고', render: o => o.linkedInventoryId || '-' },
+            { label: '처리자',   render: o => o.canceledBy || '-' },
+        ];
+        const extraCancelCols = showCancelCols ? cancelCols : [];
+
         if (this.orders.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="${displayFieldKeys.length + 2}" style="text-align:center">데이터가 없습니다.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="${displayFieldKeys.length + extraCancelCols.length + 3}" style="text-align:center">데이터가 없습니다.</td></tr>`;
             return;
         }
 
+        const escCell = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
         tbody.innerHTML = this.orders.map(o => {
+            const isCanceled = window.Utils.isOrderCanceled(o);
+            let badgePending = isCanceled;
             const cells = displayFieldKeys.map(key => {
                 const field = fieldMap[key];
                 if (!field) return '<td>-</td>';
@@ -1254,8 +1336,13 @@ window.SalesManagementModule = {
                     val = '-';
                 }
 
+                // 구매취소 배지: 첫 번째 일반 열 앞에 표시
+                if (badgePending) {
+                    badgePending = false;
+                    return `<td>${OC ? OC.badgeHtml(o) : '[구매취소]'}${val}</td>`;
+                }
                 return `<td>${val}</td>`;
-            }).join('');
+            }).join('') + extraCancelCols.map(c => `<td style="white-space:nowrap;">${escCell(c.render(o))}</td>`).join('');
 
             // 이미지 링크 (주문관리 IMAGE_TYPES 참조)
             const imageTypes = window.OrderManagementModule?.IMAGE_TYPES || [];
@@ -1269,8 +1356,14 @@ window.SalesManagementModule = {
             }).filter(Boolean);
             const imageCell = imageLinks.length > 0 ? imageLinks.join('') : '<span style="color:#9ca3af;font-size:0.75rem;">-</span>';
 
+            const rowStyle = isCanceled ? 'background:#f3f4f6;color:#9ca3af;' : '';
+            const cancelBtn = isCanceled
+                ? `<button class="btn btn-sm btn-outline" style="color:#1d4ed8;border-color:#93c5fd;"
+                        data-action="openOrderCancel" data-id="${o.id}" title="구매취소 철회">취소철회</button>`
+                : `<button class="btn btn-sm btn-outline" style="color:#b91c1c;border-color:#fca5a5;"
+                        data-action="openOrderCancel" data-id="${o.id}" title="구매취소 처리">구매취소</button>`;
             return `
-                <tr data-id="${o.id}">
+                <tr data-id="${o.id}" class="${isCanceled ? 'order-canceled-row' : ''}" style="${rowStyle}">
                     <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${o.id}"></td>
                     ${cells}
                     <td style="font-size:0.8rem;">${imageCell}</td>
@@ -1280,6 +1373,7 @@ window.SalesManagementModule = {
                         <button class="btn btn-sm btn-outline"
                             data-action="openStatusForm" data-id="${o.id}">상태</button>
                         ${this._renderAsButton(o)}
+                        ${cancelBtn}
                     </td>
                 </tr>`;
         }).join('');
@@ -1313,6 +1407,14 @@ window.SalesManagementModule = {
                     const column = e.target.dataset.column;
                     this.sortOrders(column);
                 });
+                headerRow.appendChild(th);
+            });
+
+            // 구매취소 내역 열 헤더
+            extraCancelCols.forEach(c => {
+                const th = document.createElement('th');
+                th.textContent = c.label;
+                th.style.whiteSpace = 'nowrap';
                 headerRow.appendChild(th);
             });
 
@@ -1357,6 +1459,7 @@ window.SalesManagementModule = {
                     </th>
                 `);
             });
+            extraCancelCols.forEach(() => filterCells.push('<th></th>'));
             filterCells.push('<th></th><th></th>');
             filterRow.innerHTML = filterCells.join('');
             filterRow.querySelectorAll('[data-filter-column]').forEach((input) => {
@@ -1565,7 +1668,21 @@ window.SalesManagementModule = {
         const deptStoneManualVal = window.DeptStoneCommission?.hasManual(order?.deptStonePaymentManual)
             ? Math.round(parseFloat(order.deptStonePaymentManual)) : '';
 
-        const body = `<div class="form-grid">` +
+        // 구매취소 안내/버튼 (기존 주문만)
+        let cancelBanner = '';
+        if (order && window.OrderCancelModule) {
+            const OC = window.OrderCancelModule;
+            cancelBanner = window.Utils.isOrderCanceled(order)
+                ? `<div style="display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px 12px;margin-bottom:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:0.85rem;color:#991b1b;">
+                        <span>${OC.badgeHtml(order)} ${OC.esc(order.cancelType || '구매취소')} · 취소일 ${OC.esc(OC.kstDateStr(order.canceledAt) || '-')} · 환불액 ${OC.won(order.refundAmount)}원 — 매출·손익 집계에서 제외된 주문입니다.</span>
+                        <button type="button" class="btn btn-sm btn-outline" id="orderFormCancelBtn">취소철회</button>
+                   </div>`
+                : `<div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+                        <button type="button" class="btn btn-sm btn-outline" style="color:#b91c1c;border-color:#fca5a5;" id="orderFormCancelBtn">구매취소 처리</button>
+                   </div>`;
+        }
+
+        const body = cancelBanner + `<div class="form-grid">` +
             this.ORDER_FIELDS.filter(f => f.type !== 'status' && f.type !== 'computed').map(f => {
                 const isRequired = req.includes(f.key);
                 let val = order?.[f.key] ?? '';
@@ -1920,6 +2037,18 @@ window.SalesManagementModule = {
                 await this.loadOrders();
             }
         );
+
+        // 구매취소 / 취소철회 버튼 (주문 수정 화면) — 처리 후 수정 화면을 닫고 목록을 새로 읽는다
+        wrapper.querySelector('#orderFormCancelBtn')?.addEventListener('click', () => {
+            window.OrderCancelModule.openCancelModal(order, async () => {
+                wrapper.remove();
+                if (window.OrderManagementModule) window.OrderManagementModule.allItems = [];
+                if (window.ManufacturingCostsModule) window.ManufacturingCostsModule.allCosts = [];
+                if (window.InventoryManagementModule) window.InventoryManagementModule.allItems = [];
+                this.allOrders = [];
+                await this.loadOrders(this.currentPage);
+            });
+        });
 
         // 나석정보 입력 버튼 이벤트
         const salesStoneInfoBtn = wrapper.querySelector('#salesStoneInfoBtn');
@@ -2277,8 +2406,29 @@ window.SalesManagementModule = {
         }
     },
 
+    // ===== 구매취소 (2026-11-20) =====
+    // 목록의 '구매취소' / '취소철회' 버튼. 실제 처리는 OrderCancelModule (js/modules/orderCancel.js)
+    openOrderCancel(id) {
+        const order = this.allOrders.find(o => o.id === id) || this.orders.find(o => o.id === id);
+        if (!order) { window.Utils.showNotification('주문을 찾을 수 없습니다.', 'error'); return; }
+        if (!window.OrderCancelModule) { window.Utils.showNotification('구매취소 모듈이 로드되지 않았습니다.', 'error'); return; }
+        const after = async () => {
+            // 집계·목록 캐시를 비워 다음 화면 진입 시 새로 읽게 한다
+            if (window.OrderManagementModule) window.OrderManagementModule.allItems = [];
+            if (window.ManufacturingCostsModule) window.ManufacturingCostsModule.allCosts = [];
+            if (window.InventoryManagementModule) window.InventoryManagementModule.allItems = [];
+            this.allOrders = [];
+            await this.loadOrders(this.currentPage);
+        };
+        window.OrderCancelModule.openCancelModal(order, after);
+    },
+
     async deleteOrder(id) {
-        if (!(await window.Utils.confirm('이 주문과 관련된 모든 데이터(제조원가, 주문관리)가 삭제됩니다. 계속하시겠습니까?'))) return;
+        const target = this.allOrders.find(o => o.id === id);
+        const linkedWarn = target?.linkedInventoryId
+            ? `\n\n※ 구매취소로 재고(${target.linkedInventoryId})가 등록된 주문입니다. 주문을 지워도 재고는 남습니다. 먼저 '취소철회'를 권장합니다.`
+            : '';
+        if (!(await window.Utils.confirm('이 주문과 관련된 모든 데이터(제조원가, 주문관리)가 삭제됩니다. 계속하시겠습니까?' + linkedWarn))) return;
 
         const batch = window.firebaseDb.batch();
         const ordersCollection = window.firebaseDb.collection('sales').doc('orders').collection('items');
@@ -2364,7 +2514,11 @@ window.SalesManagementModule = {
             .map(cb => cb.dataset.id);
 
         if (checkedIds.length === 0) return;
-        if (!(await window.Utils.confirm(`${checkedIds.length}개 주문과 관련된 모든 데이터(제조원가, 주문관리)가 삭제됩니다. 계속하시겠습니까?`))) return;
+        const linkedCount = checkedIds.filter(id => this.allOrders.find(o => o.id === id)?.linkedInventoryId).length;
+        const linkedWarn = linkedCount
+            ? `\n\n※ 선택한 주문 중 ${linkedCount}건은 구매취소로 재고가 등록된 주문입니다. 주문을 지워도 재고는 남습니다.`
+            : '';
+        if (!(await window.Utils.confirm(`${checkedIds.length}개 주문과 관련된 모든 데이터(제조원가, 주문관리)가 삭제됩니다. 계속하시겠습니까?` + linkedWarn))) return;
 
         const batch = window.firebaseDb.batch();
         const ordersCollection = window.firebaseDb.collection('sales').doc('orders').collection('items');
@@ -2684,9 +2838,10 @@ window.SalesManagementModule = {
                 row.orderDate = row.orderDate.toDate().toLocaleDateString('ko-KR');
             }
             STATUS_KEYS.forEach(k => { row[k] = row[k] === true ? 'Y' : 'N'; });
+            this._formatCancelCsvRow(row);
             return row;
         });
-        window.Utils.downloadCsvData(this.ORDER_FIELDS, rows, '매출표.csv');
+        window.Utils.downloadCsvData([...this.ORDER_FIELDS, ...this.CANCEL_CSV_FIELDS], rows, '매출표.csv');
     },
 
     openOrderCsvUpload() {
@@ -2734,9 +2889,58 @@ window.SalesManagementModule = {
             ['inputCompleted', 'stoneRequested', 'workshopRequested', 'productionComplete', 'shippingReady', 'delivered'].forEach(k => {
                 row[k] = row[k] === true ? 'Y' : 'N';
             });
+            this._formatCancelCsvRow(row);
             return row;
         });
         window.Utils.downloadCsvData(fields, rows, '통합.csv');
+    },
+
+    // CSV 내보내기용 구매취소 열 정리 (취소일 YYYY-MM-DD, 구매취소 Y/N)
+    _formatCancelCsvRow(row) {
+        row.canceled = row.canceled === true ? 'Y' : 'N';
+        if (Array.isArray(row.cancelRecoveredStones)) {
+            row.cancelRecoveredStones = row.cancelRecoveredStones.length ? JSON.stringify(row.cancelRecoveredStones) : '';
+        }
+        if (Array.isArray(row.linkedStoneInventoryIds)) row.linkedStoneInventoryIds = row.linkedStoneInventoryIds.join(';');
+        if (row.canceledAt) {
+            row.canceledAt = window.OrderCancelModule
+                ? window.OrderCancelModule.kstDateStr(row.canceledAt)
+                : (row.canceledAt.toDate ? row.canceledAt.toDate().toLocaleDateString('ko-KR') : row.canceledAt);
+        }
+        return row;
+    },
+
+    // 통합 CSV 업로드: 구매취소 열 파싱. 'Y'가 아니면 취소 필드를 저장하지 않는다.
+    _parseCancelCsvRow(row) {
+        const isY = ['Y','y','YES','yes','TRUE','true','1'].includes(String(row.canceled ?? '').trim());
+        if (!isY) {
+            this.CANCEL_CSV_FIELDS.forEach(f => { delete row[f.key]; });
+            return row;
+        }
+        row.canceled = true;
+        if (row.canceledAt) {
+            const raw = String(row.canceledAt).trim();
+            const d = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? new Date(`${raw}T00:00:00+09:00`) : new Date(raw);
+            row.canceledAt = isNaN(d) ? null : firebase.firestore.Timestamp.fromDate(d);
+        }
+        ['refundAmount', 'cancelLoss', 'penaltyAmount', 'cancelSpentCost', 'cancelRecoveredCost',
+         'cancelRecoveredGoldG', 'cancelRecoveredGoldValue'].forEach(k => {
+            if (row[k] !== undefined) row[k] = parseFloat(String(row[k]).replace(/,/g, '')) || 0;
+        });
+        if (row.linkedInventoryId === '') row.linkedInventoryId = null;
+        if (row.linkedRecoveredGoldId === '') row.linkedRecoveredGoldId = null;
+        if (row.linkedStoneInventoryIds !== undefined) {
+            row.linkedStoneInventoryIds = String(row.linkedStoneInventoryIds || '').split(';').map(x => x.trim()).filter(Boolean);
+        }
+        if (row.cancelRecoveredStones !== undefined) {
+            try {
+                const arr = String(row.cancelRecoveredStones || '').trim() ? JSON.parse(row.cancelRecoveredStones) : [];
+                row.cancelRecoveredStones = Array.isArray(arr) ? arr : [];
+            } catch (e) {
+                row.cancelRecoveredStones = [];
+            }
+        }
+        return row;
     },
 
     openIntegratedCsvUpload() {
@@ -2833,6 +3037,7 @@ window.SalesManagementModule = {
                             row[k] = toBool(row[k]);
                         });
                         row['inputCompleted'] = toBool(row['inputCompleted']);
+                        this._parseCancelCsvRow(row);
                         // 화면 계산 전용(computed) 열은 저장하지 않는다
                         this.ORDER_FIELDS.filter(f => f.type === 'computed').forEach(f => { delete row[f.key]; });
 

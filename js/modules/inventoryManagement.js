@@ -13,6 +13,9 @@
  * ERP 전용 데이터:
  *   - inventory_costs/{itemId} : 제조가격 (manufacturingPrice, updatedAt, updatedBy, source ...)
  *     → 제조가격은 매장관리 문서에 넣지 않는다. 삭제해도 지우지 않는다(복원 대비, 집계에서만 제외).
+ *     구매취소 재입고(2026-11-20): 매출표에서 '제작 후 취소·반품'으로 취소하면 orderCancel.js 가 재고 1개를 만들고
+ *     inventory_costs 에 source='order_cancel', sourceOrderId(주문 문서 ID), sourceOrderNumber 를 남긴다.
+ *     → 제조가격을 고치거나 다시 불러와도 sourceOrderId·sourceOrderNumber 연결은 유지한다 (linkFieldsFor).
  * 보관 데이터:
  *   - inventory/items/records : 구 ERP 재고. 읽기 전용(참고 비교·보관 보기)으로만 사용한다.
  */
@@ -502,6 +505,7 @@ window.InventoryManagementModule = {
     sourceLabel(src) {
         if (src === 'priceTable' || src === '제조가격표') return '제조가격표';
         if (src === 'manual' || src === '수동') return '수동';
+        if (src === 'order_cancel') return '구매취소 재입고';
         return src || '';
     },
     isManualSource(src) { return src === 'manual' || src === '수동'; },
@@ -530,7 +534,8 @@ window.InventoryManagementModule = {
             const cur = c ? Number(c.manufacturingPrice) : null;
             if (cur === m.price) { plan.same++; return; }
             const row = { item, cur, ...m };
-            if (c && this.isManualSource(c.source)) plan.manual.push(row); else plan.auto.push(row);
+            // 직접 입력값·구매취소 재입고(주문 제조가격 복사값)는 기본으로 덮어쓰지 않는다
+            if (c && (this.isManualSource(c.source) || c.source === 'order_cancel')) plan.manual.push(row); else plan.auto.push(row);
         });
         return plan;
     },
@@ -556,7 +561,7 @@ window.InventoryManagementModule = {
             </div>
             <label style="display:flex;gap:8px;align-items:center;margin-bottom:10px;font-size:0.875rem;${plan.manual.length ? '' : 'color:#9ca3af;'}">
                 <input type="checkbox" name="overwriteManual" id="invReloadOverwriteManual" ${plan.manual.length ? '' : 'disabled'}>
-                직접 입력한 값도 덮어쓰기 (${plan.manual.length}건, 기본: 덮어쓰지 않음)
+                직접 입력한 값·구매취소 재입고 값도 덮어쓰기 (${plan.manual.length}건, 기본: 덮어쓰지 않음)
             </label>
             <div style="max-height:50vh;overflow:auto;">
                 <table class="data-table" id="invReloadTable">
@@ -581,6 +586,7 @@ window.InventoryManagementModule = {
                         itemId: r.item.id, manufacturingPrice: r.price, source: 'priceTable',
                         rateProductName: r.rateProductName, karat: r.karat,
                         updatedAt: new Date(), updatedBy: by,
+                        ...this.linkFieldsFor(r.item.id),
                     });
                 });
                 await batch.commit();
@@ -602,7 +608,14 @@ window.InventoryManagementModule = {
     },
 
     costDoc(itemId, price, source) {
-        return { itemId, manufacturingPrice: price, source, updatedAt: new Date(), updatedBy: this.myName() };
+        return { itemId, manufacturingPrice: price, source, updatedAt: new Date(), updatedBy: this.myName(), ...this.linkFieldsFor(itemId) };
+    },
+
+    // 구매취소 재입고 연결 필드 보존 (inventory_costs 를 set 으로 다시 쓸 때 사라지지 않게)
+    linkFieldsFor(itemId) {
+        const c = this.costs[itemId];
+        if (!c || !c.sourceOrderId) return {};
+        return { sourceOrderId: c.sourceOrderId, sourceOrderNumber: c.sourceOrderNumber || '' };
     },
 
     // ===== 추가 (매장관리 doAddInventoryItem과 같은 문서·로그 형식) =====
@@ -718,7 +731,14 @@ window.InventoryManagementModule = {
         const prev = this.costs[itemId];
         const ref = this.db().collection(this.COL_COSTS).doc(itemId);
         if (price === null) {
-            if (prev) await ref.delete();
+            // 구매취소 재입고 문서는 연결(sourceOrderId)을 남기고 제조가격만 비운다
+            if (prev && prev.sourceOrderId) {
+                if (prev.manufacturingPrice !== undefined) {
+                    await ref.update({ manufacturingPrice: this.fieldDelete(), updatedAt: new Date(), updatedBy: this.myName() });
+                }
+            } else if (prev) {
+                await ref.delete();
+            }
             return;
         }
         if (prev && Number(prev.manufacturingPrice) === price) return;

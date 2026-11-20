@@ -65,7 +65,18 @@ window.ProfitLossModule = {
         const expenses = expSnap.docs.map(d => d.data());
         this.renderSourceFilters(orders);
 
-        const filteredOrders = orders.filter(order => this.matchesSourceFilters(order));
+        const sourceOrders = orders.filter(order => this.matchesSourceFilters(order));
+        // 구매취소 주문은 원래 판매한 달에서 바로 제외 (매출·수수료·원가·이익 모두). 2026-11-20 CFO 결정
+        const filteredOrders = window.Utils.excludeCanceledOrders(sourceOrders);
+        const canceledOrders = sourceOrders.filter(order => window.Utils.isOrderCanceled(order));
+        const monthOf = (o) => (o.orderDate?.toDate ? o.orderDate.toDate().getMonth() + 1 : null);
+        this.cancelSummary = {
+            count: canceledOrders.length,
+            excludedRevenue: canceledOrders.reduce((s, o) => s + (parseFloat(o.salesAmount) || 0), 0),
+            refundAmount: canceledOrders.reduce((s, o) => s + (parseFloat(o.refundAmount) || 0), 0),
+            cancelLoss: canceledOrders.reduce((s, o) => s + this.getOrderCancelLoss(o), 0),
+            penalty: canceledOrders.reduce((s, o) => s + window.Utils.getCancelPenalty(o), 0),
+        };
 
         // 월별 데이터 구성
         this.plData = Array.from({length: 12}, (_, i) => {
@@ -78,11 +89,16 @@ window.ProfitLossModule = {
                 const d = o.orderDate.toDate();
                 return (d.getMonth() + 1) === month;
             });
-            const revenue = monthOrders.reduce((s, o) => s + (o.salesAmount || 0), 0);
+            // 구매취소 주문의 위약금(매출금액 − 환불액)은 원래 판매한 달 매출로 남기고,
+            // 수수료는 위약금 × 수수료율로 비례 계산한다. 원가는 0 (제작 전 취소 비용은 취소손실로 따로).
+            const monthCanceled = canceledOrders.filter(o => monthOf(o) === month);
+            const penaltyRevenue = monthCanceled.reduce((s, o) => s + window.Utils.getCancelPenalty(o), 0);
+            const penaltyCommission = monthCanceled.reduce((s, o) => s + window.Utils.getCancelPenaltyCommission(o), 0);
+            const revenue = monthOrders.reduce((s, o) => s + (o.salesAmount || 0), 0) + penaltyRevenue;
 
             // 해당 월 제품원가와 수수료를 분리 집계한다.
             const productCogs = monthOrders.reduce((sum, order) => sum + this.getOrderCogs(order), 0);
-            const commissionCogs = monthOrders.reduce((sum, order) => sum + this.getOrderCommissionCost(order), 0);
+            const commissionCogs = monthOrders.reduce((sum, order) => sum + this.getOrderCommissionCost(order), 0) + penaltyCommission;
             const cogs = productCogs + commissionCogs;
 
             // 월별 매출이익합계
@@ -100,15 +116,18 @@ window.ProfitLossModule = {
             });
             const totalExpenses = Object.values(expByType).reduce((a, b) => a + b, 0);
 
-            // 영업이익 = 매출이익 - 판관비합계
-            const operatingProfit = grossProfit - totalExpenses;
+            // 취소손실: '제작 전 취소' 주문에서 이미 나간 비용 (원래 판매한 달 기준)
+            const cancelLoss = monthCanceled.reduce((s, o) => s + this.getOrderCancelLoss(o), 0);
+
+            // 영업이익 = 매출이익 - 판관비합계 - 취소손실
+            const operatingProfit = grossProfit - totalExpenses - cancelLoss;
             const operatingMargin = revenue > 0 ? (operatingProfit / revenue) * 100 : 0;
 
             return {
                 year, month,
-                revenue, productCogs, commissionCogs, cogs, grossProfit, grossMargin,
+                revenue, penaltyRevenue, productCogs, commissionCogs, cogs, grossProfit, grossMargin,
                 ...expByType,
-                totalExpenses, operatingProfit, operatingMargin,
+                totalExpenses, cancelLoss, operatingProfit, operatingMargin,
             };
         });
 
@@ -206,6 +225,13 @@ window.ProfitLossModule = {
         return manufacturingCost;
     },
 
+    // 구매취소(제작 전 취소) 주문의 취소 손실
+    getOrderCancelLoss(order = {}) {
+        if (!window.Utils.isOrderCanceled(order)) return 0;
+        if (order.cancelType && order.cancelType !== '제작 전 취소') return 0;
+        return parseFloat(order.cancelLoss) || 0;
+    },
+
     getOrderCommissionCost(order = {}) {
         // 백화점 나석 결제 분리 수수료가 적용된 주문(deptStoneApplied)은
         // 나석결제액 × 나석수수료율 + 나머지 × 수수료율, 그 외는 매출금액 × 수수료율
@@ -228,6 +254,7 @@ window.ProfitLossModule = {
             <tr>
                 <td>${row.month}월</td>
                 <td style="text-align:right;">${fmt(row.revenue)}</td>
+                <td style="text-align:right;color:#6b7280;">${fmt(row.penaltyRevenue)}</td>
                 <td style="text-align:right;">${fmt(row.productCogs)}</td>
                 <td style="text-align:right;">${fmt(row.commissionCogs)}</td>
                 <td style="text-align:right;">${fmt(row.cogs)}</td>
@@ -237,6 +264,7 @@ window.ProfitLossModule = {
                     `<td style="text-align:right;">${fmt(row[t])}</td>`
                 ).join('')}
                 <td style="text-align:right;">${fmt(row.totalExpenses)}</td>
+                <td style="text-align:right;${row.cancelLoss ? 'color:#b91c1c;' : ''}">${fmt(row.cancelLoss)}</td>
                 <td style="text-align:right;font-weight:600;color:${row.operatingProfit >= 0 ? '#10b981' : '#ef4444'};">
                     ${fmt(row.operatingProfit)}</td>
                 <td style="text-align:right;">${pct(row.operatingMargin)}</td>
@@ -244,7 +272,7 @@ window.ProfitLossModule = {
 
         // 연간 합계 행
         const totals = this.plData.reduce((acc, row) => {
-            ['revenue','productCogs','commissionCogs','cogs','grossProfit','totalExpenses','operatingProfit',
+            ['revenue','penaltyRevenue','productCogs','commissionCogs','cogs','grossProfit','totalExpenses','cancelLoss','operatingProfit',
              ...this.EXPENSE_TYPES].forEach(k => { acc[k] = (acc[k] || 0) + (row[k] || 0); });
             return acc;
         }, {});
@@ -255,6 +283,7 @@ window.ProfitLossModule = {
             <tr style="background:#f3f4f6;font-weight:700;border-top:2px solid #374151;">
                 <td>연간합계</td>
                 <td style="text-align:right;">${fmt(totals.revenue)}</td>
+                <td style="text-align:right;">${fmt(totals.penaltyRevenue)}</td>
                 <td style="text-align:right;">${fmt(totals.productCogs)}</td>
                 <td style="text-align:right;">${fmt(totals.commissionCogs)}</td>
                 <td style="text-align:right;">${fmt(totals.cogs)}</td>
@@ -262,22 +291,34 @@ window.ProfitLossModule = {
                 <td style="text-align:right;">${pct(totalGrossMargin)}</td>
                 ${this.EXPENSE_TYPES.map(t => `<td style="text-align:right;">${fmt(totals[t])}</td>`).join('')}
                 <td style="text-align:right;">${fmt(totals.totalExpenses)}</td>
+                <td style="text-align:right;">${fmt(totals.cancelLoss)}</td>
                 <td style="text-align:right;color:${totals.operatingProfit >= 0 ? '#10b981' : '#ef4444'};">
                     ${fmt(totals.operatingProfit)}</td>
                 <td style="text-align:right;">${pct(totalOpMargin)}</td>
             </tr>`;
+
+        // 구매취소 제외 안내
+        const note = document.getElementById('plCancelSummary');
+        if (note) {
+            const c = this.cancelSummary || { count: 0 };
+            note.innerHTML = c.count
+                ? `구매취소 <b>${c.count}</b>건은 원래 판매한 달 집계에서 제외됨 (제외 매출 ${fmt(c.excludedRevenue)}원 · 환불액 ${fmt(c.refundAmount)}원 · 위약금 ${fmt(c.penalty)}원은 매출에 남김 · 취소손실 ${fmt(c.cancelLoss)}원). 취소 내역은 매출표의 '구매취소 내역' 필터에서 확인.`
+                : '';
+        }
     },
 
     downloadData() {
         const fields = [
             { key: 'year',    label: '연도' }, { key: 'month', label: '월' },
             { key: 'revenue', label: '매출' },
+            { key: 'penaltyRevenue', label: '위약금(매출 포함)' },
             { key: 'productCogs', label: '제품원가' },
             { key: 'commissionCogs', label: '수수료' },
             { key: 'cogs', label: '매출원가' },
             { key: 'grossProfit', label: '매출이익' }, { key: 'grossMargin', label: '매출이익률(%)' },
             ...this.EXPENSE_TYPES.map(t => ({ key: t, label: t })),
             { key: 'totalExpenses', label: '판관비합계' },
+            { key: 'cancelLoss', label: '취소손실' },
             { key: 'operatingProfit', label: '영업이익' },
             { key: 'operatingMargin', label: '영업이익률(%)' },
         ];

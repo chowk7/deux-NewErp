@@ -442,8 +442,8 @@ window.ManufacturingCostsModule = {
                 }).join('');
 
                 return `
-                    <tr data-id="${c.id}">
-                        <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${c.id}"></td>
+                    <tr data-id="${c.id}" style="${window.Utils.isOrderCanceled(c) ? 'background:#f3f4f6;color:#9ca3af;' : ''}">
+                        <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${c.id}">${window.Utils.isOrderCanceled(c) && window.OrderCancelModule ? '<br>' + window.OrderCancelModule.badgeHtml(c) : ''}</td>
                         ${cells}
                         <td>
                             <button class="btn btn-sm btn-primary"

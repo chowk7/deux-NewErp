@@ -481,6 +481,7 @@ class DiamonJewelryApp {
         if (window.notes) window.notes.init();
         if (window.WordTemplateManager) window.WordTemplateManager.init();
         if (window.InventoryManagementModule) window.InventoryManagementModule.init();
+        if (window.StoneInventoryModule) window.StoneInventoryModule.init();
         if (window.EmployeeManagementModule) window.EmployeeManagementModule.init();
     }
 
@@ -509,7 +510,9 @@ class DiamonJewelryApp {
 
             const rows = snap.docs
                 .map(d => ({ id: d.id, ...d.data() }))
-                .filter(o => !o.delivered);
+                .filter(o => !o.delivered)
+                // 구매취소 주문은 진행 현황에서 제외
+                .filter(o => !window.Utils.isOrderCanceled(o));
 
             if (loading) loading.style.display = 'none';
 
