@@ -498,8 +498,8 @@ window.OrderManagementModule = {
             }).join('');
 
             return `
-                <tr data-id="${item.id}">
-                    <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${item.id}"></td>
+                <tr data-id="${item.id}" style="${window.Utils.isOrderCanceled(item) ? 'background:#f3f4f6;color:#9ca3af;' : ''}">
+                    <td style="text-align:center;"><input type="checkbox" class="row-checkbox" data-id="${item.id}">${window.Utils.isOrderCanceled(item) && window.OrderCancelModule ? '<br>' + window.OrderCancelModule.badgeHtml(item) : ''}</td>
                     ${cells}
                     <td>${imageLinks}</td>
                     <td>

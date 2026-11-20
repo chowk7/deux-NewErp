@@ -14,6 +14,30 @@ window.Utils = {
         earringFancy: '귀걸이 팬시컷',
     },
 
+    // ===== 구매취소 (2026-11-20) =====
+    // 구매취소 주문(canceled=true)은 매출·수수료·원가·이익 집계에서 원래 판매한 달 기준으로 바로 제외한다.
+    // 집계하는 모든 곳은 이 함수를 써서 같은 기준으로 거른다.
+    isOrderCanceled(order) {
+        return !!(order && order.canceled === true);
+    },
+    excludeCanceledOrders(orders = []) {
+        return (orders || []).filter(o => !(o && o.canceled === true));
+    },
+    // 위약금 (구매취소 주문 중 부분 환불분): 저장된 penaltyAmount, 없으면 매출금액 − 환불액. 원래 판매한 달 매출로 남긴다.
+    getCancelPenalty(order) {
+        if (!(order && order.canceled === true)) return 0;
+        const stored = Number(order.penaltyAmount);
+        if (order.penaltyAmount !== undefined && order.penaltyAmount !== null && order.penaltyAmount !== '' && Number.isFinite(stored)) {
+            return Math.max(0, stored);
+        }
+        if (order.refundAmount === undefined || order.refundAmount === null || order.refundAmount === '') return 0;
+        return Math.max(0, (parseFloat(order.salesAmount) || 0) - (parseFloat(order.refundAmount) || 0));
+    },
+    // 위약금 수수료 = 위약금 × 수수료율 (백화점 등 판매 수수료를 위약금 기준으로 비례)
+    getCancelPenaltyCommission(order) {
+        return this.getCancelPenalty(order) * ((parseFloat(order?.commissionRate) || 0) / 100);
+    },
+
     // ===== 모달 =====
 
     /**
