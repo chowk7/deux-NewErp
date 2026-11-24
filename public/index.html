@@ -469,14 +469,18 @@
                             <button id="addGoldInventoryBtn" class="btn btn-primary">+ 구매 입력</button>
                             <button id="csvUploadGoldBtn" class="btn btn-outline">📥 CSV 업로드</button>
                         </div>
+                        <div id="goldLedgerSummary"></div>
+                        <h3 style="margin:14px 0 6px;font-size:15px;">매입·사용 장부</h3>
+                        <div style="overflow-x:auto;">
                         <table id="goldInventoryTable" class="data-table">
                             <thead>
                                 <tr>
                                     <th style="text-align:center;width:40px;"><input type="checkbox" id="goldHeaderCheckbox"></th>
-                                    <th>구매일</th>
-                                    <th>구매중량(g)</th>
-                                    <th>구매중량(돈)</th>
-                                    <th>구매금액(총)</th>
+                                    <th>일자</th>
+                                    <th>구분</th>
+                                    <th>중량(g)</th>
+                                    <th>중량(돈)</th>
+                                    <th>금액<br><span style="font-weight:400;font-size:11px;">매입금액 / 사용원가</span></th>
                                     <th>구매단가(g)</th>
                                     <th>평단가(g)</th>
                                     <th>재고(g)</th>
@@ -485,6 +489,7 @@
                             </thead>
                             <tbody></tbody>
                         </table>
+                        </div>
                     </section>
 
                     <!-- 주문관리 섹션 -->
