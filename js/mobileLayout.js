@@ -121,6 +121,7 @@
 
             this.observeNumberInputs();
             this.observeModals();
+            this.observeFit();
             this.renderBackToMobileButton();
         },
 
@@ -130,6 +131,7 @@
             if (mobile) {
                 this.build();
                 this.refresh();
+                this.queueFitScan();
             } else {
                 this.closeMore();
             }
@@ -496,6 +498,157 @@
                 }
             });
             observer.observe(document.body, { childList: true });
+        },
+
+        // ===================== 화면 폭 맞춤: 표 → 카드, 버튼 줄 → 2열 + ⋮ =====================
+
+        /** 표별로 카드에 늘 보일 열 (머리글 앞부분 일치). 나머지는 탭하면 펼쳐진다. 'all' 은 전부 보임 */
+        TABLE_KEY_COLUMNS: {
+            profitLossTable: ['월', '매출', '매출이익', '매출이익률', '영업이익', '영업이익률'],
+            plChannelTable: ['구매경로', '매출', '영업이익', '영업이익률'],
+            manufacturingCostsTable: ['주문일', '고객명', '상품명', '제조가격', '매출이익률'],
+            dashboardTable: 'all',
+            customersTable: ['고객명', '전화번호', '이메일'],
+            inventoryTable: 'all',
+            adminExpensesTable: ['날짜', '계정과목', '거래내용', '금액'],
+            goldInventoryTable: 'all'
+        },
+        DEFAULT_KEY_COUNT: 4,
+
+        cleanHeader(text) {
+            return String(text || '').replace(/[↕▲▼]/g, '').replace(/\s+/g, ' ').trim();
+        },
+
+        /** 머리글 목록 → 각 열이 카드에서 늘 보이는지 (순수 함수, 테스트용 노출) */
+        keyColumnFlags(tableId, headers) {
+            const conf = this.TABLE_KEY_COLUMNS[tableId];
+            if (conf === 'all') return headers.map(() => true);
+            if (Array.isArray(conf)) {
+                return headers.map(h => conf.some(k => h === k || h.startsWith(k + '(') || h.startsWith(k + ' ')));
+            }
+            let shown = 0;
+            return headers.map(h => {
+                if (!h || shown >= this.DEFAULT_KEY_COUNT) return false;
+                shown++;
+                return true;
+            });
+        },
+
+        /** 표 하나를 카드형으로 표시하도록 칸마다 이름표·클래스를 붙인다 (DOM 구조는 그대로) */
+        cardifyTable(table) {
+            const headRow = table.tHead?.rows?.[0];
+            if (!headRow || !table.tBodies.length) return;
+            const headers = [...headRow.cells].map(th => this.cleanHeader(th.textContent));
+            const flags = this.keyColumnFlags(table.id, headers);
+            table.classList.add('m-cardify');
+            [...table.tBodies].forEach(tbody => {
+                [...tbody.rows].forEach(tr => {
+                    let hasMinor = false;
+                    [...tr.cells].forEach((td, i) => {
+                        if (tr.cells.length === 1 && td.colSpan > 1) { td.classList.add('m-full'); return; }
+                        const label = headers[i] || '';
+                        const controls = td.querySelectorAll('button, a.btn');
+                        const onlyCheckbox = td.querySelector('input[type="checkbox"].row-checkbox, input[type="checkbox"]:not(.status-checkbox)')
+                            && td.textContent.trim() === '' && !controls.length;
+                        td.classList.remove('m-actions', 'm-minor', 'm-skip');
+                        if (onlyCheckbox && !label) { td.classList.add('m-skip'); return; }
+                        if (label === '관리' || controls.length > 0) { td.classList.add('m-actions'); return; }
+                        if (td.getAttribute('data-label') !== label) td.setAttribute('data-label', label);
+                        if (!flags[i]) { td.classList.add('m-minor'); hasMinor = true; }
+                    });
+                    tr.classList.toggle('m-has-more', hasMinor);
+                });
+            });
+        },
+
+        /** 버튼 줄: 자주 쓰는 버튼만 2열로 남기고 나머지는 ⋮ 메뉴로 */
+        isPrimaryButton(btn) {
+            const id = btn.id || '';
+            return btn.classList.contains('btn-primary') || /refresh/i.test(id) || /^add/i.test(id) || /^calc/i.test(id);
+        },
+
+        fitButtonGroup(group) {
+            if (group.dataset.mGroup) return;
+            const buttons = [...group.querySelectorAll('button.btn')].filter(b => !b.classList.contains('m-more-btn'));
+            if (buttons.length <= 2) { group.dataset.mGroup = 'small'; return; }
+            let primaries = buttons.filter(b => this.isPrimaryButton(b));
+            if (primaries.length === 0) primaries = buttons.slice(0, 1);
+            const secondaries = buttons.filter(b => !primaries.includes(b));
+            group.dataset.mGroup = '1';
+            if (secondaries.length === 0) return;
+            secondaries.forEach(b => b.classList.add('m-secondary'));
+            const more = document.createElement('button');
+            more.type = 'button';
+            more.className = 'btn btn-outline m-more-btn';
+            more.textContent = '⋮ 기타 작업';
+            more.addEventListener('click', () => this.openActionSheet(secondaries));
+            group.appendChild(more);
+        },
+
+        isAvailable(btn) {
+            if (!btn.isConnected || btn.disabled || btn.classList.contains('hidden')) return false;
+            for (let el = btn.parentElement; el && !el.classList.contains('button-group'); el = el.parentElement) {
+                if (el.style.display === 'none' || el.classList.contains('hidden')) return false;
+            }
+            return btn.style.display !== 'none';
+        },
+
+        openActionSheet(buttons) {
+            const list = buttons.filter(b => this.isAvailable(b));
+            let sheet = document.getElementById('mActionSheet');
+            if (!sheet) {
+                sheet = document.createElement('div');
+                sheet.id = 'mActionSheet';
+                sheet.className = 'm-sheet-backdrop';
+                sheet.addEventListener('click', (e) => {
+                    const item = e.target.closest('[data-m-index]');
+                    const targets = sheet._targets || [];
+                    sheet.classList.remove('open');
+                    if (item) targets[Number(item.dataset.mIndex)]?.click();
+                });
+                document.body.appendChild(sheet);
+            }
+            sheet._targets = list;
+            sheet.innerHTML = `<div class="m-sheet" role="menu">
+                ${list.length ? list.map((b, i) => `<button type="button" class="m-sheet-item" data-m-index="${i}">${escapeHtml(b.textContent.trim())}</button>`).join('')
+                    : '<div class="m-sheet-empty">사용할 수 있는 작업이 없습니다.</div>'}
+                <button type="button" class="m-sheet-item m-sheet-cancel">닫기</button></div>`;
+            sheet.classList.add('open');
+        },
+
+        fitScan() {
+            this._fitQueued = false;
+            if (!isMobile()) return;
+            document.querySelectorAll('#dashboardPage .button-group').forEach(g => this.fitButtonGroup(g));
+            document.querySelectorAll('#dashboardPage .content-section table, [data-modal] table.data-table').forEach(t => {
+                if (t.id === 'ordersTable') return; // 매출표는 전용 카드(renderOrderCards)
+                if (t.closest('[data-modal]') && t.querySelector('tbody input:not([type="checkbox"]), tbody select')) {
+                    t.classList.add('m-fit-inputs'); // 입력칸이 든 표는 폭에 맞춰 줄이기만
+                    return;
+                }
+                this.cardifyTable(t);
+            });
+        },
+
+        queueFitScan() {
+            if (this._fitQueued) return;
+            this._fitQueued = true;
+            (window.requestAnimationFrame || setTimeout)(() => this.fitScan());
+        },
+
+        observeFit() {
+            this.queueFitScan();
+            if (window.MutationObserver) {
+                const observer = new MutationObserver(() => { if (isMobile()) this.queueFitScan(); });
+                observer.observe(document.body, { childList: true, subtree: true });
+            }
+            // 카드 탭하면 상세 펼치기 (버튼·입력칸·링크를 누른 경우는 제외)
+            document.addEventListener('click', (e) => {
+                if (!isMobile()) return;
+                const tr = e.target.closest('table.m-cardify tbody tr.m-has-more');
+                if (!tr || e.target.closest('button, a, input, select, textarea, label')) return;
+                tr.classList.toggle('m-open');
+            });
         },
 
         /** 숫자 입력칸에 숫자 키패드가 뜨도록 inputmode 지정 (모바일에서만) */

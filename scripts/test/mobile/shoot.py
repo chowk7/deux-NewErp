@@ -23,10 +23,12 @@ DEVICES = {
     'desktop1440': dict(viewport={'width': 1440, 'height': 900}, device_scale_factor=1, is_mobile=False, has_touch=False),
     'desktop1024': dict(viewport={'width': 1024, 'height': 768}, device_scale_factor=1, is_mobile=False, has_touch=False),
     'iphone390': dict(viewport={'width': 390, 'height': 844}, device_scale_factor=2, is_mobile=True, has_touch=True),
+    'iphone844': dict(viewport={'width': 844, 'height': 390}, device_scale_factor=2, is_mobile=True, has_touch=True),
     'ipad820': dict(viewport={'width': 820, 'height': 1180}, device_scale_factor=1, is_mobile=True, has_touch=True),
     'ipad1180': dict(viewport={'width': 1180, 'height': 820}, device_scale_factor=1, is_mobile=True, has_touch=True),
 }
-MENUS = [('dashboard', 'dashboard'), ('orders', 'orders'), ('mfg', 'manufacturing-costs'), ('pl', 'profit-loss')]
+MENUS = [('dashboard', 'dashboard'), ('orders', 'orders'), ('mfg', 'manufacturing-costs'), ('pl', 'profit-loss'),
+         ('customers', 'customers'), ('inventory', 'inventory')]
 
 
 async def handle(route):
@@ -47,6 +49,16 @@ async def handle(route):
     return await route.fulfill(status=200, content_type=mimetypes.guess_type(f)[0] or 'application/octet-stream', body=open(f, 'rb').read())
 
 
+FIT_JS = """function FIT() {
+  const vw = document.documentElement.clientWidth;
+  const vis = e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== 'hidden'; };
+  const all = [...document.querySelectorAll('body *')].filter(e => !e.closest('.hidden, [style*="display:none"], [style*="display: none"]'));
+  const off = all.filter(e => vis(e) && (e.getBoundingClientRect().right > vw + 1 || e.getBoundingClientRect().left < -1));
+  const inner = all.filter(e => vis(e) && e.scrollWidth > e.clientWidth + 1 && ['auto', 'scroll'].includes(getComputedStyle(e).overflowX));
+  const desc = e => (e.id ? '#' + e.id : e.tagName.toLowerCase() + (e.className && typeof e.className === 'string' ? '.' + e.className.split(' ')[0] : '')) + ':' + Math.round(e.getBoundingClientRect().right);
+  return { vw, docScrollWidth: document.documentElement.scrollWidth, bodyScrollWidth: document.body.scrollWidth,
+           offscreen: off.length, offscreenSample: off.slice(0, 5).map(desc), innerHScroll: inner.length, innerSample: inner.slice(0, 5).map(desc) };
+}"""
 METRICS = """() => {
   const vw = innerWidth, docW = document.documentElement.scrollWidth;
   const sec = [...document.querySelectorAll('.content-section')].find(s => !s.classList.contains('hidden'));
@@ -60,8 +72,11 @@ METRICS = """() => {
     horizontalOverflow: docW > vw, buttons: btns.length, buttonsUnder44: small, tabs,
     sidebarVisible: !!document.querySelector('.sidebar')?.offsetParent,
     mainOverflowY: main ? getComputedStyle(main).overflowY : null,
-    title: document.getElementById('mTitle')?.textContent || null };
+    title: document.getElementById('mTitle')?.textContent || null, ...FIT() };
 }"""
+
+METRICS = '() => { ' + FIT_JS + '; return (' + METRICS + ')(); }'
+FIT_ONLY = '() => { ' + FIT_JS + '; return FIT(); }'
 
 MODAL = """() => { const m = [...document.querySelectorAll('.modal-content')].filter(e => e.offsetParent).pop(); if (!m) return null;
   const r = m.getBoundingClientRect(); const f = m.querySelector('.modal-footer'); const fr = f && f.getBoundingClientRect();
@@ -95,11 +110,41 @@ async def run_device(browser, name, opts, report, devices_only):
         await click_menu(page, menu)
         await page.screenshot(path=f'{OUT}/{PREFIX}_{name}_{short}.png')
         r[short] = await page.evaluate(METRICS)
+    # P&L 구매경로별 보기
+    await click_menu(page, 'profit-loss')
+    await page.evaluate("() => document.querySelector('[data-pl-view=\"channel\"]')?.click()")
+    await page.wait_for_timeout(500)
+    await page.evaluate('window.scrollTo(0, 0)')
+    await page.screenshot(path=f'{OUT}/{PREFIX}_{name}_pl_channel.png')
+    r['pl_channel'] = await page.evaluate(METRICS)
+    r['pl_channel_note'] = await page.evaluate("() => document.getElementById('plChannelNote')?.innerText || null")
+    await page.evaluate("() => { const s = document.getElementById('plPeriodSelect'); if (s) { s.value = '11'; s.dispatchEvent(new Event('change')); } }")
+    await page.wait_for_timeout(400)
+    await page.screenshot(path=f'{OUT}/{PREFIX}_{name}_pl_channel_nov.png')
+    r['pl_channel_nov_note'] = await page.evaluate("() => document.getElementById('plChannelNote')?.innerText || null")
+    await page.evaluate("() => document.querySelector('[data-pl-view=\"monthly\"]')?.click()")
+    # 기타 작업(⋮) 메뉴와 카드 펼치기 (모바일만)
+    if await page.evaluate("() => document.documentElement.classList.contains('is-mobile')"):
+        await click_menu(page, 'orders')
+        r['orders_sheet'] = await page.evaluate("""() => { const b = document.querySelector('#ordersContent .m-more-btn'); if (!b) return null; b.click();
+            return [...document.querySelectorAll('#mActionSheet .m-sheet-item')].map(x => x.textContent.trim()); }""")
+        await page.wait_for_timeout(300)
+        await page.screenshot(path=f'{OUT}/{PREFIX}_{name}_orders_sheet.png')
+        await page.evaluate("() => document.querySelector('#mActionSheet .m-sheet-cancel')?.click()")
+        await click_menu(page, 'manufacturing-costs')
+        r['mfg_expand'] = await page.evaluate("""() => { const tr = document.querySelector('#manufacturingCostsTable tbody tr.m-has-more'); if (!tr) return null;
+            const before = [...tr.cells].filter(td => getComputedStyle(td).display !== 'none').length;
+            tr.querySelector('td:not(.m-actions)').click();
+            const after = [...tr.cells].filter(td => getComputedStyle(td).display !== 'none').length; return { before, after, open: tr.classList.contains('m-open') }; }""")
+        await page.wait_for_timeout(300)
+        await page.screenshot(path=f'{OUT}/{PREFIX}_{name}_mfg_expanded.png')
+        r['mfg_expand_fit'] = await page.evaluate(FIT_ONLY)
     # 더보기 (모바일만)
     if await page.evaluate("() => document.documentElement.classList.contains('is-mobile')"):
         await page.click('[data-m-tab="more"]')
         await page.wait_for_timeout(400)
         await page.screenshot(path=f'{OUT}/{PREFIX}_{name}_more.png')
+        r['more_fit'] = await page.evaluate(FIT_ONLY)
         r['more_items'] = await page.evaluate("() => [...document.querySelectorAll('#mMore .m-more-item')].map(b => b.textContent.trim())")
         await page.click('#mMore [data-m-menu]:last-of-type')
         await page.wait_for_timeout(1200)
@@ -110,6 +155,7 @@ async def run_device(browser, name, opts, report, devices_only):
     await page.wait_for_timeout(1500)
     await page.screenshot(path=f'{OUT}/{PREFIX}_{name}_mfg_modal.png')
     r['mfg_modal'] = await page.evaluate(MODAL) if clicked else 'no edit button'
+    r['mfg_modal_fit'] = await page.evaluate(FIT_ONLY)
     if clicked:
         # 공임에 VAT 포함처럼 보이는 값(16,500 = 15,000×1.1)을 넣어 경고 표시 확인 (VatInputGuard 가 있을 때만 경고가 뜬다)
         r['mfg_vat'] = await page.evaluate("""() => { const i = document.querySelector('.modal-content [name=laborCost]'); if (!i) return null;
@@ -128,6 +174,7 @@ async def run_device(browser, name, opts, report, devices_only):
     await page.wait_for_timeout(1500)
     await page.screenshot(path=f'{OUT}/{PREFIX}_{name}_order_modal.png')
     r['order_modal'] = await page.evaluate(MODAL)
+    r['order_modal_fit'] = await page.evaluate(FIT_ONLY)
     r['errors'] = errors[:20]
     await ctx.close()
 
