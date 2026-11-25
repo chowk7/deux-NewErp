@@ -11,6 +11,8 @@ window.AdminExpensesModule = {
         { key: 'description',   label: '거래내용', type: 'text'   },
         { key: 'vendor',        label: '거래처',   type: 'text'   },
         { key: 'amount',        label: '금액',     type: 'number' },
+        // 구매경로 (2026-11-25 CFO): 빈 값/누락 = 공통(간접비). 값이 있으면 그 경로의 직접비로 P&L 에 잡힌다.
+        { key: 'purchasePath',  label: '구매경로', type: 'select', options: [], emptyLabel: '공통(간접비)' },
         { key: 'paymentMethod', label: '결제방식', type: 'select',
           options: ['법인카드','계좌이체','현금','기타'] },
         { key: 'isBizExpense',  label: '비용처리', type: 'select',
@@ -25,17 +27,43 @@ window.AdminExpensesModule = {
     filterYear: new Date().getFullYear(),
     filterMonth: '',
     sortState: { column: 'date', direction: 'desc' },
+    COMMON_PATH_LABEL: '공통(간접비)',
+    COMMON_FILTER_VALUE: '__common__',
     searchFilters: {
         date: '',
         accountType: '',
+        purchasePath: '',
         description: '',
         vendor: '',
         amount: ''
     },
 
+    /**
+     * 구매경로 선택값 — 매출(주문) 입력의 구매경로 목록을 그대로 쓴다 (SalesManagementModule.ORDER_FIELDS).
+     * 모듈이 아직 없을 때만 같은 기본값으로 대체.
+     */
+    getPurchasePathOptions() {
+        const field = window.SalesManagementModule?.ORDER_FIELDS?.find(f => f.key === 'purchasePath');
+        const opts = Array.isArray(field?.options) && field.options.length ? field.options : ['온라인', '오프라인'];
+        return opts.map(o => String(o).trim()).filter(Boolean);
+    },
+
+    /** 저장/업로드 값 정리: 공통 표기·빈 값 → '', 목록 값은 그대로, 그 외는 null(알 수 없음) */
+    normalizePurchasePath(value) {
+        const v = String(value ?? '').trim();
+        if (!v || v === '공통' || v === this.COMMON_PATH_LABEL || v === '간접비' || v === '-') return '';
+        return this.getPurchasePathOptions().includes(v) ? v : null;
+    },
+
+    purchasePathLabel(expense = {}) {
+        const v = String(expense.purchasePath ?? '').trim();
+        return v || this.COMMON_PATH_LABEL;
+    },
+
     async init() {
         // FIELDS의 accountType options 동적으로 설정
         this.FIELDS.find(f => f.key === 'accountType').options = this.ACCOUNT_TYPES;
+        this.FIELDS.find(f => f.key === 'purchasePath').options = this.getPurchasePathOptions();
 
         document.getElementById('addAdminExpenseBtn')
             ?.addEventListener('click', () => this.showForm());
@@ -61,6 +89,11 @@ window.AdminExpensesModule = {
         document.getElementById('expenseAccountTypeFilter')
             ?.addEventListener('change', (e) => {
                 this.searchFilters.accountType = e.target.value;
+                this.applyFiltersAndSort();
+            });
+        document.getElementById('expensePurchasePathFilter')
+            ?.addEventListener('change', (e) => {
+                this.searchFilters.purchasePath = e.target.value;
                 this.applyFiltersAndSort();
             });
         document.getElementById('expenseDescriptionSearch')
@@ -125,6 +158,7 @@ window.AdminExpensesModule = {
         this.allExpenses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
         this.populateAccountTypeFilter();
+        this.populatePurchasePathFilter();
         this.applyFiltersAndSort();
     },
 
@@ -157,6 +191,10 @@ window.AdminExpensesModule = {
         }
         if (this.searchFilters.accountType) {
             data = data.filter(e => String(e.accountType || '') === this.searchFilters.accountType);
+        }
+        if (this.searchFilters.purchasePath) {
+            const want = this.searchFilters.purchasePath === this.COMMON_FILTER_VALUE ? '' : this.searchFilters.purchasePath;
+            data = data.filter(e => String(e.purchasePath ?? '').trim() === want);
         }
         if (descriptionQuery) {
             data = data.filter(e => String(e.description || '').toLowerCase().includes(descriptionQuery));
@@ -209,6 +247,19 @@ window.AdminExpensesModule = {
         `;
     },
 
+    populatePurchasePathFilter() {
+        const select = document.getElementById('expensePurchasePathFilter');
+        if (!select) return;
+        const current = this.searchFilters.purchasePath || '';
+        const paths = Array.from(new Set([
+            ...this.getPurchasePathOptions(),
+            ...this.allExpenses.map(e => String(e.purchasePath ?? '').trim()).filter(Boolean),
+        ]));
+        const opt = (value, label) => `<option value="${value}" ${value === current ? 'selected' : ''}>${label}</option>`;
+        select.innerHTML = opt('', '전체') + opt(this.COMMON_FILTER_VALUE, this.COMMON_PATH_LABEL)
+            + paths.map(p => opt(p, p)).join('');
+    },
+
     renderResultCount() {
         const countEl = document.getElementById('expenseResultCount');
         if (!countEl) return;
@@ -219,6 +270,7 @@ window.AdminExpensesModule = {
         this.searchFilters = {
             date: '',
             accountType: '',
+            purchasePath: '',
             description: '',
             vendor: '',
             amount: ''
@@ -236,6 +288,8 @@ window.AdminExpensesModule = {
         });
         const accountSelect = document.getElementById('expenseAccountTypeFilter');
         if (accountSelect) accountSelect.value = '';
+        const pathSelect = document.getElementById('expensePurchasePathFilter');
+        if (pathSelect) pathSelect.value = '';
 
         this.applyFiltersAndSort();
     },
@@ -253,7 +307,7 @@ window.AdminExpensesModule = {
         const tbody = document.querySelector('#adminExpensesTable tbody');
         if (!tbody) return;
         if (this.expenses.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="9" style="text-align:center">데이터가 없습니다.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="10" style="text-align:center">데이터가 없습니다.</td></tr>`;
             this.updateBulkDeleteButton();
             return;
         }
@@ -272,6 +326,7 @@ window.AdminExpensesModule = {
                 <td style="text-align:center;"><input type="checkbox" class="admin-expense-row-checkbox" data-id="${e.id}"></td>
                 <td>${dateStr}</td>
                 <td><span class="badge">${e.accountType || '-'}</span></td>
+                <td>${e.purchasePath ? `<span class="badge badge-path">${e.purchasePath}</span>` : `<span style="color:#9ca3af;">${this.COMMON_PATH_LABEL}</span>`}</td>
                 <td>${e.description || '-'}</td>
                 <td>${e.vendor || '-'}</td>
                 <td style="text-align:right;">${window.Utils.formatNumber(e.amount)}</td>
@@ -395,6 +450,12 @@ window.AdminExpensesModule = {
 
         const fields = this.FIELDS.map(f => {
             if (f.key === 'accountType') return { ...f, options: this.ACCOUNT_TYPES };
+            if (f.key === 'purchasePath') {
+                // 목록에 없는 기존 값도 지워지지 않게 선택지에 남긴다
+                const cur = String(exp?.purchasePath ?? '').trim();
+                const opts = this.getPurchasePathOptions();
+                return { ...f, options: cur && !opts.includes(cur) ? [...opts, cur] : opts };
+            }
             return f;
         });
 
@@ -416,8 +477,10 @@ window.AdminExpensesModule = {
                 const opts = (f.options || []).map(o =>
                     `<option value="${o}" ${val === o ? 'selected' : ''}>${o}</option>`
                 ).join('');
+                const hint = f.key === 'purchasePath'
+                    ? `<small style="color:#6b7280;">경로를 고르면 그 경로 직접비, 공통이면 매출 비중으로 배분</small>` : '';
                 return `<div class="form-group"><label>${f.label}</label>
-                    <select name="${f.key}"><option value="">선택</option>${opts}</select></div>`;
+                    <select name="${f.key}"><option value="">${f.emptyLabel || '선택'}</option>${opts}</select>${hint}</div>`;
             }
             return `<div class="form-group"><label>${f.label}</label>
                 <input type="${f.type}" name="${f.key}" value="${val}"
@@ -430,6 +493,7 @@ window.AdminExpensesModule = {
             async (data, w) => {
                 // 데이터 정규화
                 data.amount = parseFloat(data.amount) || 0;
+                data.purchasePath = String(data.purchasePath ?? '').trim();
                 const parsedYear = parseInt(data.expenseYear);
                 data.expenseYear = String(!isNaN(parsedYear) && parsedYear > 0 ? parsedYear : new Date().getFullYear());
                 const parsedMonth = parseInt(data.expenseMonth);
@@ -462,12 +526,19 @@ window.AdminExpensesModule = {
     },
 
     downloadTemplate() { window.Utils.downloadCsvTemplate(this.FIELDS, '판관비_양식.csv'); },
-    downloadData()     { window.Utils.downloadCsvData(this.FIELDS, this.expenses, '판관비.csv'); },
+    downloadData() {
+        const rows = this.expenses.map(e => ({ ...e, purchasePath: this.purchasePathLabel(e) }));
+        window.Utils.downloadCsvData(this.FIELDS, rows, '판관비.csv');
+    },
     openCsvUpload() {
         window.Utils.openCsvUploadModal(this.FIELDS, async (rows) => {
             const batch = window.firebaseDb.batch();
+            let unknownPath = 0;
             rows.forEach(r => {
                 r.amount = parseFloat(r.amount) || 0;
+                const path = this.normalizePurchasePath(r.purchasePath);
+                if (path === null) unknownPath++;
+                r.purchasePath = path || '';
                 r.expenseYear = String(r.expenseYear || new Date().getFullYear());
                 r.expenseMonth = String(r.expenseMonth || String(new Date().getMonth() + 1).padStart(2,'0')).padStart(2,'0');
 
@@ -480,7 +551,8 @@ window.AdminExpensesModule = {
                 batch.set(ref, { ...r, createdAt: new Date(), updatedAt: new Date() });
             });
             await batch.commit();
-            window.Utils.showNotification(`${rows.length}개 항목이 저장되었습니다.`, 'success');
+            window.Utils.showNotification(`${rows.length}개 항목이 저장되었습니다.`
+                + (unknownPath ? ` (구매경로 목록에 없는 값 ${unknownPath}건은 공통(간접비)으로 저장)` : ''), 'success');
             this.load();
         });
     },

@@ -39,3 +39,6 @@ functions/.runtimeconfig.json
 # GCP service account keys (if checked in)
 *-sa-key.json
 *-service-account.json
+
+# 판관비 구매경로 백필 백업 (운영 데이터 스냅샷)
+scripts/backups/

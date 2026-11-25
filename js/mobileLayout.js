@@ -505,12 +505,12 @@
         /** 표별로 카드에 늘 보일 열 (머리글 앞부분 일치). 나머지는 탭하면 펼쳐진다. 'all' 은 전부 보임 */
         TABLE_KEY_COLUMNS: {
             profitLossTable: ['월', '매출', '매출이익', '매출이익률', '영업이익', '영업이익률'],
-            plChannelTable: ['구매경로', '매출', '영업이익', '영업이익률'],
+            plChannelTable: ['구매경로', '매출', '공헌이익', '영업이익', '영업이익률'],
             manufacturingCostsTable: ['주문일', '고객명', '상품명', '제조가격', '매출이익률'],
             dashboardTable: 'all',
             customersTable: ['고객명', '전화번호', '이메일'],
             inventoryTable: 'all',
-            adminExpensesTable: ['날짜', '계정과목', '거래내용', '금액'],
+            adminExpensesTable: ['날짜', '계정과목', '구매경로', '거래내용', '금액'],
             goldInventoryTable: 'all'
         },
         DEFAULT_KEY_COUNT: 4,
