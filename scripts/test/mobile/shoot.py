@@ -110,6 +110,17 @@ async def run_device(browser, name, opts, report, devices_only):
     await page.wait_for_timeout(1500)
     await page.screenshot(path=f'{OUT}/{PREFIX}_{name}_mfg_modal.png')
     r['mfg_modal'] = await page.evaluate(MODAL) if clicked else 'no edit button'
+    if clicked:
+        # 공임에 VAT 포함처럼 보이는 값(16,500 = 15,000×1.1)을 넣어 경고 표시 확인 (VatInputGuard 가 있을 때만 경고가 뜬다)
+        r['mfg_vat'] = await page.evaluate("""() => { const i = document.querySelector('.modal-content [name=laborCost]'); if (!i) return null;
+            i.value = '16500'; i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new Event('change', { bubbles: true }));
+            i.scrollIntoView({ block: 'center' });
+            const w = i.closest('.form-group')?.querySelector('.vat-guard-warning');
+            const tot = document.querySelector('.m-cost-total');
+            return { warning: w ? getComputedStyle(w).display !== 'none' : 'no guard', total: tot ? tot.textContent.trim() : null,
+                     groups: [...document.querySelectorAll('.m-cost-head')].map(h => h.textContent.trim()) }; }""")
+        await page.wait_for_timeout(400)
+        await page.screenshot(path=f'{OUT}/{PREFIX}_{name}_mfg_modal_vat.png')
     await page.evaluate("() => document.querySelectorAll('[data-modal]').forEach(m => m.remove())")
     # 주문 추가 모달
     await click_menu(page, 'orders')

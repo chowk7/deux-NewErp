@@ -1307,6 +1307,7 @@ window.SalesManagementModule = {
 
         if (this.orders.length === 0) {
             tbody.innerHTML = `<tr><td colspan="${displayFieldKeys.length + extraCancelCols.length + 3}" style="text-align:center">데이터가 없습니다.</td></tr>`;
+            if (window.MobileLayout) window.MobileLayout.renderOrderCards(this);
             return;
         }
 
@@ -1523,6 +1524,8 @@ window.SalesManagementModule = {
 
         this.updateOrderBulkDeleteBtn();
         window.Utils.initResizableColumns(table);
+        // 휴대폰·태블릿에서는 같은 데이터를 카드로도 그린다 (데스크톱에서는 아무것도 하지 않음)
+        if (window.MobileLayout) window.MobileLayout.renderOrderCards(this);
     },
 
     renderPagination() {

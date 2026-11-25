@@ -50,6 +50,28 @@ test('감지 기준: 폭 767 이하 또는 터치 기기 1366 이하', () => {
     assert.ok(head.includes(M.MOBILE_QUERY), 'index.html 감지 스크립트와 기준이 같아야 함');
 });
 
+test('주문 카드: 2주 초과 표시, 단계 칩, 이름 이스케이프', () => {
+    sandbox.window.Utils = { formatNumber: v => Number(v).toLocaleString('ko-KR'), isOrderCanceled: o => !!o.canceled };
+    const now = new Date('2026-11-25T12:00:00+09:00');
+    const html = M.orderCardHtml({ id: 'a1', customerName: '<김>', productName: '반지', optionName: '14K',
+        orderDate: new Date('2026-11-01T12:00:00+09:00'), salesAmount: 1280000, stoneRequested: true, purchasePath: '온라인', purchasePathDetail: '아임웹' }, now);
+    assert.ok(html.includes('m-card overdue'), 'overdue');
+    assert.ok(html.includes('24일 경과'));
+    assert.ok(html.includes('&lt;김&gt;') && !html.includes('<김>'), 'escape');
+    assert.ok(html.includes('1,280,000'));
+    assert.ok(html.includes('온라인(아임웹)'));
+    assert.ok(html.includes('<span class="m-chip done">나석 ✓</span>'));
+    assert.ok(html.includes('data-action="openStatusForm" data-id="a1"'));
+});
+
+test('주문 카드: 배송완료·구매취소 건은 2주 초과 표시 안 함', () => {
+    const now = new Date('2026-11-25T12:00:00+09:00');
+    const old = new Date('2026-10-01T12:00:00+09:00');
+    assert.ok(!M.orderCardHtml({ id: 'b', orderDate: old, delivered: true }, now).includes('overdue'));
+    const c = M.orderCardHtml({ id: 'c', orderDate: old, canceled: true }, now);
+    assert.ok(!c.includes('overdue') && c.includes('canceled') && c.includes('취소철회'));
+});
+
 for (const [name, fn] of tests) {
     try { fn(); passed++; console.log(`  ok  ${name}`); }
     catch (e) { console.error(`  FAIL ${name}\n       ${e.message}`); }

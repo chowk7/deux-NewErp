@@ -299,3 +299,183 @@ html.is-mobile .m-more-item.danger { color: var(--danger-color); }
 /* 데스크톱 모드로 본 터치 기기에서 모바일 화면으로 돌아가는 버튼 */
 .m-back-to-mobile { display: none; }
 html.erp-touch-desktop .m-back-to-mobile { display: inline-flex; }
+
+/* ===== 2단계: 매출표 카드 ===== */
+.m-card-list { display: none; }
+
+html.is-mobile #ordersTable { display: none !important; }
+
+html.is-mobile .m-card-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+    gap: 10px;
+    margin: 8px 0 12px;
+}
+
+html.is-mobile .m-card-count {
+    grid-column: 1 / -1;
+    font-size: 0.85rem;
+    color: var(--text-light);
+}
+
+html.is-mobile .m-card-empty {
+    grid-column: 1 / -1;
+    padding: 24px;
+    text-align: center;
+    color: var(--text-light);
+}
+
+html.is-mobile .m-card {
+    background: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    padding: 14px 14px 12px;
+}
+
+html.is-mobile .m-card.overdue { border-left: 4px solid var(--danger-color); }
+html.is-mobile .m-card.canceled { background: #f3f4f6; color: #9ca3af; }
+
+html.is-mobile .m-card-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+}
+
+html.is-mobile .m-card-name { font-size: 1.05rem; font-weight: 700; }
+html.is-mobile .m-card-amt { font-size: 1.05rem; font-weight: 700; white-space: nowrap; }
+html.is-mobile .m-card-product { font-size: 0.92rem; margin-top: 4px; color: #374151; word-break: keep-all; }
+html.is-mobile .m-card.canceled .m-card-product { color: inherit; }
+html.is-mobile .m-card-meta { font-size: 0.8rem; color: var(--text-light); margin-top: 3px; }
+
+html.is-mobile .m-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+html.is-mobile .m-chip {
+    height: 28px;
+    padding: 0 10px;
+    border-radius: 14px;
+    font-size: 0.8rem;
+    display: inline-flex;
+    align-items: center;
+    background: #f3f4f6;
+    color: #9ca3af;
+}
+
+html.is-mobile .m-chip.done { background: #e8f7f1; color: #0f8a63; font-weight: 600; }
+
+html.is-mobile .m-card-actions {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    margin-top: 12px;
+}
+
+html.is-mobile .m-card-actions .btn { padding: 0 4px; }
+html.is-mobile .m-card-actions .m-card-cancel { color: #b91c1c; border-color: #fca5a5; }
+
+/* ===== 3단계: 제조원가 수정 폼 ===== */
+html.is-mobile .m-cost-modal .form-grid { gap: 0; }
+
+html.is-mobile .m-cost-head {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--text-light);
+    margin: 14px 2px 6px;
+}
+
+html.is-mobile .m-cost-card {
+    background: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 4px 12px;
+}
+
+html.is-mobile details.m-cost-card { margin-top: 14px; }
+
+html.is-mobile details.m-cost-card > summary.m-cost-head {
+    margin: 0;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+html.is-mobile .m-cost-card > .form-group {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px 10px;
+    padding: 8px 0;
+    border-top: 1px solid #f1ede9;
+}
+
+html.is-mobile .m-cost-card > .form-group:first-child,
+html.is-mobile .m-cost-card > summary + .form-group { border-top: none; }
+
+html.is-mobile .m-cost-card > .form-group > label {
+    flex: 1 1 40%;
+    min-width: 0;
+    font-size: 0.92rem;
+    word-break: keep-all;
+}
+
+html.is-mobile .m-cost-card > .form-group > input:not([type="checkbox"]) {
+    flex: 0 0 48%;
+    width: 48%;
+    text-align: right;
+}
+
+html.is-mobile .m-cost-stone {
+    margin-top: 14px !important;
+    padding-top: 0 !important;
+    border-top: none !important;
+}
+
+/* VAT 포함 의심 경고 (feat/vat-input-guard 의 .vat-guard-warning) — 한 줄 전체, 큰 버튼 */
+html.is-mobile .vat-guard-warning {
+    flex: 1 1 100%;
+    font-size: 0.85rem !important;
+    padding: 8px 10px !important;
+    line-height: 1.5;
+}
+
+html.is-mobile .vat-guard-warning .vat-guard-convert {
+    min-height: 40px !important;
+    padding: 0 12px !important;
+    font-size: 0.85rem !important;
+    margin: 6px 0 0 !important;
+    display: flex;
+    width: 100%;
+}
+
+html.is-mobile .m-cost-total {
+    flex: 1.4;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+}
+
+html.is-mobile .m-cost-total span { font-size: 0.72rem; color: var(--text-light); }
+html.is-mobile .m-cost-total b { font-size: 1.05rem; white-space: nowrap; }
+html.is-mobile .m-cost-total small { font-size: 0.75rem; color: var(--text-light); }
+html.is-mobile .m-cost-modal .modal-footer { align-items: center; }
+
+html.is-mobile .m-cost-context {
+    font-size: 0.95rem;
+    color: #374151;
+    padding: 2px 2px 0;
+    word-break: keep-all;
+}
+
+/* 아이패드 가로처럼 넓은 터치 화면: 입력창은 가운데 760px 폭으로 (위아래는 꽉 채움) */
+@media (min-width: 900px) {
+    html.is-mobile .modal-overlay { justify-content: center; }
+    html.is-mobile .modal-content { max-width: 760px !important; }
+}
