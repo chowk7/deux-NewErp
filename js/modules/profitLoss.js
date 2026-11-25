@@ -94,13 +94,14 @@ window.ProfitLossModule = {
 
         this._source = { orders, expenses, year };
 
-        const sourceOrders = orders.filter(order => this.matchesSourceFilters(order));
-        const monthly = this.computeMonthly(sourceOrders, expenses, year);
-        this.plData = monthly.months;
-        this.cancelSummary = monthly.cancelSummary;
-
         // 구매경로별 손익은 위 구매경로 필터와 무관하게 전체 주문 기준
         this.channelData = this.computeChannelPL(orders, expenses, year);
+
+        // 월별 표: 구매경로 필터가 걸리면 판관비 전체가 아니라 그 경로 직접비 + 배분 간접비만 뺀다 (2026-11-25)
+        const monthly = this.computeFilteredMonthly(orders, expenses, year, this.channelData);
+        this.plData = monthly.months;
+        this.cancelSummary = monthly.cancelSummary;
+        this.filterInfo = monthly.filterInfo || null;
 
         this.renderTable();
     },
@@ -182,8 +183,10 @@ window.ProfitLossModule = {
 
     // ===================== 구매경로별 손익 (2026-11-25 CFO) =====================
     // - 구매경로(purchasePath) 단위. 구매경로상세로는 나누지 않는다.
-    // - 직접비: 주문에 묶인 제품원가·수수료·취소손실. 판관비에는 구매경로를 가리키는 필드가 없어 판관비 전체를 간접비로 본다.
-    // - 간접비 배분: 그 기간 구매경로별 매출 비중. 매출 0(이하) 경로는 배분하지 않는다. 배분할 매출이 없으면 '미배분'으로 남긴다.
+    // - 직접비: 주문에 묶인 제품원가·수수료·취소손실 + 구매경로가 지정된 판관비(직접 판관비).
+    // - 간접비: 구매경로가 빈 판관비(공통). 그 기간 구매경로별 매출 비중으로 배분.
+    //   매출 0(이하) 경로는 배분하지 않는다. 배분할 매출이 없으면 '미배분'으로 남긴다.
+    // - 손익 = 매출 − 제품원가 − 수수료 − 취소손실 − 직접 판관비 (= 공헌이익) − 배분 간접비
     // - 검증: 구매경로별 영업이익 합(미배분 포함) = 전체 P&L 영업이익
 
     UNASSIGNED_PATH: '(구매경로 없음)',
@@ -194,11 +197,16 @@ window.ProfitLossModule = {
         return String(order.purchasePath || '').trim() || this.UNASSIGNED_PATH;
     },
 
+    /** 판관비의 구매경로. 빈 값/누락 = '' (공통 = 간접비) */
+    expensePathOf(expense = {}) {
+        return String(expense.purchasePath ?? '').trim();
+    },
+
     /** 월별 행 → 기간 합계 (period: 0 = 연도 전체, 1~12 = 그 달) */
-    periodRow(months, period = 0) {
+    periodRow(months, period = 0, extraKeys = []) {
         const rows = period ? months.filter(r => r.month === period) : months;
         const out = {};
-        this.SUM_KEYS.forEach(k => { out[k] = rows.reduce((sum, r) => sum + (r[k] || 0), 0); });
+        [...this.SUM_KEYS, ...extraKeys].forEach(k => { out[k] = rows.reduce((sum, r) => sum + (r[k] || 0), 0); });
         return out;
     },
 
@@ -232,19 +240,29 @@ window.ProfitLossModule = {
     },
 
     /**
-     * 구매경로별 손익. 계산은 computeMonthly 를 구매경로별 주문으로 다시 돌려 재사용한다 (판관비는 빼고).
-     * @returns {{ paths: string[], byPath: Object<string, Array>, total: Array, view(period): Object }}
+     * 구매경로별 손익. 계산은 computeMonthly 를 구매경로별 주문 + 그 경로 직접 판관비로 다시 돌려 재사용한다.
+     * 공통(구매경로 빈) 판관비는 common 으로 따로 집계해 기간별 매출 비중으로 배분한다.
+     * @returns {{ paths: string[], byPath: Object<string, Array>, common: Array, total: Array, view(period): Object }}
      */
     computeChannelPL(orders, expenses, year) {
-        const paths = Array.from(new Set(orders.map(o => this.pathOf(o)))).sort((a, b) => a.localeCompare(b, 'ko'));
+        const commonExpenses = expenses.filter(e => !this.expensePathOf(e));
+        const directExpenses = expenses.filter(e => this.expensePathOf(e));
+        const paths = Array.from(new Set([
+            ...orders.map(o => this.pathOf(o)),
+            ...directExpenses.map(e => this.expensePathOf(e)),
+        ])).sort((a, b) => a.localeCompare(b, 'ko'));
         const byPath = {};
         paths.forEach(p => {
-            byPath[p] = this.computeMonthly(orders.filter(o => this.pathOf(o) === p), [], year).months;
+            byPath[p] = this.computeMonthly(
+                orders.filter(o => this.pathOf(o) === p),
+                directExpenses.filter(e => this.expensePathOf(e) === p),
+                year).months;
         });
+        const common = this.computeMonthly([], commonExpenses, year).months;
         const total = this.computeMonthly(orders, expenses, year).months;
         const self = this;
         return {
-            paths, byPath, total,
+            paths, byPath, common, total,
             view(period = 0) { return self.channelView(this, period); }
         };
     },
@@ -258,32 +276,119 @@ window.ProfitLossModule = {
             directRows[p] = this.periodRow(channel.byPath[p], period);
             revenueByPath[p] = directRows[p].revenue;
         });
-        const indirectTotal = totalRow.totalExpenses;
+        const indirectTotal = this.periodRow(channel.common || [], period).totalExpenses;
         const { shares, unallocated } = this.allocateByRevenue(indirectTotal, revenueByPath);
         const revenueBase = Object.values(revenueByPath).filter(v => v > 0).reduce((a, b) => a + b, 0);
 
         const rows = channel.paths.map(p => {
             const d = directRows[p];
-            const directExpenses = 0; // 판관비에 구매경로 필드 없음 → 직접 판관비 없음
+            const directExpenses = d.totalExpenses; // 그 경로로 지정된 판관비
             const indirect = shares[p] || 0;
-            const operatingProfit = d.grossProfit - directExpenses - d.cancelLoss - indirect;
+            const contributionProfit = d.grossProfit - d.cancelLoss - directExpenses;
+            const operatingProfit = contributionProfit - indirect;
             return {
                 path: p,
                 revenue: d.revenue, productCogs: d.productCogs, commissionCogs: d.commissionCogs,
                 cogs: d.cogs, grossProfit: d.grossProfit, cancelLoss: d.cancelLoss,
-                directExpenses, indirect, operatingProfit,
+                directExpenses, contributionProfit, indirect, operatingProfit,
+                contributionMargin: d.revenue > 0 ? (contributionProfit / d.revenue) * 100 : null,
                 operatingMargin: d.revenue > 0 ? (operatingProfit / d.revenue) * 100 : null,
                 revenueShare: d.revenue > 0 && revenueBase > 0 ? (d.revenue / revenueBase) * 100 : 0,
             };
-        }).filter(r => r.revenue || r.cogs || r.cancelLoss || r.indirect)
+        }).filter(r => r.revenue || r.cogs || r.cancelLoss || r.directExpenses || r.indirect)
           .sort((a, b) => b.revenue - a.revenue);
 
+        const directTotal = rows.reduce((sum, r) => sum + r.directExpenses, 0);
         const sumOp = rows.reduce((sum, r) => sum + r.operatingProfit, 0) - unallocated;
+        const totalContribution = totalRow.grossProfit - totalRow.cancelLoss - directTotal;
         return {
-            period, rows, unallocated, indirectTotal,
-            total: { ...totalRow, operatingMargin: totalRow.revenue > 0 ? (totalRow.operatingProfit / totalRow.revenue) * 100 : null },
+            period, rows, unallocated, indirectTotal, directTotal, shares,
+            total: {
+                ...totalRow, directExpenses: directTotal, contributionProfit: totalContribution,
+                contributionMargin: totalRow.revenue > 0 ? (totalContribution / totalRow.revenue) * 100 : null,
+                operatingMargin: totalRow.revenue > 0 ? (totalRow.operatingProfit / totalRow.revenue) * 100 : null,
+            },
             check: { sumOperatingProfit: sumOp, totalOperatingProfit: totalRow.operatingProfit, diff: sumOp - totalRow.operatingProfit },
         };
+    },
+
+    /** 금액을 계정과목별 비중으로 나눈다 (원 단위, 합계 정확히 유지). 비중이 모두 0 이하이면 '기타'로 */
+    splitByType(amount, weightsByType) {
+        const out = {};
+        this.EXPENSE_TYPES.forEach(t => { out[t] = 0; });
+        if (!amount) return out;
+        const { shares, unallocated } = this.allocateByRevenue(amount, weightsByType);
+        Object.keys(shares).forEach(t => { out[t] += shares[t]; });
+        if (unallocated) out['기타'] += unallocated;
+        return out;
+    },
+
+    /**
+     * 월별 표 계산. 구매경로 필터가 없으면 기존과 같다 (판관비 전체).
+     * 필터가 있으면 판관비 = 그 경로 직접 판관비 + 그 달 매출 비중으로 배분된 공통 판관비.
+     *  - 매출이 없는 달의 공통 판관비(미배분)는 어느 경로에도 넣지 않는다.
+     *  - 구매경로상세 필터: 구매경로 단위로만 판관비를 나누므로, 그 경로 판관비(직접+배분)를
+     *    그 달 경로 매출 중 선택한 상세의 매출 비중만큼 잡는다.
+     */
+    computeFilteredMonthly(orders, expenses, year, channel = null) {
+        const sourceOrders = orders.filter(order => this.matchesSourceFilters(order));
+        const pathFilter = this.selectedPurchasePath !== 'all';
+        const detailFilter = this.selectedPurchasePathDetail !== 'all';
+        if (!pathFilter && !detailFilter) return this.computeMonthly(sourceOrders, expenses, year);
+
+        channel = channel || this.computeChannelPL(orders, expenses, year);
+        const base = this.computeMonthly(sourceOrders, [], year);
+        const paths = pathFilter
+            ? channel.paths.filter(p => p === this.selectedPurchasePath)
+            : Array.from(new Set(sourceOrders.map(o => this.pathOf(o))));
+        // 상세 필터일 때 경로별 '선택 주문' 월 매출
+        const selByPath = {};
+        if (detailFilter) {
+            paths.forEach(p => {
+                selByPath[p] = this.computeMonthly(sourceOrders.filter(o => this.pathOf(o) === p), [], year).months;
+            });
+        }
+        const info = { direct: 0, allocated: 0, unallocatedMonths: [], detailScaled: detailFilter };
+
+        const months = base.months.map((row, i) => {
+            const month = row.month;
+            const view = channel.view(month);
+            const commonByType = {};
+            this.EXPENSE_TYPES.forEach(t => { commonByType[t] = channel.common[i][t] || 0; });
+            const expByType = {};
+            this.EXPENSE_TYPES.forEach(t => { expByType[t] = 0; });
+            let direct = 0, allocated = 0;
+            paths.forEach(p => {
+                const pathRow = channel.byPath[p]?.[i];
+                if (!pathRow) return;
+                const share = view.shares[p] || 0;
+                const indirectByType = this.splitByType(share, commonByType);
+                let byType = {};
+                this.EXPENSE_TYPES.forEach(t => { byType[t] = (pathRow[t] || 0) + indirectByType[t]; });
+                let d = pathRow.totalExpenses, a = share;
+                if (detailFilter) {
+                    const sel = selByPath[p]?.[i]?.revenue || 0;
+                    const factor = pathRow.revenue > 0 ? Math.max(0, Math.min(1, sel / pathRow.revenue)) : 0;
+                    const whole = d + a;
+                    const target = Number.isInteger(whole) ? Math.round(whole * factor) : whole * factor;
+                    byType = this.splitByType(target, byType);
+                    d = whole ? d * factor : 0; a = target - d;
+                }
+                this.EXPENSE_TYPES.forEach(t => { expByType[t] += byType[t]; });
+                direct += d; allocated += a;
+            });
+            if (view.unallocated) info.unallocatedMonths.push(month);
+            info.direct += direct; info.allocated += allocated;
+            const totalExpenses = Object.values(expByType).reduce((x, y) => x + y, 0);
+            const operatingProfit = row.grossProfit - totalExpenses - row.cancelLoss;
+            return {
+                ...row, ...expByType, totalExpenses,
+                directExpenses: direct, allocatedExpenses: allocated,
+                operatingProfit,
+                operatingMargin: row.revenue > 0 ? (operatingProfit / row.revenue) * 100 : 0,
+            };
+        });
+        return { months, cancelSummary: base.cancelSummary, filterInfo: info };
     },
 
     renderSourceFilters(orders = []) {
@@ -434,6 +539,8 @@ window.ProfitLossModule = {
                 <td style="text-align:right;font-weight:600;">${fmt(r.grossProfit)}</td>
                 <td style="text-align:right;${r.cancelLoss ? 'color:#b91c1c;' : ''}">${fmt(r.cancelLoss)}</td>
                 <td style="text-align:right;">${fmt(r.directExpenses)}</td>
+                <td style="text-align:right;font-weight:600;${color(r.contributionProfit)}">${fmt(r.contributionProfit)}</td>
+                <td style="text-align:right;">${pct(r.contributionMargin)}</td>
                 <td style="text-align:right;">${fmt(r.indirect)}</td>
                 <td style="text-align:right;font-weight:600;${color(r.operatingProfit)}">${fmt(r.operatingProfit)}</td>
                 <td style="text-align:right;">${pct(r.operatingMargin)}</td>
@@ -448,8 +555,10 @@ window.ProfitLossModule = {
                 <td style="text-align:right;">${fmt(t.commissionCogs)}</td>
                 <td style="text-align:right;">${fmt(t.grossProfit)}</td>
                 <td style="text-align:right;">${fmt(t.cancelLoss)}</td>
-                <td style="text-align:right;">0</td>
-                <td style="text-align:right;">${fmt(t.totalExpenses)}</td>
+                <td style="text-align:right;">${fmt(t.directExpenses)}</td>
+                <td style="text-align:right;${color(t.contributionProfit)}">${fmt(t.contributionProfit)}</td>
+                <td style="text-align:right;">${pct(t.contributionMargin)}</td>
+                <td style="text-align:right;">${fmt(view.indirectTotal)}</td>
                 <td style="text-align:right;${color(t.operatingProfit)}">${fmt(t.operatingProfit)}</td>
                 <td style="text-align:right;">${pct(t.operatingMargin)}</td>
             </tr>`;
@@ -460,19 +569,21 @@ window.ProfitLossModule = {
                 <td style="text-align:right;">0</td><td style="text-align:right;">-</td>
                 <td style="text-align:right;">0</td><td style="text-align:right;">0</td><td style="text-align:right;">0</td>
                 <td style="text-align:right;">0</td><td style="text-align:right;">0</td>
+                <td style="text-align:right;">0</td><td style="text-align:right;">-</td>
                 <td style="text-align:right;">${fmt(view.unallocated)}</td>
                 <td style="text-align:right;${color(-view.unallocated)}">${fmt(-view.unallocated)}</td>
                 <td style="text-align:right;">-</td>
             </tr>` : '';
 
         tbody.innerHTML = totalHtml + (view.rows.length ? view.rows.map(rowHtml).join('')
-            : '<tr><td colspan="11" style="text-align:center;color:#6b7280;">이 기간 주문이 없습니다.</td></tr>') + unallocatedHtml;
+            : '<tr><td colspan="13" style="text-align:center;color:#6b7280;">이 기간 주문이 없습니다.</td></tr>') + unallocatedHtml;
 
         const note = document.getElementById('plChannelNote');
         if (note) {
             const diff = Math.round(view.check.diff);
             note.innerHTML = `${this.selectedYear}년 ${periodLabel} · 구매경로상세는 나누지 않음 · 위쪽 구매경로 필터와 무관하게 전체 주문 기준.<br>`
-                + `직접비 = 주문별 제품원가·수수료·취소손실. 판관비에는 구매경로를 가리키는 항목이 없어 판관비 합계 ${fmt(view.indirectTotal)}원 전체를 간접비로 보고 `
+                + `직접비 = 주문별 제품원가·수수료·취소손실 + 구매경로가 지정된 판관비 ${fmt(view.directTotal)}원. 공헌이익 = 매출이익 − 취소손실 − 직접 판관비.<br>`
+                + `구매경로가 빈 판관비(공통) ${fmt(view.indirectTotal)}원은 간접비로 보고 `
                 + `${this.channelPeriod ? '그 달' : '연간'} 매출 비중으로 나눔 (매출 0 경로 제외${view.unallocated ? `, 매출이 없어 ${fmt(view.unallocated)}원은 미배분` : ''}).<br>`
                 + `검증: 구매경로별 영업이익 합 ${fmt(view.check.sumOperatingProfit)}원 = 전체 영업이익 ${fmt(view.check.totalOperatingProfit)}원 (차이 ${fmt(diff)}원)`;
         }
@@ -538,9 +649,17 @@ window.ProfitLossModule = {
         const note = document.getElementById('plCancelSummary');
         if (note) {
             const c = this.cancelSummary || { count: 0 };
-            note.innerHTML = c.count
+            const cancelText = c.count
                 ? `구매취소 <b>${c.count}</b>건은 원래 판매한 달 집계에서 제외됨 (제외 매출 ${fmt(c.excludedRevenue)}원 · 환불액 ${fmt(c.refundAmount)}원 · 위약금 ${fmt(c.penalty)}원은 매출에 남김 · 취소손실 ${fmt(c.cancelLoss)}원). 취소 내역은 매출표의 '구매취소 내역' 필터에서 확인.`
                 : '';
+            const f = this.filterInfo;
+            const filterText = f
+                ? `구매경로 필터 적용: 판관비 = 이 경로 직접 판관비 ${fmt(f.direct)}원 + 그 달 매출 비중으로 배분한 공통 판관비 ${fmt(f.allocated)}원`
+                  + (f.detailScaled ? ' (구매경로상세 선택 시 경로 판관비를 그 달 상세 매출 비중만큼 반영)' : '')
+                  + (f.unallocatedMonths.length ? ` · 매출이 없는 달(${f.unallocatedMonths.join('·')}월)의 공통 판관비는 미배분이라 제외` : '')
+                  + '. 연도 전체 행은 월별 배분의 합이라 구매경로별 손익(연간 비중 배분)과 다를 수 있음.'
+                : '';
+            note.innerHTML = [filterText, cancelText].filter(Boolean).join('<br>');
         }
     },
 
@@ -549,14 +668,16 @@ window.ProfitLossModule = {
             const v = this.channelViewData;
             const period = this.channelPeriod ? `${this.channelPeriod}월` : '연도전체';
             const rows = [
-                { path: '전체', ...v.total, directExpenses: 0, indirect: v.indirectTotal, revenueShare: 100 },
+                { path: '전체', ...v.total, indirect: v.indirectTotal, revenueShare: 100 },
                 ...v.rows,
                 ...(v.unallocated ? [{ path: this.UNALLOCATED_LABEL, indirect: v.unallocated, operatingProfit: -v.unallocated }] : []),
             ];
             const channelFields = [
                 { key: 'path', label: '구매경로' }, { key: 'revenue', label: '매출' }, { key: 'revenueShare', label: '매출비중(%)' },
                 { key: 'productCogs', label: '제품원가' }, { key: 'commissionCogs', label: '수수료' }, { key: 'grossProfit', label: '매출이익' },
-                { key: 'cancelLoss', label: '취소손실' }, { key: 'directExpenses', label: '직접 판관비' }, { key: 'indirect', label: '배분 간접비' },
+                { key: 'cancelLoss', label: '취소손실' }, { key: 'directExpenses', label: '직접 판관비' },
+                { key: 'contributionProfit', label: '공헌이익' }, { key: 'contributionMargin', label: '공헌이익률(%)' },
+                { key: 'indirect', label: '배분 간접비' },
                 { key: 'operatingProfit', label: '영업이익' }, { key: 'operatingMargin', label: '영업이익률(%)' },
             ];
             window.Utils.downloadCsvData(channelFields, rows, `P&L_구매경로별_${this.selectedYear}_${period}.csv`);

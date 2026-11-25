@@ -769,3 +769,8 @@ th.resizable .col-resize-handle.dragging {
 #plChannelWrap {
     margin-top: var(--spacing-md);
 }
+
+/* 구매경로별 손익 머리글이 한 글자씩 세로로 꺾이지 않게 (표는 가로 스크롤) */
+#plChannelTable thead th {
+    white-space: nowrap;
+}

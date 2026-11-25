@@ -566,6 +566,11 @@
                                     <option value="">전체</option>
                                 </select>
                             </label>
+                            <label>구매경로
+                                <select id="expensePurchasePathFilter" class="form-control" style="min-width:140px;">
+                                    <option value="">전체</option>
+                                </select>
+                            </label>
                             <label>거래내용
                                 <input id="expenseDescriptionSearch" class="form-control" type="text" placeholder="거래내용 검색" style="min-width:180px;">
                             </label>
@@ -582,7 +587,7 @@
                         <div style="overflow-x:auto;">
                         <table id="adminExpensesTable" class="data-table">
                             <thead><tr>
-                                <th style="text-align:center;width:40px;"><input type="checkbox" id="adminExpenseHeaderCheckbox"></th><th data-column="date">날짜</th><th data-column="accountType">계정과목</th><th data-column="description">거래내용</th><th data-column="vendor">거래처</th>
+                                <th style="text-align:center;width:40px;"><input type="checkbox" id="adminExpenseHeaderCheckbox"></th><th data-column="date">날짜</th><th data-column="accountType">계정과목</th><th data-column="purchasePath" title="빈 값 = 공통(간접비), P&L 구매경로별 손익에서 매출 비중으로 배분">구매경로</th><th data-column="description">거래내용</th><th data-column="vendor">거래처</th>
                                 <th data-column="amount">금액</th><th>결제방식</th><th>비용처리</th><th>관리</th>
                             </tr></thead>
                             <tbody></tbody>
@@ -634,8 +639,10 @@
                             <table id="plChannelTable" class="data-table">
                                 <thead><tr>
                                     <th>구매경로</th><th>매출</th><th>매출비중</th><th>제품원가</th><th>수수료</th><th>매출이익</th>
-                                    <th title="제작 전 구매취소 주문에서 이미 나간 비용">취소손실</th><th>직접 판관비</th>
-                                    <th title="판관비 합계를 그 기간 구매경로별 매출 비중으로 나눈 금액">배분 간접비</th>
+                                    <th title="제작 전 구매취소 주문에서 이미 나간 비용">취소손실</th>
+                                    <th title="판관비 중 구매경로가 지정된 금액">직접 판관비</th>
+                                    <th title="매출 − 제품원가 − 수수료 − 취소손실 − 직접 판관비">공헌이익</th><th>공헌이익률</th>
+                                    <th title="구매경로가 빈(공통) 판관비를 그 기간 구매경로별 매출 비중으로 나눈 금액">배분 간접비</th>
                                     <th>영업이익</th><th>영업이익률</th>
                                 </tr></thead>
                                 <tbody></tbody>

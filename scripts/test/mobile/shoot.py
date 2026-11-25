@@ -28,7 +28,7 @@ DEVICES = {
     'ipad1180': dict(viewport={'width': 1180, 'height': 820}, device_scale_factor=1, is_mobile=True, has_touch=True),
 }
 MENUS = [('dashboard', 'dashboard'), ('orders', 'orders'), ('mfg', 'manufacturing-costs'), ('pl', 'profit-loss'),
-         ('customers', 'customers'), ('inventory', 'inventory')]
+         ('customers', 'customers'), ('inventory', 'inventory'), ('opex', 'admin-expenses')]
 
 
 async def handle(route):
@@ -123,6 +123,27 @@ async def run_device(browser, name, opts, report, devices_only):
     await page.screenshot(path=f'{OUT}/{PREFIX}_{name}_pl_channel_nov.png')
     r['pl_channel_nov_note'] = await page.evaluate("() => document.getElementById('plChannelNote')?.innerText || null")
     await page.evaluate("() => document.querySelector('[data-pl-view=\"monthly\"]')?.click()")
+    # P&L 월별 표 구매경로 필터 (판관비 = 직접 + 배분 간접비)
+    await page.evaluate("() => { const s = document.getElementById('plPurchasePathFilter'); if (s) { s.value = '온라인'; s.dispatchEvent(new Event('change')); } }")
+    await page.wait_for_timeout(800)
+    await page.evaluate('window.scrollTo(0, 0)')
+    await page.screenshot(path=f'{OUT}/{PREFIX}_{name}_pl_filter_online.png')
+    r['pl_filter_note'] = await page.evaluate("() => document.getElementById('plCancelSummary')?.innerText || null")
+    await page.evaluate("() => { const s = document.getElementById('plPurchasePathFilter'); if (s) { s.value = 'all'; s.dispatchEvent(new Event('change')); } }")
+    await page.wait_for_timeout(500)
+    # 판관비 입력 모달 (구매경로 칸)
+    await click_menu(page, 'admin-expenses')
+    await page.evaluate("() => document.querySelector('#adminExpensesTable tbody tr')?.scrollIntoView({ block: 'start' })")
+    await page.wait_for_timeout(300)
+    await page.screenshot(path=f'{OUT}/{PREFIX}_{name}_opex_list.png')
+    await page.evaluate('window.scrollTo(0, 0)')
+    await page.evaluate("() => document.getElementById('addAdminExpenseBtn')?.click()")
+    await page.wait_for_timeout(800)
+    await page.evaluate("() => { const s = document.querySelector('.modal-content [name=purchasePath]'); if (s) s.scrollIntoView({ block: 'center' }); }")
+    await page.screenshot(path=f'{OUT}/{PREFIX}_{name}_opex_modal.png')
+    r['opex_modal'] = await page.evaluate(MODAL)
+    r['opex_modal_path_options'] = await page.evaluate("() => [...document.querySelectorAll('.modal-content [name=purchasePath] option')].map(o => o.textContent)")
+    await page.evaluate("() => document.querySelectorAll('[data-modal]').forEach(m => m.remove())")
     # 기타 작업(⋮) 메뉴와 카드 펼치기 (모바일만)
     if await page.evaluate("() => document.documentElement.classList.contains('is-mobile')"):
         await click_menu(page, 'orders')
