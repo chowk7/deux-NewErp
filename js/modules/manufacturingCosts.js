@@ -1079,6 +1079,11 @@ window.ManufacturingCostsModule = {
         };
         wrapper.querySelector('#modalForm').addEventListener('input', updateCalculatedFields);
 
+        // VAT포함으로 보이는 물림비·공임·도금·나석(수동)·기타 입력 경고 + 저장 시 확인창 (저장 로직·필드는 그대로)
+        if (window.VatInputGuard) {
+            window.VatInputGuard.attach(wrapper.querySelector('#modalForm'), wrapper);
+        }
+
         // 나석 종류 선택 시 자동 가격 제안
         for (let i = 1; i <= 10; i++) {
             const stoneTypeSelect = wrapper.querySelector(`[name="stoneType${i}"]`);
