@@ -675,3 +675,24 @@ html.is-mobile body {
     html.is-mobile .m-tab { flex-direction: row; gap: 6px; font-size: 0.8rem; }
     html.is-mobile .m-tab svg { width: 20px; height: 20px; }
 }
+
+/* ===== P&L: 연도 전체 카드 크게 맨 위, 보기 전환 ===== */
+html.is-mobile .pl-view-bar { gap: 8px; margin-top: 4px; }
+html.is-mobile .pl-view-toggle { display: flex; width: 100%; }
+html.is-mobile .pl-view-toggle .pl-view-btn { flex: 1; }
+html.is-mobile .pl-period { display: flex; align-items: center; gap: 8px; width: 100%; }
+html.is-mobile .pl-period select { flex: 1; margin-left: 0; }
+
+html.is-mobile table.m-cardify tr.pl-total-row {
+    grid-column: 1 / -1;
+    background: #fffaf6 !important;
+    border: 2px solid var(--primary-color);
+    padding: 10px 14px;
+}
+
+html.is-mobile table.m-cardify tr.pl-total-row td { font-size: 1.05rem; }
+html.is-mobile table.m-cardify tr.pl-total-row td:first-child {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: var(--primary-color);
+}

@@ -731,3 +731,41 @@ th.resizable .col-resize-handle.dragging {
         opacity: 0;
     }
 }
+
+/* ===== P&L 보기 전환 (월별 / 구매경로별) ===== */
+.pl-view-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    flex-wrap: wrap;
+    margin-top: var(--spacing-md);
+}
+
+.pl-view-toggle {
+    display: inline-flex;
+    border: 1px solid var(--primary-color);
+    border-radius: var(--border-radius);
+    overflow: hidden;
+}
+
+.pl-view-toggle .pl-view-btn {
+    border-radius: 0;
+    background: #fff;
+    color: var(--primary-color);
+    padding: 0.4rem 1rem;
+}
+
+.pl-view-toggle .pl-view-btn.active {
+    background: var(--primary-color);
+    color: #fff;
+}
+
+.pl-period select {
+    width: auto;
+    display: inline-block;
+    margin-left: 4px;
+}
+
+#plChannelWrap {
+    margin-top: var(--spacing-md);
+}

@@ -601,12 +601,12 @@
                                     <option value="2026" selected>2026</option>
                                 </select>
                             </label>
-                            <label>구매경로:
+                            <label class="pl-source-filter">구매경로:
                                 <select id="plPurchasePathFilter" class="form-control" style="width:auto;display:inline-block;margin-left:4px;">
                                     <option value="all">전체</option>
                                 </select>
                             </label>
-                            <label>구매경로상세:
+                            <label class="pl-source-filter">구매경로상세:
                                 <select id="plPurchasePathDetailFilter" class="form-control" style="width:auto;display:inline-block;margin-left:4px;">
                                     <option value="all">전체</option>
                                 </select>
@@ -614,7 +614,36 @@
                             <button id="calcPlBtn" class="btn btn-primary">📊 계산</button>
                             <button id="downloadPlDataBtn" class="btn btn-secondary">📊 데이터 다운로드</button>
                         </div>
-                        <div style="overflow-x:auto; margin-top:16px;">
+                        <div class="pl-view-bar">
+                            <div class="pl-view-toggle" role="tablist" aria-label="P&L 보기">
+                                <button type="button" class="btn btn-sm pl-view-btn active" data-pl-view="monthly" role="tab">월별 손익</button>
+                                <button type="button" class="btn btn-sm pl-view-btn" data-pl-view="channel" role="tab">구매경로별 손익</button>
+                            </div>
+                            <label id="plPeriodWrap" class="pl-period" style="display:none;">기간:
+                                <select id="plPeriodSelect" class="form-control">
+                                    <option value="0">연도 전체</option>
+                                    <option value="1">1월</option><option value="2">2월</option><option value="3">3월</option>
+                                    <option value="4">4월</option><option value="5">5월</option><option value="6">6월</option>
+                                    <option value="7">7월</option><option value="8">8월</option><option value="9">9월</option>
+                                    <option value="10">10월</option><option value="11">11월</option><option value="12">12월</option>
+                                </select>
+                            </label>
+                        </div>
+                        <div id="plChannelWrap" style="display:none;">
+                            <div style="overflow-x:auto;">
+                            <table id="plChannelTable" class="data-table">
+                                <thead><tr>
+                                    <th>구매경로</th><th>매출</th><th>매출비중</th><th>제품원가</th><th>수수료</th><th>매출이익</th>
+                                    <th title="제작 전 구매취소 주문에서 이미 나간 비용">취소손실</th><th>직접 판관비</th>
+                                    <th title="판관비 합계를 그 기간 구매경로별 매출 비중으로 나눈 금액">배분 간접비</th>
+                                    <th>영업이익</th><th>영업이익률</th>
+                                </tr></thead>
+                                <tbody></tbody>
+                            </table>
+                            </div>
+                            <p id="plChannelNote" style="font-size:0.8rem;color:#6b7280;margin-top:8px;line-height:1.6;"></p>
+                        </div>
+                        <div id="plMonthlyWrap" style="overflow-x:auto; margin-top:16px;">
                         <table id="profitLossTable" class="data-table">
                             <thead><tr>
                                 <th>월</th><th>매출</th><th title="구매취소 주문의 매출금액 − 환불액. 매출에 포함된 금액">위약금<br><span style="font-weight:400;font-size:0.7rem;">(매출 포함)</span></th><th>제품원가</th><th>수수료</th><th>매출원가</th><th>매출이익</th><th>매출이익률</th>

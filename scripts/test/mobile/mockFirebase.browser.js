@@ -96,7 +96,7 @@
   const options = ['14K 옐로우 / 42cm', '18K 화이트 / 11호', '14K 로즈 / 45cm', '18K 옐로우 / 13호'];
   const paths = ['온라인', '백화점', '팝업', '지인'];
   for (let i = 0; i < 24; i++) {
-    const d = new Date(2026, 10, 24 - i);
+    const d = new Date(2026, 10 - Math.floor(i / 3), 22 - (i % 3) * 6);
     const amt = [1280000, 2450000, 3980000, 890000, 1560000, 5200000][i % 6];
     store.set('sales/orders/items/o' + i, {
       orderDate: new Timestamp(d), createdAt: new Timestamp(d), orderNumber: '2026112' + String(400 + i),
@@ -110,7 +110,10 @@
     });
   }
   for (let i = 0; i < 12; i++) store.set('sales/customers/items/c' + i, { name: names[i], customerName: names[i], phone: '010-0000-00' + (20 + i), email: 'user' + i + '@example.com', grade: ['VIP', '일반'][i % 2], totalPurchase: 1000000 * (i + 1), memo: '', createdAt: new Timestamp(new Date(2026, 9, i + 1)) });
-  for (let i = 0; i < 8; i++) store.set('sales/adminExpenses/items/e' + i, { date: new Timestamp(new Date(2026, 10, 1 + i * 3)), account: ['광고선전비', '지급수수료', '임차료', '복리후생비'][i % 4], description: '테스트 거래 ' + (i + 1), vendor: '거래처' + i, amount: 150000 * (i + 1), createdAt: new Timestamp(new Date()) });
+  for (let i = 0; i < 24; i++) {
+    const m = 11 - (i % 8); // 4~11월
+    store.set('sales/adminExpenses/items/e' + i, { date: new Timestamp(new Date(2026, m - 1, 5 + (i % 3) * 7)), accountType: ['광고선전비', '지급수수료', '임대료', '기타'][i % 4], account: ['광고선전비', '지급수수료', '임대료', '기타'][i % 4], description: '테스트 거래 ' + (i + 1), vendor: '거래처' + i, amount: 150000 * ((i % 5) + 1), expenseYear: '2026', expenseMonth: String(m).padStart(2, '0'), createdAt: new Timestamp(new Date()) });
+  }
   for (let i = 0; i < 10; i++) store.set('prices/productRates/items/p' + i, { productName: products[i % 6] + (i > 5 ? ' II' : ''), productCode: 'DX-' + (100 + i), category: ['목걸이', '반지', '귀걸이'][i % 3], finalPrice: 1000000 + i * 350000, goldWeight: 2.1 + i * 0.3, laborCost: 120000, createdAt: new Timestamp(new Date()) });
   for (let i = 0; i < 6; i++) store.set('prices/diamondRates/items/d' + i, { diamondType: ['라운드 3부', '라운드 5부', '라운드 1캐럿', '오벌 5부', '페어 3부', '멜리 1.4mm'][i], costWithoutVat: 80000 * (i + 1), costWithVat: 88000 * (i + 1), vsWarrantyFee: 30000, vvsWarrantyFee: 50000, remark: '' });
   for (let i = 0; i < 9; i++) store.set('inventory/items/records/r' + i, { productName: products[i % 6], productCode: 'DX-' + (100 + i), location: ['본사', '목동팝업', '더현대'][i % 3], quantity: (i % 4) + 1, status: '보관', createdAt: new Timestamp(new Date()) });
