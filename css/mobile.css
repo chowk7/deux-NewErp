@@ -1,0 +1,301 @@
+/*
+ * 모바일·태블릿 전용 레이아웃
+ * - <html class="is-mobile"> 일 때만 적용된다 (index.html <head> 의 감지 스크립트가 붙인다).
+ * - 데스크톱(마우스 사용 기기)에서는 이 파일의 어떤 규칙도 적용되지 않는다.
+ */
+
+html.is-mobile {
+    --m-tab-h: 60px;
+    --m-safe-b: env(safe-area-inset-bottom, 0px);
+    --m-touch: 44px;
+    -webkit-text-size-adjust: 100%;
+}
+
+/* ===== 이중 스크롤 제거: 페이지 하나만 스크롤 ===== */
+html.is-mobile .container {
+    display: block;
+    height: auto;
+}
+
+html.is-mobile .sidebar {
+    display: none !important;
+}
+
+html.is-mobile .main-content {
+    overflow: visible;
+    padding: 12px 12px calc(var(--m-tab-h) + var(--m-safe-b) + 24px);
+}
+
+/* 화면 제목은 상단바(m-title)에 나오므로 본문 제목은 숨긴다 */
+html.is-mobile .content-section > h2 {
+    display: none;
+}
+
+/* ===== 상단바: 화면 제목만 ===== */
+html.is-mobile .navbar {
+    position: sticky;
+    top: 0;
+    z-index: 800;
+    height: 52px;
+    padding: 0 12px;
+}
+
+html.is-mobile .navbar-brand h1 { display: none; }
+html.is-mobile .navbar-menu { display: none; }
+
+html.is-mobile .m-title {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--text-dark);
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ===== 터치 크기: 버튼·입력칸 44px, 글자 16px(아이폰 확대 방지) ===== */
+html.is-mobile .btn,
+html.is-mobile .btn-sm {
+    min-height: var(--m-touch);
+    padding: 0 14px;
+    font-size: 0.95rem;
+}
+
+html.is-mobile input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]),
+html.is-mobile select,
+html.is-mobile textarea {
+    min-height: var(--m-touch);
+    font-size: 16px !important;
+}
+
+html.is-mobile input[type="checkbox"],
+html.is-mobile input[type="radio"] {
+    width: 22px;
+    height: 22px;
+}
+
+/* 버튼 줄: 세로로 쌓지 않고 가로 한 줄 + 옆으로 밀기 */
+html.is-mobile .button-group {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    white-space: nowrap;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+}
+
+html.is-mobile .button-group > * {
+    flex-shrink: 0;
+}
+
+html.is-mobile .button-group > div {
+    margin-left: 0 !important;
+}
+
+html.is-mobile .button-group > div .btn + .btn {
+    margin-left: 8px;
+}
+
+/* ===== 표: 글자 단위 세로 줄바꿈 방지, 넘치면 표만 가로 스크롤 ===== */
+html.is-mobile .data-table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    font-size: 0.875rem;
+}
+
+html.is-mobile .data-table th {
+    white-space: nowrap;
+    padding: 8px 10px;
+}
+
+html.is-mobile .data-table td {
+    word-break: keep-all;
+    min-width: 4.5em;
+    padding: 8px 10px;
+}
+
+/* ===== 모달: 전체화면, 제목·저장 버튼 고정 ===== */
+html.is-mobile .modal-overlay {
+    align-items: stretch;
+    justify-content: stretch;
+}
+
+html.is-mobile .modal-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    border-radius: 0 !important;
+    padding: 0 16px !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch;
+}
+
+html.is-mobile .modal-content .modal-header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: #fff;
+    margin: 0 -16px 12px;
+    padding: 4px 4px 4px 16px;
+    min-height: 52px;
+}
+
+html.is-mobile .modal-close-btn {
+    width: var(--m-touch);
+    height: var(--m-touch);
+    font-size: 1.35rem;
+}
+
+html.is-mobile .modal-content .modal-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    background: #fff;
+    margin: 16px -16px 0;
+    padding: 12px 16px calc(12px + var(--m-safe-b));
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.06);
+}
+
+html.is-mobile .modal-content .modal-footer .btn {
+    flex: 1;
+    min-height: 48px;
+    font-size: 1rem;
+}
+
+html.is-mobile .modal-content .form-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 14px;
+    margin-bottom: 8px;
+}
+
+html.is-mobile .modal-content input,
+html.is-mobile .modal-content select,
+html.is-mobile .modal-content textarea {
+    max-width: 100%;
+    min-width: 0;
+}
+
+/* ===== 하단 탭바 ===== */
+.m-tabbar { display: none; }
+
+html.is-mobile .m-tabbar {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 900;
+    height: calc(var(--m-tab-h) + var(--m-safe-b));
+    padding-bottom: var(--m-safe-b);
+    background: #fff;
+    border-top: 1px solid var(--border-color);
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.04);
+}
+
+html.is-mobile .m-tab {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    border: none;
+    background: none;
+    color: var(--text-light);
+    font-size: 0.72rem;
+    font-family: inherit;
+    cursor: pointer;
+    min-width: 0;
+    -webkit-tap-highlight-color: transparent;
+}
+
+html.is-mobile .m-tab svg {
+    width: 24px;
+    height: 24px;
+}
+
+html.is-mobile .m-tab.active {
+    color: var(--primary-color);
+    font-weight: 700;
+}
+
+/* ===== 더보기 화면 ===== */
+.m-more { display: none; }
+
+html.is-mobile .m-more.open {
+    display: block;
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: 52px;
+    bottom: calc(var(--m-tab-h) + var(--m-safe-b));
+    z-index: 850;
+    background: var(--light-bg);
+    overflow-y: auto;
+    padding: 12px 12px 24px;
+}
+
+html.is-mobile .m-more-user {
+    background: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+html.is-mobile .m-more-user .m-email {
+    font-size: 0.9rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+html.is-mobile .m-more-section {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-light);
+    margin: 14px 4px 6px;
+}
+
+html.is-mobile .m-more-list {
+    background: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+html.is-mobile .m-more-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    min-height: 50px;
+    padding: 0 14px;
+    border: none;
+    border-top: 1px solid #f1f1f1;
+    background: #fff;
+    font-size: 1rem;
+    font-family: inherit;
+    color: var(--text-dark);
+    text-align: left;
+    cursor: pointer;
+}
+
+html.is-mobile .m-more-item:first-child { border-top: none; }
+html.is-mobile .m-more-item.active { color: var(--primary-color); font-weight: 700; }
+html.is-mobile .m-more-item .m-chev { color: #c4c4c4; }
+html.is-mobile .m-more-item.danger { color: var(--danger-color); }
+
+/* 데스크톱 모드로 본 터치 기기에서 모바일 화면으로 돌아가는 버튼 */
+.m-back-to-mobile { display: none; }
+html.erp-touch-desktop .m-back-to-mobile { display: inline-flex; }
