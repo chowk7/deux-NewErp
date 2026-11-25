@@ -72,6 +72,21 @@ test('주문 카드: 배송완료·구매취소 건은 2주 초과 표시 안 �
     assert.ok(!c.includes('overdue') && c.includes('canceled') && c.includes('취소철회'));
 });
 
+test('표 카드: P&L 은 월·매출·이익 열만 늘 보이고 나머지는 펼치기', () => {
+    const h = ['월', '매출', '위약금(매출 포함)', '제품원가', '매출이익', '매출이익률', '판관비합계', '영업이익', '영업이익률'];
+    assert.deepStrictEqual([...M.keyColumnFlags('profitLossTable', h)], [true, true, false, false, true, true, false, true, true]);
+});
+
+test('표 카드: 머리글 뒤 괄호 표기도 일치 (제조가격(VAT포함))', () => {
+    const h = ['', '주문일', '고객명', '상품명', '금값(자동, VAT별도)', '제조가격(VAT포함)', '매출이익률(%)'];
+    assert.deepStrictEqual([...M.keyColumnFlags('manufacturingCostsTable', h)], [false, true, true, true, false, true, true]);
+});
+
+test('표 카드: 설정 없는 표는 앞 4개 열, 빈 머리글(체크박스) 제외', () => {
+    assert.deepStrictEqual([...M.keyColumnFlags('unknownTable', ['', 'A', 'B', 'C', 'D', 'E'])], [false, true, true, true, true, false]);
+    assert.strictEqual(M.cleanHeader(' 주문일 ▼ '), '주문일');
+});
+
 for (const [name, fn] of tests) {
     try { fn(); passed++; console.log(`  ok  ${name}`); }
     catch (e) { console.error(`  FAIL ${name}\n       ${e.message}`); }
